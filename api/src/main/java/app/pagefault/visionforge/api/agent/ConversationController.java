@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import app.pagefault.visionforge.api.agent.dto.AgentTurnResponse;
 import app.pagefault.visionforge.api.agent.dto.ConversationResponse;
@@ -21,6 +23,7 @@ import app.pagefault.visionforge.api.agent.dto.MessageResponse;
 import app.pagefault.visionforge.api.agent.dto.SendMessageRequest;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.api.security.WorkspaceRequestGuard;
+import app.pagefault.visionforge.api.stream.AgentRunStreamService;
 import app.pagefault.visionforge.agent.conversation.AgentTurnResult;
 import app.pagefault.visionforge.agent.conversation.Conversation;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
@@ -36,6 +39,7 @@ public class ConversationController {
 
     private final ConversationService conversationService;
     private final AgentRunStarter agentRunStarter;
+    private final AgentRunStreamService agentRunStreamService;
     private final WorkspaceRequestGuard workspaceRequestGuard;
 
     @GetMapping
@@ -96,5 +100,21 @@ public class ConversationController {
                 workspaceId, conversationId, AuthenticatedUser.id(jwt), request.content());
         agentRunStarter.start(result.runId(), result.workflowId());
         return ApiResponse.success(AgentTurnResponse.from(result));
+    }
+
+    @PostMapping(
+            value = "/{conversationId}/messages/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter sendStream(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID conversationId,
+            @Valid @RequestBody SendMessageRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        workspaceRequestGuard.require(jwt, workspaceId);
+        AgentTurnResult result = conversationService.startTurn(
+                workspaceId, conversationId, AuthenticatedUser.id(jwt), request.content());
+        SseEmitter emitter = agentRunStreamService.subscribe(result.runId());
+        agentRunStarter.start(result.runId(), result.workflowId());
+        return emitter;
     }
 }

@@ -11,6 +11,7 @@ import app.pagefault.visionforge.agent.provider.ChatCompletionResult;
 import app.pagefault.visionforge.agent.provider.ChatModelClient;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationStatus;
+import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.common.error.BusinessException;
 
 import io.temporal.failure.ApplicationFailure;
@@ -22,13 +23,16 @@ public class AgentActivitiesImpl implements AgentActivities {
     private final AgentRunService agentRunService;
     private final ModelDefinitionService modelDefinitionService;
     private final ChatModelClient chatModelClient;
+    private final AgentRunStreamPublisher streamPublisher;
 
     @Override
     public AgentPrompt loadPrompt(UUID runId) {
         try {
             return agentRunService.loadPrompt(runId);
         } catch (BusinessException exception) {
-            agentRunService.fail(runId, exception.getMessage());
+            if (agentRunService.fail(runId, exception.getMessage())) {
+                streamPublisher.publishError(runId, exception.getMessage());
+            }
             throw ApplicationFailure.newNonRetryableFailure(
                     exception.getMessage(), exception.getErrorCode().code());
         }
@@ -46,7 +50,8 @@ public class AgentActivitiesImpl implements AgentActivities {
                     settings.reasoningEffort(),
                     settings.maxOutputTokens(),
                     prompt.turns());
-            ChatCompletionResult result = chatModelClient.complete(request);
+            ChatCompletionResult result = chatModelClient.stream(
+                    request, delta -> streamPublisher.publishDelta(runId, delta));
             agentRunService.recordInvocation(
                     runId, model.getId(), ModelInvocationStatus.SUCCEEDED, result, null);
             return new ModelReply(
@@ -61,7 +66,9 @@ public class AgentActivitiesImpl implements AgentActivities {
                     : exception.getMessage();
             agentRunService.recordInvocation(
                     runId, model.getId(), ModelInvocationStatus.FAILED, null, message);
-            agentRunService.fail(runId, message);
+            if (agentRunService.fail(runId, message)) {
+                streamPublisher.publishError(runId, message);
+            }
             throw ApplicationFailure.newNonRetryableFailure(
                     message, AgentErrorCode.MODEL_PROVIDER_ERROR.code());
         }
@@ -69,11 +76,14 @@ public class AgentActivitiesImpl implements AgentActivities {
 
     @Override
     public void completeRun(UUID runId, ModelReply reply) {
-        agentRunService.complete(runId, reply);
+        UUID assistantMessageId = agentRunService.complete(runId, reply);
+        streamPublisher.publishDone(runId, assistantMessageId);
     }
 
     @Override
     public void failRun(UUID runId, String errorMessage) {
-        agentRunService.fail(runId, errorMessage);
+        if (agentRunService.fail(runId, errorMessage)) {
+            streamPublisher.publishError(runId, errorMessage);
+        }
     }
 }

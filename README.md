@@ -43,7 +43,7 @@ Dependency and plugin versions are managed centrally by the root POM (Java 21, S
 Business database migrations live in `database/src/main/resources/db/migration` and are managed by Flyway. Start PostgreSQL and apply migrations from the repository root:
 
 ```sh
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres redis
 ./mvnw -pl database flyway:migrate
 ```
 
@@ -91,7 +91,7 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
   }'
 ```
 
-API keys are never returned; responses expose only `apiKeyConfigured`. The provider calls `{baseUrl}/chat/completions` and sends `max_tokens` plus `reasoning_effort` when configured. The worker must be running to execute AgentRun workflows.
+API keys are never returned; responses expose only `apiKeyConfigured`. The provider calls `{baseUrl}/chat/completions` with `stream: true` and sends `max_tokens` plus `reasoning_effort` when configured. The worker must be running to execute AgentRun workflows.
 
 Conversation endpoints:
 
@@ -100,10 +100,22 @@ POST /api/v1/workspaces/{workspaceId}/conversations
 GET  /api/v1/workspaces/{workspaceId}/conversations
 GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
 POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream
 GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
 ```
 
 Sending a message returns `202 Accepted` with a `runId`. The workflow persists the assistant reply asynchronously; poll the AgentRun endpoint until its status is `COMPLETED` or `FAILED`. If Temporal is temporarily unavailable, the AgentRun stays `PENDING` and the worker's start compensator retries the workflow start.
+
+The `/messages/stream` endpoint returns `text/event-stream`. It requires Redis (provided by Compose) and emits:
+
+```text
+event: accepted   data: {"type":"accepted","runId":"..."}
+event: delta      data: {"type":"delta","content":"..."}
+event: done       data: {"type":"done","assistantMessageId":"..."}
+event: error      data: {"type":"error","message":"..."}
+```
+
+Browsers should consume it with `fetch` and a streaming reader because `EventSource` cannot send the `Authorization` header. Redis is required for this endpoint; the non-streaming message endpoint still works without it. Redis pub/sub is best-effort for live delivery; the persisted assistant message remains the source of truth if the stream disconnects.
 
 Worker runtime settings live under `visionforge.worker` and can be overridden with environment variables such as `WORKER_MAX_CONCURRENT_ACTIVITIES`, `WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`, `WORKER_WORKFLOW_CACHE_SIZE`, `WORKER_MAX_WORKFLOW_THREADS` and `WORKER_GRACEFUL_SHUTDOWN_TIMEOUT`. Start compensation is controlled by `WORKER_START_COMPENSATION_ENABLED`, `WORKER_START_COMPENSATION_INTERVAL_MS`, `WORKER_START_COMPENSATION_BATCH_SIZE` and `WORKER_START_COMPENSATION_MAX_ATTEMPTS`.
 

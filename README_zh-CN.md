@@ -43,7 +43,7 @@ pnpm --dir frontend start
 业务数据库迁移脚本位于 `database/src/main/resources/db/migration`，由 Flyway 管理。在仓库根目录启动 PostgreSQL 并执行迁移：
 
 ```sh
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres redis
 ./mvnw -pl database flyway:migrate
 ```
 
@@ -91,7 +91,7 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
   }'
 ```
 
-API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用请求发送到 `{baseUrl}/chat/completions`，使用 `max_tokens`，配置了 reasoning effort 时同时发送 `reasoning_effort`。AgentRun 由 Worker 执行，Worker 必须保持运行。
+API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用请求发送到 `{baseUrl}/chat/completions`，使用 `stream: true` 和 `max_tokens`，配置了 reasoning effort 时同时发送 `reasoning_effort`。AgentRun 由 Worker 执行，Worker 必须保持运行。
 
 会话接口：
 
@@ -100,10 +100,22 @@ POST /api/v1/workspaces/{workspaceId}/conversations
 GET  /api/v1/workspaces/{workspaceId}/conversations
 GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
 POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream
 GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
 ```
 
 发送消息返回 `202 Accepted` 和 `runId`；助手回复由 Workflow 异步写入，客户端轮询 AgentRun，直到状态为 `COMPLETED` 或 `FAILED`。如果 Temporal 暂时不可用，AgentRun 会保持 `PENDING`，由 Worker 的启动补偿任务重试启动 Workflow。
+
+`/messages/stream` 返回 `text/event-stream`，需要 Redis（Compose 已提供），事件格式：
+
+```text
+event: accepted   data: {"type":"accepted","runId":"..."}
+event: delta      data: {"type":"delta","content":"..."}
+event: done       data: {"type":"done","assistantMessageId":"..."}
+event: error      data: {"type":"error","message":"..."}
+```
+
+浏览器应使用 `fetch` 的流式 reader 消费，因为 `EventSource` 不能携带 `Authorization` 头。该接口需要 Redis；非流式消息接口在 Redis 不可用时仍可使用。Redis pub/sub 只负责实时投递；连接中断后以已持久化的助手消息为准。
 
 Worker 运行时配置位于 `visionforge.worker`，可通过 `WORKER_MAX_CONCURRENT_ACTIVITIES`、`WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`、`WORKER_WORKFLOW_CACHE_SIZE`、`WORKER_MAX_WORKFLOW_THREADS`、`WORKER_GRACEFUL_SHUTDOWN_TIMEOUT` 等环境变量覆盖。启动补偿由 `WORKER_START_COMPENSATION_ENABLED`、`WORKER_START_COMPENSATION_INTERVAL_MS`、`WORKER_START_COMPENSATION_BATCH_SIZE`、`WORKER_START_COMPENSATION_MAX_ATTEMPTS` 控制。
 

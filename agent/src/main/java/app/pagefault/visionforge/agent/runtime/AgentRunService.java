@@ -118,10 +118,10 @@ public class AgentRunService {
     }
 
     @Transactional
-    public void complete(UUID runId, ModelReply reply) {
+    public UUID complete(UUID runId, ModelReply reply) {
         AgentRun run = get(runId);
         if (run.getStatus() == AgentRunStatus.COMPLETED || run.getAssistantMessageId() != null) {
-            return;
+            return run.getAssistantMessageId();
         }
         if (run.getStatus() == AgentRunStatus.FAILED) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
@@ -152,19 +152,21 @@ public class AgentRunService {
         conversation.setLastMessageAt(now);
         conversation.setUpdatedAt(now);
         conversationMapper.updateById(conversation);
+        return assistantMessage.getId();
     }
 
     @Transactional
-    public void fail(UUID runId, String errorMessage) {
+    public boolean fail(UUID runId, String errorMessage) {
         AgentRun run = get(runId);
         if (run.getStatus() == AgentRunStatus.COMPLETED
                 || (run.getStatus() == AgentRunStatus.FAILED && run.getErrorMessage() != null)) {
-            return;
+            return false;
         }
         run.setStatus(AgentRunStatus.FAILED);
         run.setErrorMessage(truncate(errorMessage));
         run.setCompletedAt(clock.instant());
         agentRunMapper.updateById(run);
+        return true;
     }
 
     public List<WorkflowStartRequest> pendingStartRequests(int limit) {

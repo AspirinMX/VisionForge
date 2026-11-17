@@ -8,6 +8,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 
@@ -24,6 +25,7 @@ import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
+import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentActivitiesImpl;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -48,6 +50,12 @@ public class AgentConfiguration {
     @Bean
     public ChatModelClient chatModelClient(ObjectMapper objectMapper) {
         return new OpenAiCompatibleChatModelClient(objectMapper);
+    }
+
+    @Bean
+    public AgentRunStreamPublisher agentRunStreamPublisher(
+            StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+        return new AgentRunStreamPublisher(redisTemplate, objectMapper);
     }
 
     @Bean
@@ -104,7 +112,9 @@ public class AgentConfiguration {
     public AgentActivitiesImpl agentActivities(
             AgentRunService agentRunService,
             ModelDefinitionService modelDefinitionService,
-            ChatModelClient chatModelClient) {
-        return new AgentActivitiesImpl(agentRunService, modelDefinitionService, chatModelClient);
+            ChatModelClient chatModelClient,
+            AgentRunStreamPublisher streamPublisher) {
+        return new AgentActivitiesImpl(
+                agentRunService, modelDefinitionService, chatModelClient, streamPublisher);
     }
 }

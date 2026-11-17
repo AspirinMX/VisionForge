@@ -8,6 +8,10 @@ spring:
     url: ${VISIONFORGE_DB_URL:jdbc:postgresql://localhost:5432/visionforge}
     username: ${VISIONFORGE_DB_USER:visionforge}
     password: ${VISIONFORGE_DB_PASSWORD:visionforge}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 management:
   endpoints:
@@ -40,6 +44,8 @@ visionforge:
     task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
   model:
     config-secret: ${MODEL_CONFIG_SECRET:}
+  stream:
+    timeout-ms: ${STREAM_TIMEOUT_MS:300000}
   identity:
     bootstrap-admin:
       email: ${BOOTSTRAP_ADMIN_EMAIL:}

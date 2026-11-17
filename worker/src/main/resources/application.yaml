@@ -7,6 +7,10 @@ spring:
     url: ${VISIONFORGE_DB_URL:jdbc:postgresql://localhost:5432/visionforge}
     username: ${VISIONFORGE_DB_USER:visionforge}
     password: ${VISIONFORGE_DB_PASSWORD:visionforge}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 visionforge:
   temporal:
