@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -89,6 +90,12 @@ public class ConversationService {
             boolean platformAdmin,
             String content) {
         Conversation conversation = get(workspaceId, conversationId);
+        // Serialize per conversation: message sequence allocation and run creation must not race
+        // with another turn of the same conversation.
+        conversationMapper.selectForUpdate(conversationId);
+        if (hasActiveRun(conversationId)) {
+            throw new BusinessException(AgentErrorCode.CONVERSATION_BUSY);
+        }
         String safeContent = normalizeContent(content);
         Instant now = clock.instant();
 
@@ -117,7 +124,12 @@ public class ConversationService {
         run.setStatus(AgentRunStatus.PENDING);
         run.setWorkflowId(workflowId);
         run.setCreatedAt(now);
-        agentRunMapper.insert(run);
+        try {
+            agentRunMapper.insert(run);
+        } catch (DuplicateKeyException exception) {
+            // The partial unique index on active runs is the storage-level guard.
+            throw new BusinessException(AgentErrorCode.CONVERSATION_BUSY);
+        }
 
         WorkflowStartRequest startRequest = new WorkflowStartRequest();
         startRequest.setId(idGenerator.nextId());
@@ -137,6 +149,14 @@ public class ConversationService {
         conversationMapper.updateById(conversation);
 
         return new AgentTurnResult(runId, workflowId, userMessage.getId());
+    }
+
+    private boolean hasActiveRun(UUID conversationId) {
+        return agentRunMapper.selectCount(
+                Wrappers.<AgentRun>lambdaQuery()
+                        .eq(AgentRun::getConversationId, conversationId)
+                        .in(AgentRun::getStatus, AgentRunStatus.PENDING, AgentRunStatus.RUNNING))
+                > 0;
     }
 
     private long nextSequence(UUID conversationId) {

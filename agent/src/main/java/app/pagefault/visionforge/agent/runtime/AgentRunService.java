@@ -267,6 +267,8 @@ public class AgentRunService {
         if (turn == null || turn.getAssistantText() == null || turn.getAssistantText().isBlank()) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
         }
+        // Same lock as startTurn: message sequence allocation must not race a new user message.
+        conversationMapper.selectForUpdate(run.getConversationId());
         Conversation conversation = conversationMapper.selectById(run.getConversationId());
         if (conversation == null) {
             throw new BusinessException(AgentErrorCode.CONVERSATION_NOT_FOUND);
