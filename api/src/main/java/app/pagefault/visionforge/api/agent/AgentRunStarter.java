@@ -5,14 +5,19 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflow;
-import app.pagefault.visionforge.common.error.BusinessException;
 
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
+import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Best-effort workflow start. The user message and AgentRun are already committed, so a transient
+ * Temporal failure is left as PENDING for the worker's start compensator instead of failing the
+ * HTTP request.
+ */
+@Slf4j
 @Component
 public class AgentRunStarter {
 
@@ -40,9 +45,11 @@ public class AgentRunStarter {
             WorkflowClient.start(workflow::run, runId);
             agentRunService.markWorkflowStarted(workflowId);
         } catch (RuntimeException exception) {
-            agentRunService.markWorkflowStartFailed(workflowId, exception.getMessage());
-            throw new BusinessException(
-                    AgentErrorCode.AGENT_RUN_START_FAILED, AgentErrorCode.AGENT_RUN_START_FAILED.message());
+            log.warn(
+                    "Could not start AgentRun workflow {}; leaving it pending for compensation",
+                    workflowId,
+                    exception);
+            agentRunService.markWorkflowStartRetryable(workflowId, exception.getMessage());
         }
     }
 }

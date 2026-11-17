@@ -167,6 +167,15 @@ public class AgentRunService {
         agentRunMapper.updateById(run);
     }
 
+    public List<WorkflowStartRequest> pendingStartRequests(int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 200);
+        return workflowStartRequestMapper.selectList(
+                Wrappers.<WorkflowStartRequest>lambdaQuery()
+                        .eq(WorkflowStartRequest::getStatus, WorkflowStartStatus.PENDING)
+                        .orderByAsc(WorkflowStartRequest::getCreatedAt)
+                        .last("LIMIT " + safeLimit));
+    }
+
     public void markWorkflowStarted(String workflowId) {
         WorkflowStartRequest request = findStartRequest(workflowId);
         if (request == null) {
@@ -179,15 +188,31 @@ public class AgentRunService {
         workflowStartRequestMapper.updateById(request);
     }
 
-    public void markWorkflowStartFailed(String workflowId, String errorMessage) {
+    public void markWorkflowStartRetryable(String workflowId, String errorMessage) {
         WorkflowStartRequest request = findStartRequest(workflowId);
         if (request == null) {
             return;
         }
-        request.setStatus(WorkflowStartStatus.FAILED);
+        request.setStatus(WorkflowStartStatus.PENDING);
         request.setAttempts(request.getAttempts() + 1);
         request.setLastError(truncate(errorMessage));
         request.setUpdatedAt(clock.instant());
+        workflowStartRequestMapper.updateById(request);
+    }
+
+    @Transactional
+    public void recordWorkflowStartFailure(
+            WorkflowStartRequest request, String errorMessage, int maxAttempts) {
+        int attempts = request.getAttempts() + 1;
+        request.setAttempts(attempts);
+        request.setLastError(truncate(errorMessage));
+        request.setUpdatedAt(clock.instant());
+        if (attempts >= Math.max(maxAttempts, 1)) {
+            request.setStatus(WorkflowStartStatus.FAILED);
+            fail(request.getAgentRunId(), "AgentRun 启动失败: " + errorMessage);
+        } else {
+            request.setStatus(WorkflowStartStatus.PENDING);
+        }
         workflowStartRequestMapper.updateById(request);
     }
 

@@ -15,6 +15,23 @@ visionforge:
     task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
   model:
     config-secret: ${MODEL_CONFIG_SECRET:}
+  worker:
+    max-concurrent-activity-execution-size: ${WORKER_MAX_CONCURRENT_ACTIVITIES:20}
+    max-concurrent-workflow-task-execution-size: ${WORKER_MAX_CONCURRENT_WORKFLOW_TASKS:20}
+    max-concurrent-local-activity-execution-size: ${WORKER_MAX_CONCURRENT_LOCAL_ACTIVITIES:20}
+    max-worker-activities-per-second: ${WORKER_MAX_ACTIVITIES_PER_SECOND:0}
+    max-task-queue-activities-per-second: ${WORKER_MAX_TASK_QUEUE_ACTIVITIES_PER_SECOND:0}
+    max-concurrent-workflow-task-pollers: ${WORKER_WORKFLOW_TASK_POLLERS:5}
+    max-concurrent-activity-task-pollers: ${WORKER_ACTIVITY_TASK_POLLERS:5}
+    workflow-cache-size: ${WORKER_WORKFLOW_CACHE_SIZE:600}
+    max-workflow-thread-count: ${WORKER_MAX_WORKFLOW_THREADS:600}
+    graceful-shutdown-timeout: ${WORKER_GRACEFUL_SHUTDOWN_TIMEOUT:30s}
+    start-compensation:
+      enabled: ${WORKER_START_COMPENSATION_ENABLED:true}
+      interval-ms: ${WORKER_START_COMPENSATION_INTERVAL_MS:5000}
+      initial-delay-ms: ${WORKER_START_COMPENSATION_INITIAL_DELAY_MS:5000}
+      batch-size: ${WORKER_START_COMPENSATION_BATCH_SIZE:20}
+      max-attempts: ${WORKER_START_COMPENSATION_MAX_ATTEMPTS:20}
 
 logging:
   pattern:

@@ -39,6 +39,7 @@ class AgentRunServiceTest {
 
     private AgentRunMapper agentRunMapper;
     private MessageMapper messageMapper;
+    private WorkflowStartRequestMapper workflowStartRequestMapper;
     private ConversationMapper conversationMapper;
     private ModelDefinitionService modelDefinitionService;
     private AgentRunService service;
@@ -47,7 +48,7 @@ class AgentRunServiceTest {
     void setUp() {
         agentRunMapper = mock(AgentRunMapper.class);
         ModelInvocationMapper modelInvocationMapper = mock(ModelInvocationMapper.class);
-        WorkflowStartRequestMapper workflowStartRequestMapper = mock(WorkflowStartRequestMapper.class);
+        workflowStartRequestMapper = mock(WorkflowStartRequestMapper.class);
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
         modelDefinitionService = mock(ModelDefinitionService.class);
@@ -120,6 +121,45 @@ class AgentRunServiceTest {
         assertThat(run.getStatus()).isEqualTo(AgentRunStatus.FAILED);
         assertThat(run.getErrorMessage()).isEqualTo("provider down");
         verify(agentRunMapper).updateById(run);
+    }
+
+    @Test
+    void startFailureStaysPendingBeforeMaxAttempts() {
+        WorkflowStartRequest request = startRequest(0);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run(AgentRunStatus.PENDING));
+
+        service.recordWorkflowStartFailure(request, "temporal down", 3);
+
+        assertThat(request.getStatus()).isEqualTo(WorkflowStartStatus.PENDING);
+        assertThat(request.getAttempts()).isEqualTo(1);
+        assertThat(request.getLastError()).isEqualTo("temporal down");
+        verify(workflowStartRequestMapper).updateById(request);
+    }
+
+    @Test
+    void startFailureFailsRunAtMaxAttempts() {
+        WorkflowStartRequest request = startRequest(2);
+        AgentRun run = run(AgentRunStatus.PENDING);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+
+        service.recordWorkflowStartFailure(request, "temporal down", 3);
+
+        assertThat(request.getStatus()).isEqualTo(WorkflowStartStatus.FAILED);
+        assertThat(run.getStatus()).isEqualTo(AgentRunStatus.FAILED);
+        assertThat(run.getErrorMessage()).contains("temporal down");
+        verify(workflowStartRequestMapper).updateById(request);
+    }
+
+    private WorkflowStartRequest startRequest(int attempts) {
+        WorkflowStartRequest request = new WorkflowStartRequest();
+        request.setId(UUID.randomUUID());
+        request.setAgentRunId(RUN_ID);
+        request.setWorkflowId("agent-run-" + RUN_ID);
+        request.setStatus(WorkflowStartStatus.PENDING);
+        request.setAttempts(attempts);
+        request.setCreatedAt(NOW);
+        request.setUpdatedAt(NOW);
+        return request;
     }
 
     private AgentRun run(AgentRunStatus status) {

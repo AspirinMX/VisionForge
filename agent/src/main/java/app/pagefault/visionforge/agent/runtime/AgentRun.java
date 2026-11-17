@@ -3,7 +3,9 @@ package app.pagefault.visionforge.agent.runtime;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -30,6 +32,7 @@ public class AgentRun {
 
     private AgentRunStatus status;
 
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String errorMessage;
 
     private String workflowId;
