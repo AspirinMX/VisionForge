@@ -767,7 +767,7 @@ billing 独立于 Agent 的自然语言判断。
 
 - common：统一响应、错误码、UUIDv7、自研 `@BizLog`。
 - identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）、工作空间与成员管理（见第 5 节）、登录选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新归档、所有权转让、平台管理员跨空间操作和审计。
-- agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation/agent_run_turn 落库；模型调用通过 OpenAI 官方 Java SDK 的 `responses().createStreaming()` 请求 Responses API，显式构造 `input`，不使用 Chat Completions、同步上游或 `previous_response_id`。`AgentRunWorkflow` 已实现多步工具循环：模型 Activity 返回工具调用，Workflow 逐个调用工具 Activity，再以 `function_call_output` 回填进入下一轮，上限 12 轮；每轮模型输出写入 `agent_run_turn`，重放时不再重复请求模型。Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
+- agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation/agent_run_turn 落库；模型调用通过 OpenAI 官方 Java SDK 的 `responses().createStreaming()` 请求 Responses API，显式构造 `input`，不使用 Chat Completions、同步上游或 `previous_response_id`。`AgentRunWorkflow` 已实现多步工具循环：模型 Activity 返回工具调用，Workflow 逐个调用工具 Activity，再以 `function_call_output` 回填进入下一轮；循环不设轮数上限，唯一的规模约束是当前对话上下文 token 预算；每轮模型输出写入 `agent_run_turn`，重放时不再重复请求模型。Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
 - asset：工作空间存储库已实现文本条目、不可变版本、会话绑定和可见性过滤；提供创建、读取、更新、版本列表和绑定接口，更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB。V5 迁移创建 `workspace_item`、`workspace_item_version`、`conversation_item`。
 - agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_items`、`search_items`、`read_item`、`create_item`、`update_item`、`list_item_versions`、`bind_item`、`unbind_item` 八个工作空间工具。工具参数只包含条目 ID、路径和内容，工作空间/会话/用户来自服务端执行上下文。
 - 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。

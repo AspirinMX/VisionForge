@@ -15,8 +15,6 @@ import io.temporal.workflow.Workflow;
  */
 public class AgentRunWorkflowImpl implements AgentRunWorkflow {
 
-    private static final int MAX_TURNS = 12;
-
     private final AgentActivities modelActivities = Workflow.newActivityStub(
             AgentActivities.class,
             ActivityOptions.newBuilder()
@@ -48,11 +46,6 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
                 ModelTurn turn = modelActivities.invokeModel(runId, turnNo);
                 if (turn.toolCallIds().isEmpty()) {
                     finalizeActivities.completeRun(runId, turnNo);
-                    return;
-                }
-                if (turnNo + 1 >= MAX_TURNS) {
-                    finalizeActivities.failRun(
-                            runId, "工具调用轮次超过上限（" + MAX_TURNS + "）");
                     return;
                 }
                 for (String toolCallId : turn.toolCallIds()) {
