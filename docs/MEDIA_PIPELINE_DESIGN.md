@@ -4,6 +4,8 @@
 
 依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、工作空间存储服务和 V1–V10 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
+> 模型变更说明：`PROPOSAL.md` 第 5 节已改为单用户隔离模型，不再有 workspace 和成员关系，创作文件改为会话级（`conversation_file`）。本文中出现的 `workspace_item`、`conversation_item`、按工作空间隔离等表述，一律按“会话级文件 + 按用户隔离”理解；媒体协议、任务生命周期、归档与计费设计不受此变更影响。
+
 建议沿用八模块、API/Worker 双入口、PostgreSQL、Temporal、Redis 与 S3 兼容对象存储。主对话继续使用官方 OpenAI Java SDK 的 Responses SSE；Seedream、Seedance、GPT Image 和万相统一纳入媒体生成服务，通过协议适配器访问现有第三方网关。媒体类型、执行方式和上游协议分别建模，复用任务、归档、处理、交付与结算流程；媒体永久标识使用资产 ID，文件归属工作空间。
 
 **本方案涉及一个需要明确采纳的提案调整：将“所有模型统一 Responses SSE”收窄为“主对话与 compact 统一 Responses SSE”；媒体工具按网关实际支持的图片/视频协议调用。** 若网关确实把媒体封装在 Responses 内，仍可实现 Responses 媒体适配器，但必须具备下文规定的任务标识、产物、恢复与用量语义。本文不直接改写现有提案中的协议约束。
