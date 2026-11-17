@@ -27,6 +27,7 @@ import app.pagefault.visionforge.agent.conversation.MessageStatus;
 import app.pagefault.visionforge.agent.context.ContextCompactor;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
 import app.pagefault.visionforge.agent.tool.ToolInvocation;
@@ -141,6 +142,46 @@ class AgentRunServiceTest {
     }
 
     @Test
+    void replaysEncryptedReasoningFromTheCurrentEpoch() {
+        AgentModelInput input = buildInputWithReasoning(0, 0);
+
+        assertThat(input.input()).contains(new ModelInputItem.Reasoning(
+                "gAAA", null, List.of("plan")));
+    }
+
+    @Test
+    void skipsReasoningProducedBeforeCompaction() {
+        AgentModelInput input = buildInputWithReasoning(1, 2);
+
+        assertThat(input.input())
+                .noneMatch(item -> item instanceof ModelInputItem.Reasoning);
+    }
+
+    private AgentModelInput buildInputWithReasoning(int turnEpoch, int currentEpoch) {
+        AgentRun run = run(AgentRunStatus.RUNNING);
+        run.setModelDefinitionId(MODEL_ID);
+        Message user = message(MessageRole.USER, "Hello", 1);
+        user.setId(USER_MESSAGE_ID);
+        run.setUserMessageId(USER_MESSAGE_ID);
+
+        AgentRunTurn turn = new AgentRunTurn();
+        turn.setAgentRunId(RUN_ID);
+        turn.setTurnNo(0);
+        turn.setAssistantText("checking");
+        turn.setReasoning(
+                "[{\"encryptedContent\":\"gAAA\",\"text\":null,\"summary\":[\"plan\"]}]");
+        turn.setContextEpoch(turnEpoch);
+
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(modelDefinitionService.get(MODEL_ID)).thenReturn(model());
+        when(messageMapper.selectById(USER_MESSAGE_ID)).thenReturn(user);
+        when(agentRunTurnMapper.selectList(any())).thenReturn(List.of(turn));
+        when(messageMapper.selectList(any())).thenReturn(List.of(user));
+        when(contextCompactor.currentEpoch(CONVERSATION_ID)).thenReturn(currentEpoch);
+        return service.buildInput(RUN_ID);
+    }
+
+    @Test
     void completePersistsAssistantMessageFromFinalTurn() {
         AgentRun run = run(AgentRunStatus.RUNNING);
         Conversation conversation = conversation();
@@ -246,6 +287,7 @@ class AgentRunServiceTest {
         model.setDisplayName("Mock");
         model.setBaseUrl("https://api.example.com/v1");
         model.setModelId("mock-model");
+        model.setReasoningReplay(ReasoningReplayPolicy.ENCRYPTED);
         model.setMaxInputTokens(1_000);
         model.setMaxOutputTokens(100);
         model.setEnabled(true);

@@ -21,6 +21,7 @@ import app.pagefault.visionforge.agent.model.ReasoningEffort;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
 import app.pagefault.visionforge.agent.provider.ModelRequest;
 import app.pagefault.visionforge.agent.provider.ModelResponse;
+import app.pagefault.visionforge.agent.provider.ModelStreamListener;
 import app.pagefault.visionforge.agent.provider.ResponsesModelClient;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationPurpose;
@@ -129,6 +130,16 @@ public class ContextCompactor {
         return SUMMARY_HEADER + summary.getContent();
     }
 
+    /** Current compaction epoch of a conversation; {@code 0} when nothing was compacted yet. */
+    public int currentEpoch(UUID conversationId) {
+        ContextSummary latest = summaryMapper.selectOne(
+                Wrappers.<ContextSummary>lambdaQuery()
+                        .eq(ContextSummary::getConversationId, conversationId)
+                        .orderByDesc(ContextSummary::getEpoch)
+                        .last("LIMIT 1"));
+        return latest == null ? 0 : latest.getEpoch();
+    }
+
     private ContextSummary latestValid(UUID conversationId, List<Message> history) {
         ContextSummary latest = summaryMapper.selectOne(
                 Wrappers.<ContextSummary>lambdaQuery()
@@ -167,8 +178,7 @@ public class ContextCompactor {
                             SUMMARY_PROMPT,
                             List.of(new ModelInputItem.Message("user", transcript(range))),
                             List.of()),
-                    delta -> {
-                    });
+                    ModelStreamListener.NOOP);
             invocationRecorder.record(
                     run.getId(),
                     model.getId(),

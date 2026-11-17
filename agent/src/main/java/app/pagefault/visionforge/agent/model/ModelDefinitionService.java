@@ -77,6 +77,9 @@ public class ModelDefinitionService {
         model.setApiKeyCiphertext(apiKeyCipher.encrypt(input.apiKey().trim()));
         model.setModelId(modelId);
         model.setReasoningEffort(input.reasoningEffort());
+        model.setReasoningReplay(input.reasoningReplay() == null
+                ? ReasoningReplayPolicy.ENCRYPTED
+                : input.reasoningReplay());
         model.setMaxInputTokens(maxInputTokens);
         model.setMaxOutputTokens(maxOutputTokens);
         model.setEnabled(enabled);
@@ -120,6 +123,9 @@ public class ModelDefinitionService {
         }
         if (input.reasoningEffort() != null) {
             model.setReasoningEffort(input.reasoningEffort());
+        }
+        if (input.reasoningReplay() != null) {
+            model.setReasoningReplay(input.reasoningReplay());
         }
         if (input.maxInputTokens() != null) {
             model.setMaxInputTokens(

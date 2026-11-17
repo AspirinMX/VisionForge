@@ -8,6 +8,7 @@ import java.util.List;
 public record ModelResponse(
         String responseId,
         String text,
+        List<ModelReasoning> reasoning,
         List<ModelToolCall> toolCalls,
         Integer inputTokens,
         Integer outputTokens,
@@ -15,6 +16,7 @@ public record ModelResponse(
         long latencyMs) {
 
     public ModelResponse {
+        reasoning = reasoning == null ? List.of() : List.copyOf(reasoning);
         toolCalls = List.copyOf(toolCalls);
     }
 }

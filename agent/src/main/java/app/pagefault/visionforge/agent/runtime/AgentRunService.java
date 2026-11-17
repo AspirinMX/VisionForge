@@ -23,7 +23,9 @@ import app.pagefault.visionforge.agent.context.ContextSummary;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
+import app.pagefault.visionforge.agent.provider.ModelReasoning;
 import app.pagefault.visionforge.agent.provider.ModelResponse;
 import app.pagefault.visionforge.agent.provider.ModelToolCall;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
@@ -119,7 +121,8 @@ public class AgentRunService {
                 : messageMapper.selectById(run.getUserMessageId());
         final long limit = userMessage == null ? Long.MAX_VALUE : userMessage.getSequenceNo();
 
-        List<ModelInputItem> runItems = runItems(runId);
+        int currentEpoch = contextCompactor.currentEpoch(run.getConversationId());
+        List<ModelInputItem> runItems = runItems(runId, model, currentEpoch);
         int used = SYSTEM_PROMPT.length();
         for (ModelInputItem item : runItems) {
             used += itemCost(item);
@@ -177,9 +180,19 @@ public class AgentRunService {
         return new AgentModelInput(SYSTEM_PROMPT, input);
     }
 
-    private List<ModelInputItem> runItems(UUID runId) {
+    private List<ModelInputItem> runItems(UUID runId, ModelDefinition model, int currentEpoch) {
         List<ModelInputItem> items = new ArrayList<>();
         for (AgentRunTurn turn : listTurns(runId)) {
+            if (turn.getContextEpoch() == currentEpoch) {
+                for (ModelReasoning reasoning : parseReasoning(turn.getReasoning())) {
+                    if (shouldReplay(model.getReasoningReplay(), reasoning)) {
+                        items.add(new ModelInputItem.Reasoning(
+                                reasoning.encryptedContent(),
+                                reasoning.text(),
+                                reasoning.summary()));
+                    }
+                }
+            }
             if (turn.getAssistantText() != null && !turn.getAssistantText().isBlank()) {
                 items.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
             }
@@ -201,7 +214,24 @@ public class AgentRunService {
             case ModelInputItem.Message message -> length(message.content());
             case ModelInputItem.FunctionCall call -> length(call.arguments());
             case ModelInputItem.FunctionCallOutput output -> length(output.output());
+            case ModelInputItem.Reasoning reasoning -> length(reasoning.encryptedContent())
+                    + length(reasoning.text())
+                    + reasoning.summary().stream().mapToInt(this::length).sum();
         };
+    }
+
+    private boolean shouldReplay(ReasoningReplayPolicy policy, ModelReasoning reasoning) {
+        if (policy == null || policy == ReasoningReplayPolicy.NONE) {
+            return false;
+        }
+        boolean encrypted = reasoning.encryptedContent() != null
+                && !reasoning.encryptedContent().isBlank();
+        if (policy == ReasoningReplayPolicy.ENCRYPTED) {
+            return encrypted;
+        }
+        return encrypted
+                || (reasoning.text() != null && !reasoning.text().isBlank())
+                || !reasoning.summary().isEmpty();
     }
 
     public AgentRunTurn findTurn(UUID runId, int turnNo) {
@@ -224,6 +254,9 @@ public class AgentRunService {
         turn.setTurnNo(turnNo);
         turn.setAssistantText(response.text());
         turn.setFunctionCalls(writeCalls(response.toolCalls()));
+        turn.setReasoning(writeReasoning(response.reasoning()));
+        turn.setContextEpoch(
+                contextCompactor.currentEpoch(get(runId).getConversationId()));
         turn.setResponseId(response.responseId());
         turn.setStatus("incomplete".equalsIgnoreCase(response.finishReason())
                 ? AgentTurnStatus.INCOMPLETE
@@ -397,6 +430,31 @@ public class AgentRunService {
         } catch (RuntimeException exception) {
             throw new BusinessException(
                     AgentErrorCode.AGENT_RUN_INVALID_STATE, "持久化的工具调用记录无法解析");
+        }
+    }
+
+    private List<ModelReasoning> parseReasoning(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            ModelReasoning[] reasoning = objectMapper.readValue(json, ModelReasoning[].class);
+            return List.of(reasoning);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.AGENT_RUN_INVALID_STATE, "持久化的推理项无法解析");
+        }
+    }
+
+    private String writeReasoning(List<ModelReasoning> reasoning) {
+        if (reasoning == null || reasoning.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(reasoning);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.AGENT_RUN_INVALID_STATE, "推理项无法序列化");
         }
     }
 

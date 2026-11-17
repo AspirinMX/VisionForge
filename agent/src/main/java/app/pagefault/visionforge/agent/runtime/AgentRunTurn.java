@@ -31,6 +31,15 @@ public class AgentRunTurn {
     /** JSON array of {@code {"callId","name","arguments"}}. */
     private String functionCalls;
 
+    /** JSON array of {@code {"encryptedContent","text","summary"}}. */
+    private String reasoning;
+
+    /**
+     * Compaction epoch this turn was produced under. Reasoning items are only valid against the
+     * prefix that produced them, so turns from an older epoch are never replayed.
+     */
+    private int contextEpoch;
+
     private String responseId;
 
     private AgentTurnStatus status;

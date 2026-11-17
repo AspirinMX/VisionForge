@@ -129,7 +129,7 @@ class ContextCompactorTest {
     }
 
     private ModelResponse response(String text) {
-        return new ModelResponse("resp_1", text, List.of(), 10, 5, "completed", 20);
+        return new ModelResponse("resp_1", text, List.of(), List.of(), 10, 5, "completed", 20);
     }
 
     private AgentRun run() {

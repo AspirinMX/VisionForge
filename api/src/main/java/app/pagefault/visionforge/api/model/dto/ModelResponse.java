@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
+import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 public record ModelResponse(
         UUID id,
@@ -12,6 +13,7 @@ public record ModelResponse(
         String baseUrl,
         String modelId,
         ReasoningEffort reasoningEffort,
+        ReasoningReplayPolicy reasoningReplay,
         int maxInputTokens,
         int maxOutputTokens,
         boolean enabled,
@@ -27,6 +29,7 @@ public record ModelResponse(
                 model.getBaseUrl(),
                 model.getModelId(),
                 model.getReasoningEffort(),
+                model.getReasoningReplay(),
                 model.getMaxInputTokens(),
                 model.getMaxOutputTokens(),
                 model.isEnabled(),

@@ -1,6 +1,7 @@
 package app.pagefault.visionforge.api.model.dto;
 
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
+import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -24,6 +25,7 @@ public record CreateModelRequest(
         @Size(max = 200, message = "模型 ID 不能超过 200 个字符")
         String modelId,
         ReasoningEffort reasoningEffort,
+        ReasoningReplayPolicy reasoningReplay,
         @NotNull(message = "最大输入 Token 不能为空")
         @Min(value = 1, message = "最大输入 Token 必须大于 0")
         @Max(value = 2_000_000, message = "最大输入 Token 不能超过 2000000")

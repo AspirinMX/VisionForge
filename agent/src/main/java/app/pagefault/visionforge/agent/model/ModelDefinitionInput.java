@@ -10,6 +10,7 @@ public record ModelDefinitionInput(
         String apiKey,
         String modelId,
         ReasoningEffort reasoningEffort,
+        ReasoningReplayPolicy reasoningReplay,
         Integer maxInputTokens,
         Integer maxOutputTokens,
         Boolean enabled,

@@ -9,6 +9,7 @@ import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.model.ModelProviderSettings;
 import app.pagefault.visionforge.agent.provider.ModelRequest;
 import app.pagefault.visionforge.agent.provider.ModelResponse;
+import app.pagefault.visionforge.agent.provider.ModelStreamListener;
 import app.pagefault.visionforge.agent.provider.ModelToolCall;
 import app.pagefault.visionforge.agent.provider.ModelToolSpec;
 import app.pagefault.visionforge.agent.provider.ResponsesModelClient;
@@ -73,7 +74,22 @@ public class AgentActivitiesImpl implements AgentActivities {
                             input.instructions(),
                             input.input(),
                             toolSpecs()),
-                    delta -> streamPublisher.publishDelta(runId, delta));
+                    new ModelStreamListener() {
+                        @Override
+                        public void onTextDelta(String delta) {
+                            streamPublisher.publishDelta(runId, delta);
+                        }
+
+                        @Override
+                        public void onReasoningDelta(String delta) {
+                            streamPublisher.publishReasoning(runId, delta);
+                        }
+
+                        @Override
+                        public void onReasoningSummaryDelta(String delta) {
+                            streamPublisher.publishReasoningSummary(runId, delta);
+                        }
+                    });
 
             agentRunService.recordTurn(runId, turnNo, response);
             agentRunService.recordInvocation(

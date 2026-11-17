@@ -29,6 +29,14 @@ public class AgentRunStreamPublisher {
         publish(runId, AgentRunStreamEvent.delta(content));
     }
 
+    public void publishReasoning(UUID runId, String content) {
+        publish(runId, AgentRunStreamEvent.reasoning(content));
+    }
+
+    public void publishReasoningSummary(UUID runId, String content) {
+        publish(runId, AgentRunStreamEvent.reasoningSummary(content));
+    }
+
     public void publishDone(UUID runId, UUID assistantMessageId) {
         publish(runId, AgentRunStreamEvent.done(assistantMessageId));
     }

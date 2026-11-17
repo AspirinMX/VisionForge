@@ -56,13 +56,14 @@ class OpenAiResponsesModelClientTest {
                     "system instructions",
                     List.of(
                             new ModelInputItem.Message("user", "hello"),
+                            new ModelInputItem.Reasoning("gAAAA-encrypted", null, List.of("plan")),
                             new ModelInputItem.FunctionCall("call_1", "read_item", "{\"a\":1}"),
                             new ModelInputItem.FunctionCallOutput("call_1", "{\"ok\":true}")),
                     List.of(new ModelToolSpec(
                             "read_item", "read an item", toolSchema())));
 
-            assertThatThrownBy(() -> client.stream(request, delta -> {
-            })).isInstanceOf(ModelProviderException.class);
+            assertThatThrownBy(() -> client.stream(request, ModelStreamListener.NOOP))
+                    .isInstanceOf(ModelProviderException.class);
 
             assertThat(capturedPath.get()).isEqualTo("/v1/responses");
             JsonNode body = objectMapper.readTree(capturedBody.get());
@@ -73,17 +74,29 @@ class OpenAiResponsesModelClientTest {
             assertThat(body.path("instructions").asText()).isEqualTo("system instructions");
             assertThat(body.path("reasoning").path("effort").asText()).isEqualTo("low");
 
+            assertThat(body.path("include").get(0).asText())
+                    .isEqualTo("reasoning.encrypted_content");
+
             JsonNode input = body.path("input");
-            assertThat(input).hasSize(3);
+            assertThat(input).hasSize(4);
             assertThat(input.get(0).path("role").asText()).isEqualTo("user");
             assertThat(input.get(0).path("content").asText()).isEqualTo("hello");
-            assertThat(input.get(1).path("type").asText()).isEqualTo("function_call");
-            assertThat(input.get(1).path("call_id").asText()).isEqualTo("call_1");
-            assertThat(input.get(1).path("name").asText()).isEqualTo("read_item");
-            assertThat(input.get(1).path("arguments").asText()).isEqualTo("{\"a\":1}");
-            assertThat(input.get(2).path("type").asText()).isEqualTo("function_call_output");
+
+            JsonNode reasoning = input.get(1);
+            assertThat(reasoning.path("type").asText()).isEqualTo("reasoning");
+            assertThat(reasoning.path("encrypted_content").asText())
+                    .isEqualTo("gAAAA-encrypted");
+            assertThat(reasoning.path("summary").get(0).path("text").asText())
+                    .isEqualTo("plan");
+            assertThat(reasoning.has("id")).isFalse();
+
+            assertThat(input.get(2).path("type").asText()).isEqualTo("function_call");
             assertThat(input.get(2).path("call_id").asText()).isEqualTo("call_1");
-            assertThat(input.get(2).path("output").asText()).isEqualTo("{\"ok\":true}");
+            assertThat(input.get(2).path("name").asText()).isEqualTo("read_item");
+            assertThat(input.get(2).path("arguments").asText()).isEqualTo("{\"a\":1}");
+            assertThat(input.get(3).path("type").asText()).isEqualTo("function_call_output");
+            assertThat(input.get(3).path("call_id").asText()).isEqualTo("call_1");
+            assertThat(input.get(3).path("output").asText()).isEqualTo("{\"ok\":true}");
 
             JsonNode tool = body.path("tools").get(0);
             assertThat(tool.path("type").asText()).isEqualTo("function");

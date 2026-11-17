@@ -75,7 +75,7 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existing);
 
         ModelDefinition updated = service.update(MODEL_ID, new ModelDefinitionInput(
-                "Renamed", null, null, null, null, null, null, null, null));
+                "Renamed", null, null, null, null, null, null, null, null, null));
 
         assertThat(updated.getDisplayName()).isEqualTo("Renamed");
         assertThat(updated.getApiKeyCiphertext()).isEqualTo(ciphertext);
@@ -87,7 +87,7 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existingModel());
 
         assertThatThrownBy(() -> service.update(MODEL_ID, new ModelDefinitionInput(
-                null, null, " ", null, null, null, null, null, null)))
+                null, null, " ", null, null, null, null, null, null, null)))
                 .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_API_KEY_REQUIRED));
     }
 
@@ -116,6 +116,7 @@ class ModelDefinitionServiceTest {
                 apiKey,
                 "mock-model",
                 ReasoningEffort.MEDIUM,
+                ReasoningReplayPolicy.ENCRYPTED,
                 8_000,
                 1_000,
                 true,

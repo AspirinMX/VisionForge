@@ -28,6 +28,8 @@ public class ModelDefinition {
 
     private ReasoningEffort reasoningEffort;
 
+    private ReasoningReplayPolicy reasoningReplay;
+
     private int maxInputTokens;
 
     private int maxOutputTokens;

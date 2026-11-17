@@ -841,12 +841,12 @@ billing 独立于 Agent 的自然语言判断。
 - 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
 - 会话串行：同一会话在任意时刻只允许一个 PENDING/RUNNING 的 AgentRun；消息序号分配在会话行锁内完成，存储层用部分唯一索引兜底，活跃期间再次发送返回 409。
 - 本地 compact：接近输入预算时，用一次普通的 Responses 调用把最早的消息区间压成结构化摘要，写入 `context_summary` 并递增 epoch；摘要按覆盖区间校验 `source_digest` 判定是否过期，摘要调用以 `purpose=COMPACT` 记录。失败或摘要为空时回退到裁剪历史，不失败 AgentRun。
+- 推理项：请求统一携带 `include: ["reasoning.encrypted_content"]`；每轮把推理项原文写入 `agent_run_turn.reasoning`，并记录 `context_epoch`。下一轮按 `model_definition.reasoning_replay` 回放：默认只回放带 `encrypted_content` 的推理项，且省略服务端 `id`、始终提交 `summary`；明文推理只留档不回放。`context_epoch` 与当前 epoch 不一致的推理项不再回放。明文推理增量和加密推理的摘要增量分别以 `reasoning`、`reasoning_summary` 事件实时推送给客户端。
 
 尚未实现：
 
 - 会话创建者/可见性过滤。当前对话列表按 workspace 查询，空间成员可以读取同空间会话；这与第 5 节、第 11 节的边界尚未对齐。
-- 推理项（reasoning items）的持久化与回放。`store: false` 下推理模型返回的 encrypted reasoning 尚未写回下一轮 `input`。
-- 工具调用的 SSE 进度事件；当前流式通道只推送模型文本增量。
+- 工具调用的 SSE 进度事件。
 - run 内 turn 级压缩（第一阶段只压缩已持久化的对话历史）、真实媒体生成、审核和多人分工。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
 

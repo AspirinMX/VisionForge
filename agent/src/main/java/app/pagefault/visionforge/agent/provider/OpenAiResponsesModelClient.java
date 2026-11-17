@@ -6,11 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.JsonMissing;
 import com.openai.core.JsonValue;
 import com.openai.core.http.StreamResponse;
 import com.openai.helpers.ResponseAccumulator;
@@ -21,9 +21,11 @@ import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFunctionToolCall;
+import com.openai.models.responses.ResponseIncludable;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputText;
+import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.ResponseStreamEvent;
 import com.openai.models.responses.ResponseUsage;
@@ -45,7 +47,7 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
     private final Map<String, OpenAIClient> clients = new ConcurrentHashMap<>();
 
     @Override
-    public ModelResponse stream(ModelRequest request, Consumer<String> onTextDelta) {
+    public ModelResponse stream(ModelRequest request, ModelStreamListener listener) {
         long startedAt = System.nanoTime();
         try {
             ResponseCreateParams params = requestParams(request);
@@ -54,7 +56,12 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                          client(request).responses().createStreaming(params)) {
                 stream.stream().forEach(event -> {
                     accumulator.accumulate(event);
-                    event.outputTextDelta().ifPresent(delta -> onTextDelta.accept(delta.delta()));
+                    event.outputTextDelta().ifPresent(
+                            delta -> listener.onTextDelta(delta.delta()));
+                    event.reasoningTextDelta().ifPresent(
+                            delta -> listener.onReasoningDelta(delta.delta()));
+                    event.reasoningSummaryTextDelta().ifPresent(
+                            delta -> listener.onReasoningSummaryDelta(delta.delta()));
                 });
             }
             return toModelResponse(accumulator.response(), startedAt);
@@ -91,7 +98,9 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                 .model(request.modelId())
                 .store(false)
                 .maxOutputTokens((long) request.maxOutputTokens())
-                .inputOfResponse(inputItems(request.input()));
+                .inputOfResponse(inputItems(request.input()))
+                // Stateless replay needs the encrypted reasoning carrier back from the server.
+                .include(List.of(ResponseIncludable.REASONING_ENCRYPTED_CONTENT));
 
         if (request.instructions() != null && !request.instructions().isBlank()) {
             builder.instructions(request.instructions());
@@ -132,9 +141,28 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                                         .callId(output.callId())
                                         .output(output.output())
                                         .build()));
+                case ModelInputItem.Reasoning reasoning -> result.add(
+                        ResponseInputItem.ofReasoning(reasoningItem(reasoning)));
             }
         }
         return result;
+    }
+
+    /**
+     * Rebuilds a reasoning input item. The server-side {@code id} is omitted on purpose: the
+     * response was created with {@code store: false}, so an {@code rs_...} id would refer to
+     * nothing and some gateways reject it.
+     */
+    private ResponseReasoningItem reasoningItem(ModelInputItem.Reasoning reasoning) {
+        List<ResponseReasoningItem.Summary> summaries = reasoning.summary().stream()
+                .filter(text -> text != null && !text.isBlank())
+                .map(text -> ResponseReasoningItem.Summary.builder().text(text).build())
+                .toList();
+        return ResponseReasoningItem.builder()
+                .id(JsonMissing.of())
+                .summary(summaries)
+                .encryptedContent(reasoning.encryptedContent())
+                .build();
     }
 
     private EasyInputMessage.Role messageRole(String role) {
@@ -211,6 +239,21 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                 .map(ResponseOutputText::text)
                 .collect(Collectors.joining());
 
+        List<ModelReasoning> reasoning = response.output().stream()
+                .filter(ResponseOutputItem::isReasoning)
+                .map(ResponseOutputItem::asReasoning)
+                .map(item -> new ModelReasoning(
+                        item.encryptedContent().orElse(null),
+                        item.content()
+                                .map(parts -> parts.stream()
+                                        .map(ResponseReasoningItem.Content::text)
+                                        .collect(Collectors.joining("\n")))
+                                .orElse(""),
+                        item.summary().stream()
+                                .map(ResponseReasoningItem.Summary::text)
+                                .toList()))
+                .toList();
+
         List<ModelToolCall> toolCalls = response.output().stream()
                 .filter(ResponseOutputItem::isFunctionCall)
                 .map(ResponseOutputItem::asFunctionCall)
@@ -229,6 +272,7 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         return new ModelResponse(
                 response.id(),
                 text,
+                reasoning,
                 toolCalls,
                 usage == null ? null : (int) usage.inputTokens(),
                 usage == null ? null : (int) usage.outputTokens(),
