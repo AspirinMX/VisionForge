@@ -31,7 +31,7 @@
 | 模块 | 职责 |
 | --- | --- |
 | common | 跨模块基础类型、错误定义、统一响应、审计日志基础设施 |
-| identity | 用户、工作空间、成员、权限、认证与令牌 |
+| identity | 用户、角色、认证与令牌 |
 | asset | 上传、下载、对象存储、媒体元数据、资产生命周期 |
 | billing | 模型用量、费用、额度预占、结算和流水 |
 | agent | 会话、上下文、动态工具调用、创作对象与生成任务 |
@@ -97,7 +97,7 @@
 - 500：未预期的系统错误。
 - 503：依赖不可用或维护中。
 
-**不允许**用 200 包裹业务失败；**不使用** 422，校验失败统一用 400。**不使用** 204（会丢失统一包络）；删除成功返回 200 + 包络。跨工作空间访问不得用 403 暴露资源存在性，统一返回 404。
+**不允许**用 200 包裹业务失败；**不使用** 422，校验失败统一用 400。**不使用** 204（会丢失统一包络）；删除成功返回 200 + 包络。跨用户或跨会话访问不得用 403 暴露资源存在性，统一返回 404。
 
 ### 3.3 动作端点
 
@@ -119,7 +119,7 @@
 ### 3.5 幂等
 
 - 所有创建付费或长任务的 POST **应该**支持 `Idempotency-Key` 请求头。
-- 幂等键按 `用户 + 工作空间 + 接口` 作用域存储，保存请求指纹与首次响应；重复请求返回首次结果，不重复执行副作用。
+- 幂等键按 `用户 + 接口` 作用域存储，保存请求指纹与首次响应；重复请求返回首次结果，不重复执行副作用。
 - 客户端重复提交与用户明确要求"再生成一次"必须区分：后者创建新任务。
 
 ### 3.6 分页
@@ -266,7 +266,7 @@ public interface ErrorCode {
 - **禁止**新表使用 UUIDv4 或 `gen_random_uuid()` 作为主键；随机主键会造成索引页分裂。
 - Java 类型使用 `java.util.UUID`；对外 JSON 使用标准 UUID 字符串。
 - 外键、索引、唯一约束使用 UUID 类型。
-- UUID **不是**安全凭证；资源授权必须基于服务端身份与工作空间归属校验，不能依赖 ID 不可猜测。
+- UUID **不是**安全凭证；资源授权必须基于服务端身份与用户/会话归属校验，不能依赖 ID 不可猜测。
 - 对外不暴露自增 ID；如需可读的业务编号，单独设计业务编号字段，不复用主键。
 
 ### 6.2 时间
@@ -379,7 +379,7 @@ public interface ErrorCode {
 | `BizLogAspect` | AOP 环绕通知，解析模板与 SpEL | common.audit |
 | `BizLogRecord` | 不可变审计记录模型 | common.audit |
 | `OperatorProvider` | 获取当前操作人（id、名称） | 接口在 common，实现在 api/worker |
-| `TenantContext` | 获取当前工作空间/租户 | 接口在 common，实现在 api/worker |
+| `TenantContext` | 获取当前用户/会话上下文（无空间维度） | 接口在 common，实现在 api/worker |
 | `BizLogStore` | 审计记录持久化 | 接口在 common，实现在 api |
 | `audit_log` | 审计记录表 | database 迁移 |
 
@@ -419,7 +419,7 @@ public UserAccount register(RegisterCommand command) { ... }
 - 审计写入使用独立事务/连接，不参与业务事务；业务回滚不影响失败审计记录。
 - 审计写入失败只记录技术 ERROR 日志（带 traceId），不影响业务返回。
 - 操作人来源：api 从 Spring Security 的 JWT 主体获取；worker/system 任务使用 `system` 操作人。
-- 工作空间 ID 来自认证上下文；系统任务可为空，但必须显式。
+- 会话 ID 来自认证上下文或服务端执行上下文；系统任务可为空，但必须显式。
 
 #### 审计表 `audit_log`
 
@@ -431,7 +431,6 @@ public UserAccount register(RegisterCommand command) { ... }
 | biz_no | TEXT | 业务对象 ID |
 | operator_id | UUID | 操作人 ID，系统任务为空 |
 | operator_name | TEXT | 操作人显示名 |
-| workspace_id | UUID | 工作空间 ID，可空 |
 | success | BOOLEAN | 成功/失败 |
 | detail | TEXT | 模板渲染后的可读描述 |
 | extra | JSONB | 脱敏后的附加快照，可空 |
@@ -439,7 +438,7 @@ public UserAccount register(RegisterCommand command) { ... }
 | error_message | TEXT | 失败原因，可空 |
 | created_at | TIMESTAMPTZ | 记录时间，默认 now() |
 
-索引：`biz_no`、`operator_id`、`workspace_id`、`created_at`、`trace_id`。
+索引：`biz_no`、`operator_id`、`created_at`、`trace_id`。
 
 - 审计表只追加，不提供修改/删除 API。
 - `extra` 必须脱敏；禁止存储令牌、密码、完整请求体。
@@ -448,7 +447,7 @@ public UserAccount register(RegisterCommand command) { ... }
 
 #### 必须记录的操作
 
-登录成功/失败、登出、密码修改、角色变更、工作空间创建/成员变更、资产删除、生成任务提交/取消、额度预占/结算、管理员操作。普通读取不写审计日志。
+登录成功/失败、登出、密码修改、角色变更、会话删除、资产删除、生成任务提交/取消、额度预占/结算、管理员操作。普通读取不写审计日志。
 
 ## 9. 安全与认证（原则）
 
@@ -471,9 +470,9 @@ public UserAccount register(RegisterCommand command) { ... }
 
 - 系统角色只有两类：`ADMIN`（管理员）、`USER`（普通用户）。
 - Spring Security authorities 使用 `ROLE_ADMIN`、`ROLE_USER`；接口使用 `hasRole`/`@PreAuthorize`。
-- 工作空间成员角色（`OWNER`/`ADMIN`/`MEMBER`）独立于系统角色，用于工作空间内授权。
+- 业务数据按用户和会话隔离，不存在工作空间成员角色。
 - 授权必须在服务端执行；模型输出、客户端参数和 URL 中的 ID 都不能作为授权依据。
-- 跨工作空间访问返回 404，不返回 403。
+- 跨用户或跨会话访问返回 404，不返回 403。
 
 ### 9.4 其他
 
@@ -684,7 +683,6 @@ CREATE TABLE audit_log (
     biz_no        TEXT,
     operator_id   UUID,
     operator_name TEXT,
-    workspace_id  UUID,
     success       BOOLEAN     NOT NULL,
     detail        TEXT,
     extra         JSONB,
@@ -696,7 +694,6 @@ CREATE TABLE audit_log (
 
 CREATE INDEX idx_audit_log_biz_no ON audit_log (biz_no);
 CREATE INDEX idx_audit_log_operator ON audit_log (operator_id);
-CREATE INDEX idx_audit_log_workspace ON audit_log (workspace_id);
 CREATE INDEX idx_audit_log_created_at ON audit_log (created_at);
 CREATE INDEX idx_audit_log_trace ON audit_log (trace_id);
 ```

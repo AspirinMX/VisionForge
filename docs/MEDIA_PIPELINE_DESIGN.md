@@ -16,7 +16,7 @@
 | --- | --- |
 | `agent/provider/OpenAiResponsesModelClient` 仅映射文本、推理、function call；SDK 已设置 `maxRetries(0)` | 保留文本链路；新增媒体适配器，不把生成文件放进 `ModelResponse.text` |
 | `ModelDefinition` 是文本模型配置；默认模型唯一索引是全局的，token 上限为必填 | 扩展能力类型和模型路由；默认模型按用途区分，防止图片模型成为会话默认模型 |
-| `ModelInputItem.Message` 只有字符串 content | 增加受控的多模态内容块，才能把参考图真正交给视觉模型；仅传 `assetId` 不代表模型看到了图 |
+| `ModelInputItem.Message` 只有字符串 content | 已确认主模型支持图片输入；增加受控的 `input_text` / `input_image` 内容块，本轮消息附带的图片由 provider 解析为短时 URL，仅传 `assetId` 不代表模型看到了图 |
 | `AgentRunWorkflowImpl` 的工具 Activity 超时 2 分钟 | 生成工具只创建任务并返回 `taskId`；不在该 Activity 中等待视频或长时间图片请求 |
 | `AgentToolExecutor` 先写 RUNNING，再执行副作用，最后写结果；RUNNING 重放直接报冲突 | 为生成工具建立可恢复的提交事务；不能仅依赖现有工具记录实现付费幂等 |
 | `workflow_start_request.agent_run_id` 非空，补偿器只启动 `AgentRunWorkflow` | 扩展启动记录类型与分发；媒体任务拥有独立 Workflow |
@@ -338,6 +338,7 @@ SDK 选型与坐标见 §2.7：GPT Image 复用现有 `openai-java`；Seedream�
 
 ```text
 capability_type: CHAT | IMAGE | VIDEO
+input_modalities: TEXT | TEXT_IMAGE        # CHAT 默认 TEXT_IMAGE
 protocol: OPENAI_RESPONSES | OPENAI_IMAGES | ARK_IMAGES | ARK_VIDEO_TASKS
           | DASHSCOPE_IMAGE_MESSAGES | DASHSCOPE_T2I | DASHSCOPE_VIDEO | GATEWAY_CUSTOM
 execution_mode: INLINE_RESULT | REMOTE_TASK
@@ -348,7 +349,7 @@ capabilities: 输入角色/张数/字节数/尺寸/时长/格式/流式/查询/�
 default_parameters, allowed_parameters, price_rule_id, deprecation_at, retirement_at
 ```
 
-默认模型索引按 capability_type 唯一；已有行回填 CHAT，文本 token 字段只对 CHAT 必填。对话选模显式过滤 CHAT；生成任务冻结模型配置版本和价格版本，密钥只保存引用。扩展参数经过白名单和组合校验，模型不能指定 baseUrl、callbackUrl、供应商凭证或对象键。模型升级是配置变更与回归测试，不能静默把历史任务指向新版本。
+默认模型索引按 capability_type 唯一；已有行回填 CHAT，文本 token 字段只对 CHAT 必填。对话选模显式过滤 CHAT 且要求图片输入能力；生成任务冻结模型配置版本和价格版本，密钥只保存引用。扩展参数经过白名单和组合校验，模型不能指定 baseUrl、callbackUrl、供应商凭证或对象键。模型升级是配置变更与回归测试，不能静默把历史任务指向新版本。
 
 ## 4. 生成任务与可靠执行
 
@@ -620,7 +621,7 @@ workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载
 
 不接受 body 中的 workspaceId、任意来源 URL、供应商 task ID 或 callbackUrl。API/工具显式引用素材；外部 URL 导入若未来开放，应作为独立受控导入任务。
 
-工具新增 `generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset`，依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL 等明确状态及 task/item/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
+工具新增 `generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset`，依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL 等明确状态及 task/item/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。用户本轮消息附带的图片通过消息附件参与输入，历史消息默认只回放文本。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
 
 任务通知先落库再经 Redis 推送小型状态事件，使用 stateVersion 去重。断线后 GET 恢复状态；首版不承诺事件重放。新增 SSE 按 `STANDARDS.md` 包含 type/code/message/data/traceId/timestamp，终态明确；现有聊天 SSE 的旧简化格式需要兼容迁移，不借本次媒体功能直接破坏旧客户端。
 

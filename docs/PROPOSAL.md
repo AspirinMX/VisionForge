@@ -15,6 +15,7 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 核心目标：
 
 - 主模型动态决定是否调用工具、调用顺序以及如何使用结果。
+- 主模型支持图片与文本输入、文本输出；图片作为受控的多模态输入参与创意讨论、素材核对和提示词完善。
 - 模型调用、工具执行和长时间生成任务能够追踪、恢复和核对费用。
 - 保存完整用户消息，同时独立管理模型上下文和摘要。
 - 将生成图片、视频及其来源关系长期保存为可复用资产。
@@ -421,6 +422,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 - 请求：通过官方 SDK 的 `responses().createStreaming()` 发起，底层为 `POST {baseUrl}/responses`、`stream: true`、`Accept: text/event-stream`。业务代码不直接拼装该 HTTP 请求，也不直接解析 SSE 文本。
 - 请求体包含 `model`、显式 `input`、`max_output_tokens`、可选的 `tools`、`tool_choice`、`reasoning.effort` 和 `include: ["reasoning.encrypted_content"]`。
 - `input` 是输出项数组：普通消息使用 `{role, content}`；历史工具调用使用 `{type: "function_call", call_id, name, arguments}`；工具结果使用 `{type: "function_call_output", call_id, output}`；推理项使用 `{type: "reasoning", summary, encrypted_content}`。
+- 用户消息的 `content` 可以是字符串，也可以是内容块数组。主模型为多模态文本输出模型，支持 `input_text` 与 `input_image` 内容块；图片使用短时签名 URL 或 Data URL 提交，签名地址只在当次调用使用，不进入持久化历史、摘要或日志。
 - 工具定义使用 Responses 格式：`{type: "function", name, description, parameters}`。
 - SDK 负责消费并映射 SSE 事件，provider 只读取 SDK 暴露的文本增量、推理增量、最终 `Response`、工具调用、用量和 `response_id`。相关事件至少包括 `response.output_text.delta`、`response.reasoning_text.delta`、`response.reasoning_summary_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
 - `response.completed` 中的 `response.id` 记录为 `response_id`；后续请求仍然重新提交完整 `input`，绝不使用 `previous_response_id`。
@@ -490,6 +492,8 @@ event: error             data: {"type":"error","message":"..."}
 完整消息回答“实际发生过什么”，模型上下文回答“这次调用需要什么”。二者不共用一个会被 compact 覆盖的内容字段。
 
 角色设定、风格要求、文件版本、预算和用户确认结果独立保存，不依赖摘要重新推断。上下文只引用会话内文件 ID 和版本，不复制文件内容。资产标识必须在调用前解析为上游实际可使用的输入内容或访问方式。
+
+主模型支持图片输入、文本输入和文本输出。构建上下文时图片只携带 `asset_id`；调用前由 provider 校验归属并解析为真正的 `input_image` 内容块，只传 `asset_id` 不代表模型看到了图片。本轮用户消息附带的图片参与本次输入，历史消息默认只回放文本，避免上下文无限增长；需要重新查看旧图时由用户或工具再次引用。
 
 每次调用生成不可变 context_snapshot，记录会话分支、消息范围、摘要版本、文件版本、资产版本、系统指令和工具定义版本。可追溯并不意味着再次运行模型会产生相同输出。
 
@@ -617,6 +621,73 @@ GET    /api/v1/conversations/{conversationId}/files/{fileId}/versions
 - 生成任务保存提交时冻结的文件版本、实际提示词、参数、引用素材、价格规则和授权预算；后续修改文件不改变已提交任务。
 - 用户原始输入、优化后内容和实际提交参数都要保存。
 - `create_script`、`read_script`、`update_script` 可以作为类型化工具封装，但底层必须复用 `conversation_file` / `conversation_file_version`。
+
+#### 剧本格式（已确定）
+
+剧本使用 **Markdown**，保存在 `conversation_file.kind = SCRIPT` 的版本内容中。Markdown 便于用户直接阅读和手工修改，也便于模型通过文件工具增量编辑。约定以下结构，但不要求每个剧本都填满：
+
+```text
+# 项目标题
+
+## 创作简报
+- 用途 / 受众 / 渠道 / 画幅 / 时长 / 语言 / 风格
+- 品牌要求与不可改动的产品信息
+- 总预算
+
+## 故事梗概
+## 角色与场景
+## 分场剧本
+### 场次 1：场景标题
+- 画面、动作、对白、旁白、声音提示
+## 制作备注
+```
+
+结构化字段（画幅、时长、语言、预算等）同时保存为创作简报或生成参数，不从 Markdown 文本反向解析作为事实来源。剧本每次修改产生新版本，生成任务冻结其版本号。
+
+#### 分镜格式（已确定）
+
+分镜使用**结构化 JSON**，保存在 `conversation_file.kind = STORYBOARD` 的版本内容中。首个版本采用以下 schema：
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "示例短片",
+  "aspectRatio": "16:9",
+  "language": "zh-CN",
+  "shots": [
+    {
+      "id": "shot-1",
+      "order": 1,
+      "sceneId": "scene-1",
+      "visual": "主体、动作、环境、光线与构图的文字描述",
+      "shotSize": "MEDIUM",
+      "camera": "STATIC",
+      "durationSeconds": 5,
+      "dialogue": "",
+      "voiceOver": "",
+      "sound": "环境声与音乐提示",
+      "prompt": "提交给媒体模型的镜头级提示词",
+      "references": [
+        {"assetId": "<uuid>", "version": 1, "role": "CHARACTER"}
+      ],
+      "status": "DRAFT",
+      "tasks": [],
+      "selectedOutput": null
+    }
+  ]
+}
+```
+
+约束：
+
+- `id` 在文件内唯一且稳定；排序以 `order` 为准，增删、拆分、合并和排序都产生新的文件版本。
+- `shotSize` 取值：`EXTREME_WIDE`、`WIDE`、`FULL`、`MEDIUM`、`CLOSE`、`EXTREME_CLOSE`。
+- `camera` 取值：`STATIC`、`PUSH`、`PULL`、`PAN`、`TRACK`、`FOLLOW`、`CRANE`。
+- `references[].role` 至少包括 `CHARACTER`、`PRODUCT`、`SCENE`、`STYLE`；引用的具体 `assetId` 与版本在生成受理时冻结。
+- `status` 取值：`DRAFT`、`READY`、`GENERATING`、`CANDIDATES`、`APPROVED`、`LOCKED`、`FAILED`。
+- `tasks` 保存该镜头的生成任务 ID；`selectedOutput` 保存选中的任务、输出序号和资产 ID。
+- 锁定的镜头不参与批量重做；修改锁定镜头必须显式解锁并创建新版本。
+- schema 版本升级必须提供迁移或兼容读取，不得静默改变旧版本含义。
 
 ### 13.3 媒体资产与对象存储
 
@@ -774,11 +845,16 @@ billing 独立于 Agent 的自然语言判断。
 - run 内 turn 级压缩（第一阶段只压缩已持久化的对话历史）、真实媒体生成。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
 
+已确认的创作数据格式：
+
+- 剧本使用 Markdown，保存为 `conversation_file.kind = SCRIPT`。
+- 分镜使用结构化 JSON，保存为 `conversation_file.kind = STORYBOARD`，schema 见 §13.2。
+- 主模型支持图片输入、文本输入、文本输出；图片以 `input_image` 内容块参与调用，签名 URL 不持久化。
+
 需要通过实现验证或产品决策确定的事项：
 
 - 会话删除后工作区文件的保留策略：级联删除、软删除后定期清理，还是保留只读归档。
 - 跨会话复用素材是否需要一个显式的“复制到当前会话”操作。
-- 剧本采用 Markdown、结构化 JSON 或两者兼有。
 - Temporal 的部署方式与资源策略；SDK 与 Spring Boot 的版本组合已在根 POM 确定。
 - 工具后台执行、自动续跑、取消及部分成功的交互与计费语义。
 - 模型的实际能力配置、费用规则和不同错误的恢复策略。
