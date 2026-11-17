@@ -28,7 +28,7 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | 创作能力 | 图片、视频、剧本、素材操作均作为工具暴露 |
 | 创作存储 | 脚本、分镜、提示词、图片和视频进入工作空间存储库；会话只绑定条目，文件不归属于会话 |
 | 工作流 | Agent Loop，不预设必须先写剧本、再生成图片、最后生成视频 |
-| 模型接入 | 第三方接入 OpenAI Responses API（`POST /responses`）；优先采用 OpenAI 官方 Java SDK |
+| 模型接入 | 第三方接入 OpenAI Responses API（`POST /responses`）；必须使用 OpenAI 官方 Java SDK 的 Responses 客户端（`responses().createStreaming()`）。禁止自行拼装 `/responses` HTTP 请求、手写 SSE 事件解析或自己实现上游重试 |
 | 上游协议 | 请求上游时使用 HTTP SSE（`stream: true`）；不使用 Chat Completions、同步响应或 WebSocket；不使用 `previous_response_id` |
 | 协议假设 | 按讨论约定，假设上游实现 OpenAI Responses API 的 HTTP SSE 事件和工具调用语义，不将上游实现差异作为本提案的前置问题 |
 | 上下文压缩 | 不使用 Responses compact 接口；compact 是一次普通的 Responses API 模型调用，摘要由本地管理和持久化 |
@@ -379,12 +379,13 @@ flowchart TD
 
 - Workflow 管理执行顺序、分支、并行、持久化等待和取消传播。
 - Activity 执行模型调用、数据库访问、文件传输和媒体处理等外部操作。
-- 模型 Activity 通过 Responses API 发起 HTTP SSE 请求并读完整个流，再把完整文本、工具调用、用量和 `response_id` 返回 Workflow；Workflow 不直接解析供应商事件。
+- 模型 Activity 通过官方 SDK 的 Responses 流式客户端读完整个 HTTP SSE 流，再把完整文本、工具调用、用量和 `response_id` 返回 Workflow；Workflow 和业务代码都不直接解析供应商事件。
 - 模型决策通过 Activity 返回并被记录；Workflow 根据已记录结果推进动态分支。
 - 重放使用已完成调用的记录，不重新询问模型已决定过的步骤。
 - 不在 Workflow 代码中直接访问网络、数据库或非确定性的外部状态。
 - 不将整个 Agent Loop 放进一个大 Activity，以便按模型步骤和工具执行恢复。
 - SDK 不能直接渗透进业务接口，供应商对象在 provider 层转换。
+- HTTP SSE 是传输协议，不是实现方式：由官方 SDK 负责建立流、解析 `response.*` 事件和累计结果；provider 只负责领域请求与 `Response` 的映射，业务代码不得手写 HTTP/SSE 解析。
 
 ### 8.2 流程划分
 
@@ -489,11 +490,11 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 #### Responses API 调用约定
 
-- 请求：`POST {baseUrl}/responses`，`stream: true`，`Accept: text/event-stream`。
+- 请求：通过官方 SDK 的 `responses().createStreaming()` 发起，底层为 `POST {baseUrl}/responses`、`stream: true`、`Accept: text/event-stream`。业务代码不直接拼装该 HTTP 请求，也不直接解析 SSE 文本。
 - 请求体包含 `model`、显式 `input`、`max_output_tokens`、可选的 `tools`、`tool_choice` 和 `reasoning.effort`。
 - `input` 是输出项数组：普通消息使用 `{role, content}`；历史工具调用使用 `{type: "function_call", call_id, name, arguments}`；工具结果使用 `{type: "function_call_output", call_id, output}`。
 - 工具定义使用 Responses 格式：`{type: "function", name, description, parameters}`。
-- 需要解析的 SSE 事件至少包括 `response.output_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
+- SDK 负责消费并映射 SSE 事件，provider 只读取 SDK 暴露的文本增量、最终 `Response`、工具调用、用量和 `response_id`。相关事件至少包括 `response.output_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
 - `response.completed` 中的 `response.id` 记录为 `response_id`；后续请求仍然重新提交完整 `input`，绝不使用 `previous_response_id`。
 
 ### 11.3 流式输出
