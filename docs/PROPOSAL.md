@@ -495,12 +495,10 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 17. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。当前模块调整正在进行，不能将本提案当作实现完成说明。
+截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 的 modules 列表包含全部八个模块，agent 的 POM 已继承父工程且 artifactId 命名与其他模块统一。不能将本提案当作实现完成说明。
 
 已观察到的基础工程待办：
 
-- agent/pom.xml 已存在，但根 POM 的 modules 列表尚未包含 agent。
-- agent 的 POM 尚未继承现有父工程，artifactId 命名也需要与其他模块统一。
 - API 与 Worker 的 Spring Boot、Temporal 装配以及业务依赖尚待配置。
 - 数据库迁移、工具执行、上下文管理和真实生成流程尚待实现。
 - Dockerfile、Compose 仍为占位配置。
