@@ -7,6 +7,7 @@
 1. `docs/PROPOSAL.md`：产品定位、架构、身份与隔离、Agent Loop、数据模型和当前实现差距。
 2. `docs/STANDARDS.md`：编码、模块边界和工程规范。
 3. `docs/MEDIA_PIPELINE_DESIGN.md`：图片/视频生成、任务生命周期和媒体资产方案。
+4. `docs/PRODUCT_ROADMAP.md`：已确认的三阶段产品范围、功能边界和验收标准。
 
 随后阅读 `README.md` 或 `README_zh-CN.md` 了解本地启动方式。文档与代码冲突时，以当前代码、数据库迁移和测试为准，并在同一次变更中修正文档。
 
