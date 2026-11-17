@@ -38,7 +38,7 @@ Import the root `pom.xml` as the Maven project in your IDE. The repository inclu
 ./mvnw validate
 ```
 
-Dependency and plugin versions are managed centrally by the root POM (Java 21, Spring Boot 4.1.2 BOM, Temporal Java SDK 1.41.1 BOM). The backend currently contains module skeletons; Spring Boot startup applications and business dependencies have not been configured yet.
+Dependency and plugin versions are managed centrally by the root POM (Java 21, Spring Boot 4.1.2 BOM, Temporal Java SDK 1.41.1 BOM). Minimal Spring Boot startup applications exist for the API and worker; the worker connects to Temporal and registers a self-check workflow. Database migrations, business modules, and generation pipelines are still pending.
 
 ## Deployment
 

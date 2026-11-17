@@ -38,7 +38,7 @@ pnpm --dir frontend start
 ./mvnw validate
 ```
 
-依赖与插件版本由根 POM 统一管理（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）。后端目前为模块骨架，尚未配置 Spring Boot 启动应用及业务依赖。
+依赖与插件版本由根 POM 统一管理（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）。API 与 Worker 已具备最小 Spring Boot 启动应用，Worker 可连接 Temporal 并注册自检 Workflow；数据库迁移、业务模块和生成流程仍待实现。
 
 ## 部署
 

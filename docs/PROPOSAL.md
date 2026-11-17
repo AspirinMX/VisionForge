@@ -495,11 +495,10 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 17. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。不能将本提案当作实现完成说明。
+截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。不能将本提案当作实现完成说明。
 
 已观察到的基础工程待办：
 
-- API 与 Worker 的 Spring Boot、Temporal 装配以及业务依赖尚待配置。
 - 数据库迁移、工具执行、上下文管理和真实生成流程尚待实现。
 - Dockerfile、Compose 仍为占位配置。
 

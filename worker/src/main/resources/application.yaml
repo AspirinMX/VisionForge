@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: vision-forge-worker
+  main:
+    web-application-type: none
+
+visionforge:
+  temporal:
+    target: ${TEMPORAL_TARGET:localhost:7233}
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
