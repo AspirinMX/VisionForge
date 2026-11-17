@@ -30,6 +30,8 @@
         <temporal.version>1.41.1</temporal.version>
         <flyway.version>12.4.0</flyway.version>
         <postgresql.version>42.7.14</postgresql.version>
+        <hutool.version>5.8.48</hutool.version>
+        <lombok.version>1.18.48</lombok.version>
 
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
@@ -51,6 +53,12 @@
                 <version>${temporal.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-core</artifactId>
+                <version>${hutool.version}</version>
             </dependency>
 
             <!-- 内部模块统一版本，子模块引用时无需重复声明 version -->
@@ -137,6 +145,13 @@
                 <configuration>
                     <release>${maven.compiler.release}</release>
                     <parameters>true</parameters>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
             <plugin>
