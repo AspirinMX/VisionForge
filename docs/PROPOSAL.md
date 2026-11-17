@@ -36,6 +36,8 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | 临时数据 | Redis，用于缓存、限流和实时输出缓存 |
 | 媒体存储 | RustFS 或其他经过验证的 S3 兼容对象存储 |
 | 数据库演进 | Flyway 管理业务数据库迁移 |
+| 身份与空间 | 用户与工作空间多对多；空间内 OWNER/ADMIN/MEMBER；登录后选择空间，access token 绑定工作空间 |
+| 平台管理 | 系统 ADMIN 可跨空间执行任何操作，不需要加入空间；所有跨空间操作记录审计 |
 | 后端布局 | Maven 模块保留在仓库根目录 |
 | 部署布局 | Dockerfile、Compose 和部署环境模板保留在仓库根目录 |
 | 前端 | frontend/ 中的 Next.js、TypeScript、Tailwind CSS 工程 |
@@ -136,7 +138,150 @@ agent/
 
 一个会话可以包含多次 AgentRun，一个 AgentRun 可以调用多个工具，一个工具也可以创建独立的长时间生成任务。AgentRun 结束不意味着生成任务必须结束。
 
-## 5. 动态 Agent Loop
+## 5. 身份、工作空间与权限
+
+本节确定首版的工作空间模型和登录后的空间上下文。首版仍面向个人用户，但成员关系按团队协作的完整语义建模，后续扩展不需要改表。
+
+### 5.1 用户与工作空间
+
+用户与工作空间是多对多关系，workspace_member 是带角色的成员关系，而不是简单关联表。
+
+- 一个用户可以加入多个工作空间；一个工作空间可以包含多个用户。
+- 每个工作空间恰好有一个 OWNER；OWNER 也是 workspace_member 中的一行，不另外保存 workspace.owner_user_id。
+- workspace_member 使用独立 UUIDv7 主键，并以 UNIQUE (workspace_id, user_id) 保证成员唯一。不使用复合主键，避免与主键规范和 MyBatis-Plus 映射冲突。
+- 通过 PostgreSQL 部分唯一索引保证每个空间只有一个 OWNER：`CREATE UNIQUE INDEX ... ON workspace_member (workspace_id) WHERE role = 'OWNER'`。
+- 注册成功后自动创建个人工作空间（personal = true），注册者为 OWNER。新用户登录后不会出现无空间可用。
+- 工作空间只归档，不物理删除：状态为 ACTIVE / ARCHIVED。归档后保留历史数据；恢复和彻底删除不在首版范围。
+- 成员状态字段保留 ACTIVE；邀请未注册用户、INVITED/PENDING 流程不在首版实现。
+
+### 5.2 两级角色
+
+系统角色与空间角色分开，不共用 claim。
+
+| 层级 | 取值 | 作用 |
+| --- | --- | --- |
+| 系统角色 | ADMIN / USER | 平台级用户管理和系统配置 |
+| 空间角色 | OWNER / ADMIN / MEMBER | 单个工作空间内的成员管理、内容访问和生成操作 |
+
+权限矩阵：
+
+| 操作 | OWNER | 空间 ADMIN | MEMBER | 平台 ADMIN |
+| --- | --- | --- | --- | --- |
+| 使用对话、生成和查看本空间内容 | ✓ | ✓ | ✓ | ✓（跨空间） |
+| 查看成员列表 | ✓ | ✓ | ✓ | ✓（跨空间） |
+| 添加或移除成员 | ✓ | ✓ | ✗ | ✓（跨空间） |
+| 修改成员角色 | ✓ | 仅 MEMBER | ✗ | ✓（跨空间） |
+| 修改空间名称和描述 | ✓ | ✓ | ✗ | ✓（跨空间） |
+| 归档空间 | ✓ | ✗ | ✗ | ✓（跨空间） |
+| 转让所有权 | ✓ | ✗ | ✗ | ✓（跨空间） |
+
+平台管理员可以访问任意工作空间并执行任何业务操作，不需要加入该空间。管理员权限来自系统角色 ADMIN，不通过提升空间角色实现。所有跨空间操作必须记录审计（操作者、目标空间、操作类型、traceId、时间）。
+
+空间内约束：
+
+- 空间角色操作中，OWNER 不能被移除、不能被降级，必须先转让所有权。
+- 不能移除空间中的最后一个管理员（OWNER 或 ADMIN）。
+- 平台管理员可以执行包括转让和移除在内的任何操作，不受成员关系限制。
+- 每个空间必须始终有一个 OWNER；部分唯一索引保证至多一个，服务层在创建、转让和移除时保证至少一个。即使由平台管理员操作，移除最后一个 OWNER 前也必须先转让所有权。
+- 首版只支持按邮箱添加已注册用户；邀请未注册用户、邀请链接和邮件发送后置。
+
+### 5.3 登录与空间选择
+
+采用“登录后选择空间，access token 绑定空间”的方案。
+
+- access token 是空间级凭证，claims 包含 `sub`、`email`、`role`（系统角色）、`wsid`、`ws_role`、`iss`、`aud`、`iat`、`exp`、`jti`。
+- refresh token 是用户级会话，不绑定单个空间；刷新时重新校验目标空间的成员关系并重新读取角色。成员被移除后，已签发 access token 在剩余有效期内仍可用，但下一次刷新会失败。
+
+登录流程：
+
+1. `POST /api/v1/auth/login` 校验邮箱密码，并加载该用户 ACTIVE 的成员关系。
+2. 只有一个可用空间时，直接签发该空间的 TokenPair 并返回空间列表。
+3. 有多个空间时，返回 5 分钟有效的 selectionToken 和空间列表，不签发正式 token。
+4. `POST /api/v1/auth/workspace` 使用 selectionToken 和 workspaceId 换取空间级 access/refresh token。
+5. 没有可用空间时返回明确错误；正常注册流程已自动创建个人空间，因此该状态只应出现在数据异常的账号上。
+
+已登录用户通过 `POST /api/v1/auth/switch-workspace` 切换空间。服务端校验成员关系后签发新的 access token，refresh token 保持不变；因此多标签页切换互不影响。平台管理员切换空间时跳过成员关系校验，可以进入任意工作空间。刷新时客户端携带当前 workspaceId，服务端重新校验该用户仍是该空间的有效成员（平台管理员除外）。客户端记住上次使用的空间，但服务端不信任该记忆；URL 中体现当前空间，例如 `/w/{workspaceId}/...`。
+
+隔离规则：
+
+> 凡是路径中带 `{workspaceId}` 的接口，access token 的 `wsid` 必须等于路径中的 `workspaceId`，否则返回 403。
+
+用户要操作另一个空间，必须先切换空间换取新 token，不能通过修改 URL 越权。业务查询必须同时带 `workspace_id` 条件，workspaceId 只能来自服务端 token 或服务端执行上下文，不能来自请求体、模型参数或工具参数。
+
+### 5.4 平台管理员的跨空间操作
+
+平台管理员（系统角色 ADMIN）可以访问任意工作空间并执行任何业务操作，不需要成为该空间成员：
+
+- 管理接口允许列出全部工作空间并进入任意空间。
+- 管理员进入目标空间时绕过成员关系校验；访问令牌包含 `platform_admin = true`，授权判断优先于空间角色。不把管理员伪装成 OWNER。
+- 管理员可以查看内容、管理成员、修改空间、归档空间和转让所有权；操作范围不受空间角色限制。
+- 所有跨空间操作记录审计，写操作必须留下操作者、目标空间、操作类型和 traceId。
+- 每个空间必须始终有一个 OWNER；部分唯一索引保证至多一个，服务层保证至少一个。移除最后一个 OWNER 前必须先转让所有权。
+- 平台管理员身份只由系统角色 ADMIN 决定，不通过加入空间或提升 `ws_role` 获得。
+
+### 5.5 接口草案
+
+认证：
+
+```text
+POST /api/v1/auth/login
+POST /api/v1/auth/workspace
+POST /api/v1/auth/switch-workspace
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+```
+
+空间与成员：
+
+```text
+GET    /api/v1/workspaces
+POST   /api/v1/workspaces
+GET    /api/v1/workspaces/{workspaceId}
+PATCH  /api/v1/workspaces/{workspaceId}
+POST   /api/v1/workspaces/{workspaceId}/archive
+POST   /api/v1/workspaces/{workspaceId}/transfer
+GET    /api/v1/workspaces/{workspaceId}/members
+POST   /api/v1/workspaces/{workspaceId}/members
+PATCH  /api/v1/workspaces/{workspaceId}/members/{userId}
+DELETE /api/v1/workspaces/{workspaceId}/members/{userId}
+```
+
+平台管理：
+
+```text
+GET /api/v1/admin/workspaces
+GET /api/v1/admin/workspaces/{workspaceId}
+```
+
+错误码至少包括：工作空间不存在、无访问权限、需要 OWNER、空间已归档、成员已存在、成员不存在、不能移除 OWNER、必须保留 OWNER、非法空间角色。
+
+### 5.6 数据模型
+
+- workspace：id、name、description、status、personal、created_at、updated_at。删除 V1 中的 owner_user_id。
+- workspace_member：id、workspace_id、user_id、role、status、joined_at、updated_at；UNIQUE (workspace_id, user_id)；部分唯一索引保证一个 OWNER。
+- refresh_token：保持用户级，不增加 workspace_id；刷新时由请求携带并校验目标空间。
+- 邀请表不在首版建立。
+
+V1 已创建 workspace、workspace_member；上述调整通过新的 V3 迁移完成，不修改已发布的 V1。
+
+### 5.7 审计与执行上下文
+
+- TenantProvider 从 JWT 的 `wsid` 读取当前工作空间，替换现有的空实现，`@BizLog` 自动写入 workspace_id。
+- 登录和空间选择事件在 token 签发前记录，workspace_id 为空或为目标空间，不伪装成空间内业务操作。
+- 跨空间越权尝试记录安全审计。
+- 平台管理员的跨空间进入和所有跨空间写操作记录审计。
+- 后续 agent、asset、billing 的公开服务接口显式接收 workspaceId，由 API 层从 token 注入；Temporal Workflow 的启动参数携带 workspaceId，Activity 不信任模型输出中的空间标识。
+
+### 5.8 实施顺序
+
+1. V3 迁移：workspace 状态与个人空间标记、成员主键与状态、OWNER 唯一索引，移除 owner_user_id。
+2. identity 的 workspace 包：实体、Mapper、WorkspaceService、WorkspaceAccessService、成员管理、单测。
+3. Token 改造：空间 claims、登录选择、切换和刷新校验。
+4. api 层：DTO、Controller、错误码、JwtTenantProvider、管理员空间接口。
+5. 注册时自动创建个人空间。
+6. 端到端验证：多空间选择、切换、跨空间越权、成员增删改、OWNER 保护、管理员跨空间操作、审计 workspace_id。
+
+## 6. 动态 Agent Loop
 
 主 Workflow 只约束可靠执行规则，不写死业务步骤。
 
@@ -168,7 +313,7 @@ flowchart TD
 
 前端可以增加图片、视频快捷入口，但它们应复用相同业务服务与任务语义，不另建一套生成规则。
 
-## 6. 工具设计
+## 7. 工具设计
 
 工具是模型使用业务能力的接口，业务规则仍由服务端执行。
 
@@ -201,11 +346,11 @@ flowchart TD
 
 工具返回必要的摘要、对象 ID 和版本。完整剧本、媒体文件及大量结果保存在对应业务存储中。
 
-## 7. Temporal 执行模型
+## 8. Temporal 执行模型
 
 优先采用 Temporal，Restate 等作为备选评估对象，不同时引入两套执行引擎。
 
-### 7.1 Workflow 与 Activity 边界
+### 8.1 Workflow 与 Activity 边界
 
 - Workflow 管理执行顺序、分支、并行、持久化等待和取消传播。
 - Activity 执行模型调用、数据库访问、文件传输和媒体处理等外部操作。
@@ -215,7 +360,7 @@ flowchart TD
 - 不将整个 Agent Loop 放进一个大 Activity，以便按模型步骤和工具执行恢复。
 - SDK 不能直接渗透进业务接口，供应商对象在 provider 层转换。
 
-### 7.2 流程划分
+### 8.2 流程划分
 
 | Workflow | 职责 |
 | --- | --- |
@@ -230,7 +375,7 @@ flowchart TD
 
 供应商等待使用持久化 Timer 或外部事件推进，避免一个 Activity 持续阻塞整个视频生成时长。文件传输和媒体处理等长 Activity 按需设置心跳与执行超时。
 
-### 7.3 同步等待与后台执行
+### 8.3 同步等待与后台执行
 
 | 情况 | 执行方式 |
 | --- | --- |
@@ -243,7 +388,7 @@ flowchart TD
 
 工具返回“已受理”与“已完成”采用不同状态，模型不能把受理结果描述成生成成功。
 
-### 7.4 重试、结果不确定和取消
+### 8.4 重试、结果不确定和取消
 
 Temporal 提供执行恢复，不自动保证外部副作用恰好一次。重点处理以下窗口：供应商已接单，但应用尚未保存远端任务 ID 就退出。
 
@@ -258,7 +403,7 @@ Temporal 提供执行恢复，不自动保证外部副作用恰好一次。重�
 
 Workflow 历史只保存必要的状态与引用。对于过长的执行历史，后续使用适当的历史轮换策略，不将整段永久会话绑定到一个无限增长的 Workflow。
 
-## 8. 移除 Kafka 与 CDC 后的可靠启动
+## 9. 移除 Kafka 与 CDC 后的可靠启动
 
 首版不使用 Kafka、Debezium/CDC、RabbitMQ 或 NATS。Temporal Task Queue 承担 Workflow 和 Activity 的任务分发；Redis 也不作为业务生成任务的唯一可靠队列。
 
@@ -282,7 +427,7 @@ Workflow 历史只保存必要的状态与引用。对于过长的执行历史�
 
 未来若出现搜索索引、数仓同步、多系统订阅和历史事件重放需求，再评估独立事件系统。届时根据需求选择 Kafka、RabbitMQ 或 NATS JetStream，不预先维护未使用的消息基础设施。
 
-## 9. 存储职责与事实来源
+## 10. 存储职责与事实来源
 
 | 存储 | 职责 |
 | --- | --- |
@@ -295,9 +440,9 @@ Workflow 历史只保存必要的状态与引用。对于过长的执行历史�
 
 Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不以 Base64 长期存入 PostgreSQL、Redis 或 Temporal 历史。
 
-## 10. 消息与协议记录
+## 11. 消息与协议记录
 
-### 10.1 消息列表
+### 11.1 消息列表
 
 建议建立 conversation、conversation_branch、message、message_part 等实体。
 
@@ -307,7 +452,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 - 后台任务完成可以更新关联卡片，或新增结果消息；变更需要可追踪。
 - 列表使用稳定游标分页，避免把整段历史一次加载到客户端或模型。
 
-### 10.2 协议层记录
+### 11.2 协议层记录
 
 前端可见消息与模型协议记录分开。除最终文本外，还需保留用于后续调用的工具请求、工具结果、响应阶段及其他必要输出项。
 
@@ -315,7 +460,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 网关返回的 response_id 用于查询、关联和排错，不能成为会话唯一存储。加密或不透明的推理项只在协议要求的范围内保存和传递，不将其当作可读取的用户消息。
 
-### 10.3 流式输出
+### 11.3 流式输出
 
 - SSE 向前端推送文本片段、任务状态和工具进度。
 - Redis 缓存短期片段，包含 attempt_id 和顺序号。
@@ -324,9 +469,9 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 - 重新连接先读取业务状态和已保存结果，再恢复实时订阅。
 - 无法恢复的流式尝试标记为中断，新尝试不能直接拼接到旧文本尾部。
 
-## 11. 上下文构建与本地 compact
+## 12. 上下文构建与本地 compact
 
-### 11.1 上下文组成
+### 12.1 上下文组成
 
 ```text
 本轮模型输入
@@ -343,7 +488,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 每次调用生成不可变 context_snapshot，记录会话分支、消息范围、摘要版本、创作对象版本、资产版本、系统指令和工具定义版本。可追溯并不意味着再次运行模型会产生相同输出。
 
-### 11.2 摘要生成流程
+### 12.2 摘要生成流程
 
 远程 compact 不作为可用能力。采用普通文本模型生成结构化摘要：
 
@@ -357,7 +502,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 建议 context_summary 保存 from_seq、to_seq、source_message_ids、源范围校验信息、模型、版本及生成时间。摘要不得把未经用户确认的模型建议提升为已确认事实。
 
-### 11.3 压缩后的上下文边界
+### 12.3 压缩后的上下文边界
 
 文本摘要是有损信息压缩，不等同于 Responses 原生 compact。
 
@@ -370,9 +515,9 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 首版先使用明确引用和数据库查询找回历史事实，不默认引入向量数据库。出现跨大量历史内容的语义检索需求后再评估。
 
-## 12. 创作对象与媒体资产
+## 13. 创作对象与媒体资产
 
-### 12.1 剧本和生成参数版本
+### 13.1 剧本和生成参数版本
 
 提示词、剧本和分镜是独立创作对象，应支持版本号、来源消息和父版本。
 
@@ -380,7 +525,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 保存用户原始输入、优化后内容和实际提交参数。重新生成默认可以复用原方案，重新优化由用户意图决定。
 
-### 12.2 媒体元数据
+### 13.2 媒体元数据
 
 asset 建议记录工作空间、存储后端、bucket、object_key、类型、大小、校验信息、宽高、时长、来源任务和状态。
 
@@ -390,7 +535,7 @@ asset 建议记录工作空间、存储后端、bucket、object_key、类型、�
 - 消息与剧本引用 asset_id，不把临时访问 URL 当作永久标识。
 - 对象键由后端分配，文件名和存储路径不由模型或客户端直接控制。
 
-### 12.3 上传与结果归档
+### 13.3 上传与结果归档
 
 用户上传：创建上传会话、签发授权、客户端直传、服务端验证对象、确认可用资产。
 
@@ -403,7 +548,7 @@ asset 建议记录工作空间、存储后端、bucket、object_key、类型、�
 - 同一归档尝试重试：识别已保存对象；新的生成尝试使用新的资产标识。
 - 供应商临时产物尽快归档，不作为唯一长期副本。
 
-### 12.4 访问与生命周期
+### 13.4 访问与生命周期
 
 - 私有对象通过业务鉴权和短期授权访问。
 - 提供给供应商的素材必须可从其网络访问，授权有效期覆盖实际读取时间。
@@ -414,7 +559,7 @@ asset 建议记录工作空间、存储后端、bucket、object_key、类型、�
 - 活跃 Workflow 引用的资产、上下文快照不能被提前清理。
 - 对象存储生命周期能力、预签名上传、分片和视频 Range 访问需要在目标 RustFS 版本验证。
 
-## 13. 额度与成本
+## 14. 额度与成本
 
 billing 独立于 Agent 的自然语言判断。
 
@@ -429,7 +574,7 @@ billing 独立于 Agent 的自然语言判断。
 
 取消、超时和部分成功的收费规则需要在实现前明确。不能把网络超时或本地流程退出直接解释为无成本并立即释放全部额度。
 
-## 14. 数据库迁移与候选实体
+## 15. 数据库迁移与候选实体
 
 业务迁移脚本集中放在 database/src/main/resources/db/migration，采用统一版本序列。发布时由独立 migration Job 执行 Flyway，成功后部署 API 与 Worker。
 
@@ -455,7 +600,7 @@ billing 独立于 Agent 的自然语言判断。
 
 高频查询字段采用明确列，供应商扩展参数和脱敏快照可使用 JSONB。工作空间隔离、幂等和结算约束必须落实到服务端查询与数据库约束。
 
-## 15. 部署、观测与许可
+## 16. 部署、观测与许可
 
 首版按 API、Worker、前端三个应用角色部署，使用 PostgreSQL、Redis、RustFS 和 Temporal。Temporal 的持久化与业务库逻辑隔离，资源规模根据压测确定。
 
@@ -467,7 +612,7 @@ billing 独立于 Agent 的自然语言判断。
 
 讨论中发现 Animate UI 的许可包含附加条件。引入具体版本时核对实际许可，不按纯 MIT 假设处理；这项选型尚未通过当前前端骨架落地。
 
-## 16. 开发阶段与验收
+## 17. 开发阶段与验收
 
 | 阶段 | 主要交付 | 验收重点 |
 | --- | --- | --- |
@@ -492,14 +637,15 @@ billing 独立于 Agent 的自然语言判断。
 10. 浏览器断线、AgentRun 结束或用户取消时，后台任务与费用状态符合明确规则。
 11. Workflow 代码升级后，已有执行仍可恢复。
 12. 用户尝试访问其他工作空间的消息、任务和素材时被拒绝。
+13. 平台管理员可以跨空间执行任何操作，且所有跨空间操作被记录审计。
 
-## 17. 当前实现差距与后续决策
+## 18. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。Flyway 迁移基座与 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）已经建立，Compose 已提供 PostgreSQL 服务。common 基础层（统一响应、错误码、UUIDv7、自研 @BizLog）已实现；identity 已实现 bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）与审计日志落库。不能将本提案当作实现完成说明。
+截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。Flyway 迁移基座与 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）已经建立，Compose 已提供 PostgreSQL 服务。common 基础层（统一响应、错误码、UUIDv7、自研 @BizLog）已实现；identity 已实现 bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）与审计日志落库。工作空间与成员的设计已经确定（见第 5 节）：用户与工作空间多对多、空间级 OWNER/ADMIN/MEMBER、登录后选择空间、access token 绑定空间、注册自动创建个人空间、平台管理员可跨空间执行任何操作；对应代码尚未实现。不能将本提案当作实现完成说明。
 
 已观察到的基础工程待办：
 
-- 工作空间与成员管理、工具执行、上下文管理和真实生成流程尚待实现。
+- 工作空间与成员管理（设计见第 5 节）、工具执行、上下文管理和真实生成流程尚待实现。
 - Dockerfile 仍为占位配置；Compose 目前仅包含 PostgreSQL。
 
 需要通过实现验证或产品决策确定的事项：
