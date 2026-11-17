@@ -16,6 +16,7 @@
         <module>billing</module>
         <module>worker</module>
         <module>database</module>
+        <module>agent</module>
     </modules>
 
 
