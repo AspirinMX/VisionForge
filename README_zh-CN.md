@@ -91,7 +91,7 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
   }'
 ```
 
-API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用请求发送到 `{baseUrl}/chat/completions`，使用 `stream: true` 和 `max_tokens`，配置了 reasoning effort 时同时发送 `reasoning_effort`。AgentRun 由 Worker 执行，Worker 必须保持运行。
+API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用通过 OpenAI 官方 Java SDK 以流式方式请求 `POST {baseUrl}/responses`（`responses().createStreaming()`），显式提交 `input` 数组，并使用 `store: false`、`max_output_tokens`，配置了 reasoning effort 时提交 `reasoning.effort`。不使用 Chat Completions。AgentRun 由 Worker 执行，Worker 必须保持运行。
 
 会话接口：
 

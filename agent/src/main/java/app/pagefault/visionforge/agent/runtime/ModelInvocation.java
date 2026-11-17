@@ -32,6 +32,8 @@ public class ModelInvocation {
 
     private String finishReason;
 
+    private String responseId;
+
     private String errorMessage;
 
     private Instant createdAt;

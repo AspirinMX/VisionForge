@@ -30,6 +30,11 @@ public class AgentRun {
 
     private UUID modelDefinitionId;
 
+    /** The user who started the run; tool execution is scoped to this actor. */
+    private UUID userId;
+
+    private boolean platformAdmin;
+
     private AgentRunStatus status;
 
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

@@ -21,14 +21,18 @@ import app.pagefault.visionforge.agent.model.ApiKeyCipher;
 import app.pagefault.visionforge.agent.model.ModelDefinitionMapper;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.persistence.AgentUuidTypeHandler;
-import app.pagefault.visionforge.agent.provider.ChatModelClient;
-import app.pagefault.visionforge.agent.provider.OpenAiCompatibleChatModelClient;
+import app.pagefault.visionforge.agent.provider.OpenAiResponsesModelClient;
+import app.pagefault.visionforge.agent.provider.ResponsesModelClient;
 import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
+import app.pagefault.visionforge.agent.runtime.AgentRunTurnMapper;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentActivitiesImpl;
+import app.pagefault.visionforge.agent.tool.AgentToolExecutor;
+import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
+import app.pagefault.visionforge.agent.tool.ToolRegistry;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import tools.jackson.databind.ObjectMapper;
@@ -50,8 +54,8 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public ChatModelClient chatModelClient(ObjectMapper objectMapper) {
-        return new OpenAiCompatibleChatModelClient(objectMapper);
+    public ResponsesModelClient responsesModelClient() {
+        return new OpenAiResponsesModelClient();
     }
 
     @Bean
@@ -99,19 +103,25 @@ public class AgentConfiguration {
     public AgentRunService agentRunService(
             AgentRunMapper agentRunMapper,
             ModelInvocationMapper modelInvocationMapper,
+            AgentRunTurnMapper agentRunTurnMapper,
+            ToolInvocationMapper toolInvocationMapper,
             WorkflowStartRequestMapper workflowStartRequestMapper,
             ConversationMapper conversationMapper,
             MessageMapper messageMapper,
             ModelDefinitionService modelDefinitionService,
+            ObjectMapper objectMapper,
             IdGenerator idGenerator,
             Clock clock) {
         return new AgentRunService(
                 agentRunMapper,
                 modelInvocationMapper,
+                agentRunTurnMapper,
+                toolInvocationMapper,
                 workflowStartRequestMapper,
                 conversationMapper,
                 messageMapper,
                 modelDefinitionService,
+                objectMapper,
                 idGenerator,
                 clock);
     }
@@ -120,9 +130,16 @@ public class AgentConfiguration {
     public AgentActivitiesImpl agentActivities(
             AgentRunService agentRunService,
             ModelDefinitionService modelDefinitionService,
-            ChatModelClient chatModelClient,
+            ResponsesModelClient responsesModelClient,
+            ToolRegistry toolRegistry,
+            AgentToolExecutor agentToolExecutor,
             AgentRunStreamPublisher streamPublisher) {
         return new AgentActivitiesImpl(
-                agentRunService, modelDefinitionService, chatModelClient, streamPublisher);
+                agentRunService,
+                modelDefinitionService,
+                responsesModelClient,
+                toolRegistry,
+                agentToolExecutor,
+                streamPublisher);
     }
 }

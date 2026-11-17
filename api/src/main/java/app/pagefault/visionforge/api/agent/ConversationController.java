@@ -97,7 +97,11 @@ public class ConversationController {
             @AuthenticationPrincipal Jwt jwt) {
         workspaceRequestGuard.require(jwt, workspaceId);
         AgentTurnResult result = conversationService.startTurn(
-                workspaceId, conversationId, AuthenticatedUser.id(jwt), request.content());
+                workspaceId,
+                conversationId,
+                AuthenticatedUser.id(jwt),
+                AuthenticatedUser.platformAdmin(jwt),
+                request.content());
         agentRunStarter.start(result.runId(), result.workflowId());
         return ApiResponse.success(AgentTurnResponse.from(result));
     }
@@ -112,7 +116,11 @@ public class ConversationController {
             @AuthenticationPrincipal Jwt jwt) {
         workspaceRequestGuard.require(jwt, workspaceId);
         AgentTurnResult result = conversationService.startTurn(
-                workspaceId, conversationId, AuthenticatedUser.id(jwt), request.content());
+                workspaceId,
+                conversationId,
+                AuthenticatedUser.id(jwt),
+                AuthenticatedUser.platformAdmin(jwt),
+                request.content());
         SseEmitter emitter = agentRunStreamService.subscribe(result.runId());
         agentRunStarter.start(result.runId(), result.workflowId());
         return emitter;

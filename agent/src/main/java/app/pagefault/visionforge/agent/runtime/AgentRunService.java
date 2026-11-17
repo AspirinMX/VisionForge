@@ -21,31 +21,41 @@ import app.pagefault.visionforge.agent.conversation.MessageStatus;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
-import app.pagefault.visionforge.agent.provider.ChatCompletionResult;
-import app.pagefault.visionforge.agent.provider.ChatTurn;
+import app.pagefault.visionforge.agent.provider.ModelInputItem;
+import app.pagefault.visionforge.agent.provider.ModelResponse;
+import app.pagefault.visionforge.agent.provider.ModelToolCall;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
-import app.pagefault.visionforge.agent.temporal.agentrun.ModelReply;
+import app.pagefault.visionforge.agent.tool.ToolExecutionContext;
+import app.pagefault.visionforge.agent.tool.ToolInvocation;
+import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
+import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
+import app.pagefault.visionforge.agent.tool.ToolResult;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
 public class AgentRunService {
 
     private static final String SYSTEM_PROMPT = """
-            你是 VisionForge（幻影工坊）的创作助手，帮助用户讨论创意、完善提示词、编写剧本和规划图片或视频。
-            当前版本只支持文本对话，不能调用工具，也不能生成图片或视频；不要声称已经生成媒体。
+            你是 VisionForge（幻影工坊）的创作助手，帮助用户讨论创意、完善提示词、编写脚本和规划图片或视频。
+            你可以调用工作空间存储工具读写脚本、分镜和提示词条目：需要查看或修改文件时先调用工具，不要臆造条目内容。
+            当前版本还不能生成图片或视频，不要声称已经生成媒体。
             回答保持清晰、具体，并在需要时主动询问缺失的创作信息。
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
 
     private final AgentRunMapper agentRunMapper;
     private final ModelInvocationMapper modelInvocationMapper;
+    private final AgentRunTurnMapper agentRunTurnMapper;
+    private final ToolInvocationMapper toolInvocationMapper;
     private final WorkflowStartRequestMapper workflowStartRequestMapper;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final ModelDefinitionService modelDefinitionService;
+    private final ObjectMapper objectMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
 
@@ -81,12 +91,6 @@ public class AgentRunService {
                 : conversation.getModelDefinitionId();
         ModelDefinition model = modelDefinitionService.resolveForRun(preferredModelId);
 
-        List<Message> messages = messageMapper.selectList(
-                Wrappers.<Message>lambdaQuery()
-                        .eq(Message::getConversationId, run.getConversationId())
-                        .orderByAsc(Message::getSequenceNo));
-        List<ChatTurn> turns = buildTurns(messages, model.getMaxInputTokens());
-
         Instant now = clock.instant();
         run.setStatus(AgentRunStatus.RUNNING);
         run.setModelDefinitionId(model.getId());
@@ -94,14 +98,146 @@ public class AgentRunService {
         run.setErrorMessage(null);
         agentRunMapper.updateById(run);
 
-        return new AgentPrompt(runId, model.getId(), model.getMaxInputTokens(), turns);
+        return new AgentPrompt(runId, model.getId(), model.getMaxInputTokens());
+    }
+
+    /**
+     * Rebuilds the complete Responses {@code input}: conversation messages up to the current user
+     * message, then every persisted turn of this run with its function call outputs. No
+     * {@code previous_response_id} is involved, so the request is fully self-contained.
+     */
+    public AgentModelInput buildInput(UUID runId) {
+        AgentRun run = get(runId);
+        ModelDefinition model = modelDefinitionService.get(run.getModelDefinitionId());
+        int budget = model.getMaxInputTokens();
+
+        long limit = Long.MAX_VALUE;
+        Message userMessage = run.getUserMessageId() == null
+                ? null
+                : messageMapper.selectById(run.getUserMessageId());
+        if (userMessage != null) {
+            limit = userMessage.getSequenceNo();
+        }
+
+        List<ModelInputItem> runItems = new ArrayList<>();
+        int used = 0;
+        for (AgentRunTurn turn : listTurns(runId)) {
+            if (turn.getAssistantText() != null && !turn.getAssistantText().isBlank()) {
+                runItems.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
+                used += turn.getAssistantText().length();
+            }
+            for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
+                runItems.add(new ModelInputItem.FunctionCall(
+                        call.callId(), call.name(), call.arguments()));
+                used += length(call.arguments());
+                ToolInvocation invocation = findInvocation(runId, call.callId());
+                if (invocation != null) {
+                    String output = toolOutput(invocation);
+                    runItems.add(new ModelInputItem.FunctionCallOutput(call.callId(), output));
+                    used += output.length();
+                }
+            }
+        }
+        if (used > budget) {
+            throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
+        }
+
+        List<Message> history = messageMapper.selectList(
+                Wrappers.<Message>lambdaQuery()
+                        .eq(Message::getConversationId, run.getConversationId())
+                        .orderByAsc(Message::getSequenceNo));
+
+        LinkedList<ModelInputItem> historyItems = new LinkedList<>();
+        boolean currentUserMessageIncluded = false;
+        for (int index = history.size() - 1; index >= 0; index--) {
+            Message message = history.get(index);
+            if (message.getSequenceNo() > limit || message.getStatus() != MessageStatus.COMPLETED) {
+                continue;
+            }
+            String content = message.getContent();
+            int cost = length(content);
+            if (used + cost > budget) {
+                break;
+            }
+            historyItems.addFirst(new ModelInputItem.Message(role(message.getRole()), content));
+            used += cost;
+            if (message.getId().equals(run.getUserMessageId())) {
+                currentUserMessageIncluded = true;
+            }
+        }
+        if (run.getUserMessageId() != null && !currentUserMessageIncluded) {
+            throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
+        }
+
+        List<ModelInputItem> input = new ArrayList<>(historyItems.size() + runItems.size());
+        input.addAll(historyItems);
+        input.addAll(runItems);
+        return new AgentModelInput(SYSTEM_PROMPT, input);
+    }
+
+    public AgentRunTurn findTurn(UUID runId, int turnNo) {
+        return agentRunTurnMapper.selectOne(
+                Wrappers.<AgentRunTurn>lambdaQuery()
+                        .eq(AgentRunTurn::getAgentRunId, runId)
+                        .eq(AgentRunTurn::getTurnNo, turnNo));
+    }
+
+    public List<ModelToolCall> toolCalls(UUID runId, int turnNo) {
+        AgentRunTurn turn = findTurn(runId, turnNo);
+        return turn == null ? List.of() : parseCalls(turn.getFunctionCalls());
+    }
+
+    @Transactional
+    public AgentRunTurn recordTurn(UUID runId, int turnNo, ModelResponse response) {
+        AgentRunTurn turn = new AgentRunTurn();
+        turn.setId(idGenerator.nextId());
+        turn.setAgentRunId(runId);
+        turn.setTurnNo(turnNo);
+        turn.setAssistantText(response.text());
+        turn.setFunctionCalls(writeCalls(response.toolCalls()));
+        turn.setResponseId(response.responseId());
+        turn.setStatus("incomplete".equalsIgnoreCase(response.finishReason())
+                ? AgentTurnStatus.INCOMPLETE
+                : AgentTurnStatus.COMPLETED);
+        turn.setCreatedAt(clock.instant());
+        agentRunTurnMapper.insert(turn);
+        return turn;
+    }
+
+    public ModelToolCall findToolCall(UUID runId, String toolCallId) {
+        for (AgentRunTurn turn : listTurns(runId)) {
+            for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
+                if (call.callId().equals(toolCallId)) {
+                    return call;
+                }
+            }
+        }
+        return null;
+    }
+
+    public ToolInvocation findInvocation(UUID runId, String toolCallId) {
+        return toolInvocationMapper.selectOne(
+                Wrappers.<ToolInvocation>lambdaQuery()
+                        .eq(ToolInvocation::getAgentRunId, runId)
+                        .eq(ToolInvocation::getToolCallId, toolCallId));
+    }
+
+    public ToolExecutionContext toolContext(UUID runId, String toolCallId) {
+        AgentRun run = get(runId);
+        return new ToolExecutionContext(
+                run.getWorkspaceId(),
+                run.getConversationId(),
+                run.getUserId(),
+                runId,
+                toolCallId,
+                run.isPlatformAdmin());
     }
 
     public void recordInvocation(
             UUID runId,
             UUID modelDefinitionId,
             ModelInvocationStatus status,
-            ChatCompletionResult result,
+            ModelResponse result,
             String errorMessage) {
         ModelInvocation invocation = new ModelInvocation();
         invocation.setId(idGenerator.nextId());
@@ -112,18 +248,23 @@ public class AgentRunService {
         invocation.setOutputTokens(result == null ? null : result.outputTokens());
         invocation.setLatencyMs(result == null ? null : result.latencyMs());
         invocation.setFinishReason(result == null ? null : result.finishReason());
+        invocation.setResponseId(result == null ? null : result.responseId());
         invocation.setErrorMessage(errorMessage);
         invocation.setCreatedAt(clock.instant());
         modelInvocationMapper.insert(invocation);
     }
 
     @Transactional
-    public UUID complete(UUID runId, ModelReply reply) {
+    public UUID complete(UUID runId, int finalTurnNo) {
         AgentRun run = get(runId);
         if (run.getStatus() == AgentRunStatus.COMPLETED || run.getAssistantMessageId() != null) {
             return run.getAssistantMessageId();
         }
         if (run.getStatus() == AgentRunStatus.FAILED) {
+            throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
+        }
+        AgentRunTurn turn = findTurn(runId, finalTurnNo);
+        if (turn == null || turn.getAssistantText() == null || turn.getAssistantText().isBlank()) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
         }
         Conversation conversation = conversationMapper.selectById(run.getConversationId());
@@ -137,7 +278,7 @@ public class AgentRunService {
         assistantMessage.setConversationId(run.getConversationId());
         assistantMessage.setWorkspaceId(run.getWorkspaceId());
         assistantMessage.setRole(MessageRole.ASSISTANT);
-        assistantMessage.setContent(reply.content());
+        assistantMessage.setContent(turn.getAssistantText());
         assistantMessage.setSequenceNo(nextSequence(run.getConversationId()));
         assistantMessage.setStatus(MessageStatus.COMPLETED);
         assistantMessage.setCreatedAt(now);
@@ -218,6 +359,54 @@ public class AgentRunService {
         workflowStartRequestMapper.updateById(request);
     }
 
+    private List<AgentRunTurn> listTurns(UUID runId) {
+        return agentRunTurnMapper.selectList(
+                Wrappers.<AgentRunTurn>lambdaQuery()
+                        .eq(AgentRunTurn::getAgentRunId, runId)
+                        .orderByAsc(AgentRunTurn::getTurnNo));
+    }
+
+    private List<ModelToolCall> parseCalls(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            ModelToolCall[] calls = objectMapper.readValue(json, ModelToolCall[].class);
+            return List.of(calls);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.AGENT_RUN_INVALID_STATE, "持久化的工具调用记录无法解析");
+        }
+    }
+
+    private String writeCalls(List<ModelToolCall> calls) {
+        if (calls.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(calls);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.AGENT_RUN_INVALID_STATE, "工具调用记录无法序列化");
+        }
+    }
+
+    private String toolOutput(ToolInvocation invocation) {
+        if (invocation.getStatus() == ToolInvocationStatus.SUCCEEDED) {
+            return invocation.getResult() == null ? "{}" : invocation.getResult();
+        }
+        return ToolResult.failure(invocation.getErrorCode(), invocation.getErrorMessage())
+                .modelContent();
+    }
+
+    private String role(MessageRole role) {
+        return role.name().toLowerCase(Locale.ROOT);
+    }
+
+    private int length(String value) {
+        return value == null ? 0 : value.length();
+    }
+
     private WorkflowStartRequest findStartRequest(String workflowId) {
         return workflowStartRequestMapper.selectOne(
                 Wrappers.<WorkflowStartRequest>lambdaQuery()
@@ -231,35 +420,6 @@ public class AgentRunService {
                         .orderByDesc(Message::getSequenceNo)
                         .last("LIMIT 1"));
         return last == null ? 1 : last.getSequenceNo() + 1;
-    }
-
-    private List<ChatTurn> buildTurns(List<Message> messages, int maxInputTokens) {
-        int used = SYSTEM_PROMPT.length();
-        if (used > maxInputTokens) {
-            throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
-        }
-        LinkedList<ChatTurn> selected = new LinkedList<>();
-        for (int index = messages.size() - 1; index >= 0; index--) {
-            Message message = messages.get(index);
-            if (message.getStatus() != MessageStatus.COMPLETED) {
-                continue;
-            }
-            String content = message.getContent();
-            int cost = content.length();
-            if (used + cost > maxInputTokens) {
-                if (selected.isEmpty()) {
-                    throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
-                }
-                break;
-            }
-            selected.addFirst(new ChatTurn(
-                    message.getRole().name().toLowerCase(Locale.ROOT), content));
-            used += cost;
-        }
-        List<ChatTurn> turns = new ArrayList<>(selected.size() + 1);
-        turns.add(new ChatTurn("system", SYSTEM_PROMPT));
-        turns.addAll(selected);
-        return turns;
     }
 
     private String truncate(String value) {

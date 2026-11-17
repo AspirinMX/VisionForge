@@ -83,7 +83,11 @@ public class ConversationService {
 
     @Transactional
     public AgentTurnResult startTurn(
-            UUID workspaceId, UUID conversationId, UUID userId, String content) {
+            UUID workspaceId,
+            UUID conversationId,
+            UUID userId,
+            boolean platformAdmin,
+            String content) {
         Conversation conversation = get(workspaceId, conversationId);
         String safeContent = normalizeContent(content);
         Instant now = clock.instant();
@@ -107,6 +111,8 @@ public class ConversationService {
         run.setWorkspaceId(workspaceId);
         run.setConversationId(conversationId);
         run.setUserMessageId(userMessage.getId());
+        run.setUserId(userId);
+        run.setPlatformAdmin(platformAdmin);
         run.setModelDefinitionId(conversation.getModelDefinitionId());
         run.setStatus(AgentRunStatus.PENDING);
         run.setWorkflowId(workflowId);

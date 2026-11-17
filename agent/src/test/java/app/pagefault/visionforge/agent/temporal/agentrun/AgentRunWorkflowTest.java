@@ -3,12 +3,11 @@ package app.pagefault.visionforge.agent.temporal.agentrun;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
-
-import app.pagefault.visionforge.agent.provider.ChatTurn;
 
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
@@ -21,24 +20,36 @@ class AgentRunWorkflowTest {
     private static final String TASK_QUEUE = "agent-run-test";
 
     @Test
-    void completesRunThroughActivities() {
+    void completesRunWhenModelStopsCallingTools() {
         TestWorkflowEnvironment environment = TestWorkflowEnvironment.newInstance();
         try {
             CapturingActivities activities = new CapturingActivities();
-            Worker worker = environment.newWorker(TASK_QUEUE);
-            worker.registerWorkflowImplementationTypes(AgentRunWorkflowImpl.class);
-            worker.registerActivitiesImplementations(activities);
-            environment.start();
+            startWorker(environment, activities);
 
-            AgentRunWorkflow workflow = environment.getWorkflowClient().newWorkflowStub(
-                    AgentRunWorkflow.class,
-                    WorkflowOptions.newBuilder().setTaskQueue(TASK_QUEUE).build());
-            UUID runId = UUID.randomUUID();
+            workflow(environment).run(UUID.randomUUID());
 
-            workflow.run(runId);
+            assertThat(activities.invokedTurns).containsExactly(0);
+            assertThat(activities.executedTools).isEmpty();
+            assertThat(activities.completedTurn).isEqualTo(0);
+            assertThat(activities.failed).isFalse();
+        } finally {
+            environment.close();
+        }
+    }
 
-            assertThat(activities.prompt.runId()).isEqualTo(runId);
-            assertThat(activities.completed).isTrue();
+    @Test
+    void executesToolsAndCallsModelAgain() {
+        TestWorkflowEnvironment environment = TestWorkflowEnvironment.newInstance();
+        try {
+            CapturingActivities activities = new CapturingActivities();
+            activities.toolCallOnFirstTurn = true;
+            startWorker(environment, activities);
+
+            workflow(environment).run(UUID.randomUUID());
+
+            assertThat(activities.invokedTurns).containsExactly(0, 1);
+            assertThat(activities.executedTools).containsExactly("call_1");
+            assertThat(activities.completedTurn).isEqualTo(1);
             assertThat(activities.failed).isFalse();
         } finally {
             environment.close();
@@ -51,17 +62,9 @@ class AgentRunWorkflowTest {
         try {
             CapturingActivities activities = new CapturingActivities();
             activities.failModel = true;
-            Worker worker = environment.newWorker(TASK_QUEUE);
-            worker.registerWorkflowImplementationTypes(AgentRunWorkflowImpl.class);
-            worker.registerActivitiesImplementations(activities);
-            environment.start();
+            startWorker(environment, activities);
 
-            WorkflowClient client = environment.getWorkflowClient();
-            AgentRunWorkflow workflow = client.newWorkflowStub(
-                    AgentRunWorkflow.class,
-                    WorkflowOptions.newBuilder().setTaskQueue(TASK_QUEUE).build());
-
-            assertThatThrownBy(() -> workflow.run(UUID.randomUUID()))
+            assertThatThrownBy(() -> workflow(environment).run(UUID.randomUUID()))
                     .isInstanceOf(RuntimeException.class);
             assertThat(activities.failed).isTrue();
         } finally {
@@ -69,34 +72,56 @@ class AgentRunWorkflowTest {
         }
     }
 
+    private AgentRunWorkflow workflow(TestWorkflowEnvironment environment) {
+        return environment.getWorkflowClient().newWorkflowStub(
+                AgentRunWorkflow.class,
+                WorkflowOptions.newBuilder().setTaskQueue(TASK_QUEUE).build());
+    }
+
+    private void startWorker(
+            TestWorkflowEnvironment environment, CapturingActivities activities) {
+        Worker worker = environment.newWorker(TASK_QUEUE);
+        worker.registerWorkflowImplementationTypes(AgentRunWorkflowImpl.class);
+        worker.registerActivitiesImplementations(activities);
+        environment.start();
+    }
+
     static class CapturingActivities implements AgentActivities {
 
-        private AgentPrompt prompt;
+        private final List<Integer> invokedTurns = new ArrayList<>();
+        private final List<String> executedTools = new ArrayList<>();
+        private boolean toolCallOnFirstTurn;
         private boolean completed;
+        private int completedTurn = -1;
         private boolean failed;
         private boolean failModel;
 
         @Override
         public AgentPrompt loadPrompt(UUID runId) {
-            prompt = new AgentPrompt(
-                    runId,
-                    UUID.randomUUID(),
-                    1_000,
-                    List.of(new ChatTurn("system", "system"), new ChatTurn("user", "hello")));
-            return prompt;
+            return new AgentPrompt(runId, UUID.randomUUID(), 1_000);
         }
 
         @Override
-        public ModelReply invokeModel(UUID runId, AgentPrompt prompt) {
+        public ModelTurn invokeModel(UUID runId, int turnNo) {
+            invokedTurns.add(turnNo);
             if (failModel) {
                 throw ApplicationFailure.newNonRetryableFailure("boom", "MODEL_FAILED");
             }
-            return new ModelReply("reply", 10, 5, "stop", 20);
+            if (toolCallOnFirstTurn && turnNo == 0) {
+                return new ModelTurn(0, List.of("call_1"), "resp_0");
+            }
+            return new ModelTurn(turnNo, List.of(), "resp_" + turnNo);
         }
 
         @Override
-        public void completeRun(UUID runId, ModelReply reply) {
+        public void executeTool(UUID runId, String toolCallId) {
+            executedTools.add(toolCallId);
+        }
+
+        @Override
+        public void completeRun(UUID runId, int turnNo) {
             completed = true;
+            completedTurn = turnNo;
         }
 
         @Override

@@ -10,16 +10,26 @@ import io.temporal.failure.ApplicationFailure;
 import io.temporal.workflow.Workflow;
 
 /**
- * Minimal text-only AgentRun loop: load context, call the model once, persist the reply. Tool
- * calls and multi-step loops will extend this workflow without changing the API contract.
+ * Dynamic model/tool loop. Every model call and every tool execution is its own Activity so a
+ * worker restart resumes from the last recorded step instead of repeating the whole run.
  */
 public class AgentRunWorkflowImpl implements AgentRunWorkflow {
+
+    private static final int MAX_TURNS = 12;
 
     private final AgentActivities modelActivities = Workflow.newActivityStub(
             AgentActivities.class,
             ActivityOptions.newBuilder()
-                    .setStartToCloseTimeout(Duration.ofMinutes(5))
+                    .setStartToCloseTimeout(Duration.ofMinutes(15))
+                    // A paid model call is never retried automatically; a failed turn ends the run.
                     .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(1).build())
+                    .build());
+
+    private final AgentActivities toolActivities = Workflow.newActivityStub(
+            AgentActivities.class,
+            ActivityOptions.newBuilder()
+                    .setStartToCloseTimeout(Duration.ofMinutes(2))
+                    .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(2).build())
                     .build());
 
     private final AgentActivities finalizeActivities = Workflow.newActivityStub(
@@ -32,9 +42,24 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
     @Override
     public void run(UUID runId) {
         try {
-            AgentPrompt prompt = modelActivities.loadPrompt(runId);
-            ModelReply reply = modelActivities.invokeModel(runId, prompt);
-            finalizeActivities.completeRun(runId, reply);
+            modelActivities.loadPrompt(runId);
+            int turnNo = 0;
+            while (true) {
+                ModelTurn turn = modelActivities.invokeModel(runId, turnNo);
+                if (turn.toolCallIds().isEmpty()) {
+                    finalizeActivities.completeRun(runId, turnNo);
+                    return;
+                }
+                if (turnNo + 1 >= MAX_TURNS) {
+                    finalizeActivities.failRun(
+                            runId, "工具调用轮次超过上限（" + MAX_TURNS + "）");
+                    return;
+                }
+                for (String toolCallId : turn.toolCallIds()) {
+                    toolActivities.executeTool(runId, toolCallId);
+                }
+                turnNo++;
+            }
         } catch (ActivityFailure failure) {
             finalizeActivities.failRun(runId, failureMessage(failure));
             throw failure;

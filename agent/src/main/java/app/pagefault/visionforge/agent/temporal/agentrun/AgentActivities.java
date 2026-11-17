@@ -9,9 +9,11 @@ public interface AgentActivities {
 
     AgentPrompt loadPrompt(UUID runId);
 
-    ModelReply invokeModel(UUID runId, AgentPrompt prompt);
+    ModelTurn invokeModel(UUID runId, int turnNo);
 
-    void completeRun(UUID runId, ModelReply reply);
+    void executeTool(UUID runId, String toolCallId);
+
+    void completeRun(UUID runId, int turnNo);
 
     void failRun(UUID runId, String errorMessage);
 }
