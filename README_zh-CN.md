@@ -32,13 +32,13 @@ pnpm --dir frontend start
 
 ## 后端开发
 
-在 IDE 中将根目录的 `pom.xml` 导入为 Maven 工程。安装 Maven 后，可在仓库根目录验证模块结构：
+在 IDE 中将根目录的 `pom.xml` 导入为 Maven 工程。仓库自带 Maven Wrapper，无需本地安装 Maven：
 
 ```sh
-mvn validate
+./mvnw validate
 ```
 
-后端目前为模块骨架，尚未配置 Spring Boot 启动及业务依赖。
+依赖与插件版本由根 POM 统一管理（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）。后端目前为模块骨架，尚未配置 Spring Boot 启动应用及业务依赖。
 
 ## 部署
 

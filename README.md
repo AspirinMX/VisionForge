@@ -32,13 +32,13 @@ pnpm --dir frontend start
 
 ## Backend development
 
-Import the root `pom.xml` as the Maven project in your IDE. With Maven installed, validate the module structure from the repository root:
+Import the root `pom.xml` as the Maven project in your IDE. The repository includes the Maven Wrapper, so a local Maven installation is not required:
 
 ```sh
-mvn validate
+./mvnw validate
 ```
 
-The backend currently contains module skeletons; Spring Boot startup and business dependencies have not been configured yet.
+Dependency and plugin versions are managed centrally by the root POM (Java 21, Spring Boot 4.1.2 BOM, Temporal Java SDK 1.41.1 BOM). The backend currently contains module skeletons; Spring Boot startup applications and business dependencies have not been configured yet.
 
 ## Deployment
 

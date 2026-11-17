@@ -495,7 +495,7 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 17. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 的 modules 列表包含全部八个模块，agent 的 POM 已继承父工程且 artifactId 命名与其他模块统一。不能将本提案当作实现完成说明。
+截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。不能将本提案当作实现完成说明。
 
 已观察到的基础工程待办：
 
@@ -505,7 +505,7 @@ billing 独立于 Agent 的自然语言判断。
 
 需要通过实现验证或产品决策确定的事项：
 
-- Temporal 的部署方式、资源与版本策略；SDK 与 Spring Boot 的版本组合。
+- Temporal 的部署方式与资源策略；SDK 与 Spring Boot 的版本组合已在根 POM 确定（Spring Boot 4.1.2、Temporal Java SDK 1.41.1、Java 21）。
 - 工具后台执行、自动续跑、取消及部分成功的交互与计费语义。
 - 模型的实际能力配置、费用规则和不同错误的恢复策略。
 - 摘要质量标准、上下文预算、历史和媒体的保留规则。
