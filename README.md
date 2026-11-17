@@ -138,6 +138,29 @@ The model uses the tools `list_files`, `search_files`, `read_file`, `create_file
 
 Worker runtime settings live under `visionforge.worker` and can be overridden with environment variables such as `WORKER_MAX_CONCURRENT_ACTIVITIES`, `WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`, `WORKER_WORKFLOW_CACHE_SIZE`, `WORKER_MAX_WORKFLOW_THREADS` and `WORKER_GRACEFUL_SHUTDOWN_TIMEOUT`. Start compensation is controlled by `WORKER_START_COMPENSATION_ENABLED`, `WORKER_START_COMPENSATION_INTERVAL_MS`, `WORKER_START_COMPENSATION_BATCH_SIZE` and `WORKER_START_COMPENSATION_MAX_ATTEMPTS`.
 
+### Object storage
+
+Conversation text files live in PostgreSQL. Images, video and other binaries use an S3-compatible object store; RustFS is the local default:
+
+```sh
+docker compose up -d --wait rustfs
+docker compose up rustfs-init
+```
+
+The API and worker read `STORAGE_BACKEND`, `STORAGE_ENDPOINT`, `STORAGE_PUBLIC_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_PATH_STYLE`, `STORAGE_PRESIGN_TTL`, `STORAGE_UPLOAD_SESSION_TTL` and `STORAGE_MAX_UPLOAD_BYTES`. Presigned URLs are signed for `STORAGE_PUBLIC_ENDPOINT`, so that host must be reachable by the browser; the server keeps using `STORAGE_ENDPOINT`. V13 creates `asset`, `asset_variant` and `upload_session`; the adapter uses only the S3 subset tested by RustFS (object CRUD, presigned GET/PUT, range reads and multipart).
+
+Upload flow:
+
+```text
+POST /api/v1/conversations/{conversationId}/uploads
+  -> presigned PUT URL + required headers
+PUT  <presigned URL> with the exact Content-Type
+POST /api/v1/conversations/{conversationId}/uploads/{uploadSessionId}/complete
+  -> verifies size and content type, marks the asset READY
+GET  /api/v1/assets/{assetId}/download-url
+  -> short-lived presigned GET
+```
+
 ## Deployment
 
 Deployment files are located at the repository root. The Dockerfile and Compose file remain placeholders; runnable service definitions will be added separately.

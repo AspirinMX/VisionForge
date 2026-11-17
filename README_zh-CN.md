@@ -138,6 +138,29 @@ GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
 
 Worker 运行时配置位于 `visionforge.worker`，可通过 `WORKER_MAX_CONCURRENT_ACTIVITIES`、`WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`、`WORKER_WORKFLOW_CACHE_SIZE`、`WORKER_MAX_WORKFLOW_THREADS`、`WORKER_GRACEFUL_SHUTDOWN_TIMEOUT` 等环境变量覆盖。启动补偿由 `WORKER_START_COMPENSATION_ENABLED`、`WORKER_START_COMPENSATION_INTERVAL_MS`、`WORKER_START_COMPENSATION_BATCH_SIZE`、`WORKER_START_COMPENSATION_MAX_ATTEMPTS` 控制。
 
+### 对象存储
+
+会话中的文本文件保存在 PostgreSQL；图片、视频等二进制走 S3 兼容对象存储，本地默认使用 RustFS：
+
+```sh
+docker compose up -d --wait rustfs
+docker compose up rustfs-init
+```
+
+API 和 Worker 读取 `STORAGE_BACKEND`、`STORAGE_ENDPOINT`、`STORAGE_PUBLIC_ENDPOINT`、`STORAGE_REGION`、`STORAGE_BUCKET`、`STORAGE_ACCESS_KEY`、`STORAGE_SECRET_KEY`、`STORAGE_PATH_STYLE`、`STORAGE_PRESIGN_TTL`、`STORAGE_UPLOAD_SESSION_TTL`、`STORAGE_MAX_UPLOAD_BYTES`。预签名 URL 按 `STORAGE_PUBLIC_ENDPOINT` 签名，该地址必须能被浏览器访问；服务端读写仍使用 `STORAGE_ENDPOINT`。V13 创建 `asset`、`asset_variant` 和 `upload_session`；适配器只使用 RustFS 已测试的 S3 子集（对象 CRUD、预签名 GET/PUT、Range 和分片上传）。
+
+上传流程：
+
+```text
+POST /api/v1/conversations/{conversationId}/uploads
+  -> 返回预签名 PUT URL 和必需请求头
+PUT  <预签名 URL>，Content-Type 必须与申请时一致
+POST /api/v1/conversations/{conversationId}/uploads/{uploadSessionId}/complete
+  -> 校验大小和类型，将 asset 标记为 READY
+GET  /api/v1/assets/{assetId}/download-url
+  -> 返回短期预签名 GET URL
+```
+
 ## 部署
 
 部署文件位于仓库根目录。Dockerfile 和 Compose 文件仍为占位配置，可运行的服务定义将在后续添加。

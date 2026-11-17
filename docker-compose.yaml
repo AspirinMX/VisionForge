@@ -28,5 +28,48 @@ services:
       timeout: 5s
       retries: 10
 
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: visionforge-rustfs
+    command: ["/data"]
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+    ports:
+      - "${RUSTFS_PORT:-9000}:9000"
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - visionforge-rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  rustfs-init:
+    image: amazon/aws-cli:latest
+    container_name: visionforge-rustfs-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_DEFAULT_REGION: us-east-1
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-visionforge}
+    entrypoint: >
+      /bin/sh -c "
+      aws configure set default.s3.addressing_style path &&
+      aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket $$RUSTFS_BUCKET 2>/dev/null ||
+      aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket $$RUSTFS_BUCKET
+      "
+
 volumes:
   visionforge-postgres-data:
+  visionforge-rustfs-data:

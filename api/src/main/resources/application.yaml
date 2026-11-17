@@ -43,6 +43,18 @@ visionforge:
     task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
   model:
     config-secret: ${MODEL_CONFIG_SECRET:}
+  storage:
+    backend: ${STORAGE_BACKEND:s3}
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:http://localhost:9000}
+    region: ${STORAGE_REGION:us-east-1}
+    bucket: ${STORAGE_BUCKET:visionforge}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    path-style: ${STORAGE_PATH_STYLE:true}
+    presign-ttl: ${STORAGE_PRESIGN_TTL:15m}
+    upload-session-ttl: ${STORAGE_UPLOAD_SESSION_TTL:1h}
+    max-upload-bytes: ${STORAGE_MAX_UPLOAD_BYTES:2147483648}
   stream:
     timeout-ms: ${STREAM_TIMEOUT_MS:300000}
   identity:

@@ -34,6 +34,7 @@
         <lombok.version>1.18.48</lombok.version>
         <mybatis-plus.version>3.5.18.1</mybatis-plus.version>
         <openai-java.version>4.99.0</openai-java.version>
+        <aws-sdk.version>2.59.2</aws-sdk.version>
 
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
@@ -76,6 +77,11 @@
                 <groupId>com.openai</groupId>
                 <artifactId>openai-java</artifactId>
                 <version>${openai-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>${aws-sdk.version}</version>
             </dependency>
 
             <!-- 内部模块统一版本，子模块引用时无需重复声明 version -->

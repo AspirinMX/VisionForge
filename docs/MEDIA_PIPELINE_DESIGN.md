@@ -1,6 +1,6 @@
 # 图片、视频生成与媒体资产方案
 
-调研日期：2026-11-18。状态：详细设计建议，尚未实现，也不表示已通过网关联调。
+调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；媒体生成、归档、处理与计费仍为设计建议，尚未通过网关联调。
 
 依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、工作空间存储服务和 V1–V10 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
@@ -471,23 +471,26 @@ Activity 不循环 sleep 等整个视频生成完成。大文件传输和处理�
 
 ### 6.1 存储选型与地址
 
-建议实现 `ObjectStorage` 抽象，以 AWS SDK for Java v2 的 S3 client/presigner 访问 RustFS。官方 AWS Java 示例涵盖预签名 GET/PUT。[S13] RustFS 官方兼容矩阵区分已测试、计划支持和已排除项目，因此必须针对选定镜像验收，不能把“S3 兼容”当作所有功能可用。[S14]
+已实现 `asset.storage.ObjectStorage` 端口和 `S3ObjectStorage` 适配器，以 AWS SDK for Java v2 的 S3 client/presigner 访问 RustFS；本地默认 RustFS，但领域代码只依赖端口，未来可替换为其他对象存储。官方 AWS Java 示例涵盖预签名 GET/PUT。[S13] RustFS 官方兼容矩阵区分已测试、计划支持和已排除项目，因此必须针对选定镜像验收，不能把“S3 兼容”当作所有功能可用。[S14]
 
-首版一个私有媒体 bucket，按 workspace 分前缀；可增加独立临时 bucket 简化清理。对象键只由服务端分配：
+首版一个私有媒体 bucket；对象键只由服务端分配：
 
 ```text
-staging/{workspaceId}/{uploadSessionId}/{randomId}
-workspaces/{workspaceId}/assets/{assetId}/original.{ext}
-workspaces/{workspaceId}/assets/{variantAssetId}/derived.{ext}
+users/{userId}/conversations/{conversationId}/uploads/{uploadSessionId}/{filename}
+users/{userId}/conversations/{conversationId}/assets/{assetId}/original.{ext}
+users/{userId}/conversations/{conversationId}/generations/{taskId}/{outputId}.{ext}
+users/{userId}/conversations/{conversationId}/variants/{assetId}/{variant}.{ext}
 ```
+
+`uploads/` 是预签名 PUT 的临时键；complete 时把对象复制到 `assets/.../original.*`，正式资产不会再接受客户端写入。生成结果和变体的键已预留，归档流程尚未实现。
 
 bucket/key 只在服务端，客户端使用业务 ID。数据库不把对象公开 URL 存为永久地址。配置区分内部 endpoint（Worker 读写）和外部 endpoint（浏览器/供应商可达）；预签名必须用最终实际访问的 host/path 生成，不能签完再字符串替换域名。所有正式桶默认私有。
 
 ### 6.2 上传：直传、验证、不可变发布
 
-1. `POST /upload-sessions` 验证声明格式/大小并预留空间存储额度，分配随机 staging key，签发短时 PUT 或受控 multipart 分片授权。
-2. 浏览器直传。小文件普通 PUT，大视频按配置启用 multipart；签名绑定必要请求头。客户端不能自定目标桶、正式对象键或随意扩大片数。
-3. `POST /upload-sessions/{id}/complete` 幂等受理验证，返回 202；服务端 HEAD、真实解码/ffprobe、SHA-256 与限额校验。ETag 不是通用内容 SHA-256，不能直接用于去重或内容一致性证明。
+1. 已实现 `POST /api/v1/conversations/{conversationId}/uploads`：验证声明格式/大小，分配临时键并签发短时 presigned PUT。
+2. 浏览器直传。小文件普通 PUT，大视频后续按配置启用 multipart；签名绑定 Content-Type。客户端不能自定目标桶、正式对象键或随意扩大片数。
+3. 已实现 `POST /api/v1/conversations/{conversationId}/uploads/{uploadSessionId}/complete`：HEAD 校验实际大小和 Content-Type，把临时对象复制到正式资产键并标记 READY；重复调用是幂等的。真实解码/ffprobe 和 SHA-256 强校验仍待补充，后端未返回 checksum 时 `asset.checksum` 可为空。
 4. 发布前将校验对象固定为不可变来源：优先使用经过验收的对象 version ID/条件复制；若目标存储不支持，则受控下载到 Worker 临时文件，校验后上传正式键并再次校验。不能 HEAD 完后就把仍可被预签名 PUT 覆盖的 staging key 作为正式资产。
 5. 同一数据库事务将 asset 置 READY，创建 item/version、引用和可选会话绑定，提交存储额度；清理 staging 进入独立幂等步骤。并发 complete 返回同一资产与条目。
 
