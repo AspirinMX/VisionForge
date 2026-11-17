@@ -8,7 +8,7 @@
 
 VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工作台。用户通过自然语言提出需求，主对话模型根据上下文选择工具，完成创意讨论、提示词优化、剧本编辑、素材选择、图片生成和视频生成。
 
-首版面向个人用户，通过第三方网关调用模型。首版保留工作空间、成员关系和工作空间存储库：工作空间是租户、权限、计费和存储归属边界，会话只绑定存储条目。多人分工、审核、自建模型和复杂作品编排在后续扩展，首版不实现。
+首版面向个人用户，通过第三方接入 OpenAI Responses API 调用模型。首版保留工作空间、成员关系和工作空间存储库：工作空间是租户、权限、计费和存储归属边界，会话只绑定存储条目。多人分工、审核、自建模型和复杂作品编排在后续扩展，首版不实现。
 
 核心目标：
 
@@ -28,12 +28,13 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | 创作能力 | 图片、视频、剧本、素材操作均作为工具暴露 |
 | 创作存储 | 脚本、分镜、提示词、图片和视频进入工作空间存储库；会话只绑定条目，文件不归属于会话 |
 | 工作流 | Agent Loop，不预设必须先写剧本、再生成图片、最后生成视频 |
-| 模型接入 | 第三方 OpenAI 兼容网关，优先采用 OpenAI 官方 Java SDK |
-| 协议假设 | 按讨论约定，假设网关兼容所需 API，不将网关兼容实现作为本提案的前置问题 |
-| 上下文压缩 | 远程 compact 不可用，调用文本模型生成本地管理的摘要 |
+| 模型接入 | 第三方接入 OpenAI Responses API（`POST /responses`）；优先采用 OpenAI 官方 Java SDK |
+| 上游协议 | 请求上游时使用 HTTP SSE（`stream: true`）；不使用 Chat Completions、同步响应或 WebSocket；不使用 `previous_response_id` |
+| 协议假设 | 按讨论约定，假设上游实现 OpenAI Responses API 的 HTTP SSE 事件和工具调用语义，不将上游实现差异作为本提案的前置问题 |
+| 上下文压缩 | 不使用 Responses compact 接口；compact 是一次普通的 Responses API 模型调用，摘要由本地管理和持久化 |
 | 持久化执行 | 优先采用 Temporal，实施前通过故障恢复验证 |
 | 消息中间件 | 首版移除 Kafka、Debezium/CDC，也不引入替代 MQ |
-| 流式输出 | HTTP SSE；Worker 通过 Redis pub/sub 发布模型增量；持久化消息是事实来源，断线不重放 |
+| 流式输出 | 上游 Responses API 使用 HTTP SSE；Worker 通过 Redis pub/sub 发布增量，API 再以 HTTP SSE 推送给前端；持久化消息是事实来源，断线不重放 |
 | 业务存储 | PostgreSQL |
 | 临时数据 | Redis，用于缓存、限流和 SSE 增量分发 |
 | 媒体存储 | RustFS 或其他经过验证的 S3 兼容对象存储 |
@@ -51,7 +52,7 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 - image-2、Seedream：图片生成或编辑能力。
 - Seedance：视频生成能力。
 
-上述名称表示产品接入目标，不作为对官方模型命名和能力范围的断言。参数和能力由模型目录配置。统一网关与 SDK 不意味着内部业务必须使用同一种生成操作；视频任务仍然需要明确的提交、查询、取消和产物获取语义。
+上述名称表示产品接入目标，不作为对官方模型命名和能力范围的断言。参数和能力由模型目录配置。统一接入方式与 SDK 不意味着内部业务必须使用同一种生成操作；视频任务仍然需要明确的提交、查询、取消和产物获取语义。
 
 ## 3. Maven 模块调整
 
@@ -327,6 +328,8 @@ flowchart TD
 
 是否继续调用工具由模型输出和执行状态共同决定，不能仅以“本次没有工具调用”判断所有响应均已正常结束。响应不完整、调用超时和用户取消需要独立处理。
 
+模型调用统一走 Responses API。每次调用由 Activity 显式构造完整 `input`：系统指令、历史消息、之前的 `function_call` 和 `function_call_output` 都在本次请求中重新提交。请求使用 HTTP SSE，读取 `response.output_text.delta`、`response.function_call_arguments.*`、`response.completed` 等事件；不使用同步响应、WebSocket 或 `previous_response_id`。助手文本来自 message 输出项，工具调用来自 function_call 输出项，工具结果以 function_call_output 回填后进入下一轮。
+
 每轮记录提示词版本、工具定义版本、模型配置、上下文快照及调用结果。对于同一个会话分支，首版默认串行推进 AgentRun，避免并发回复覆盖状态；不同分支和不同会话可以独立执行。
 
 前端可以增加图片、视频快捷入口，但它们应复用相同业务服务与任务语义，不另建一套生成规则。
@@ -376,6 +379,7 @@ flowchart TD
 
 - Workflow 管理执行顺序、分支、并行、持久化等待和取消传播。
 - Activity 执行模型调用、数据库访问、文件传输和媒体处理等外部操作。
+- 模型 Activity 通过 Responses API 发起 HTTP SSE 请求并读完整个流，再把完整文本、工具调用、用量和 `response_id` 返回 Workflow；Workflow 不直接解析供应商事件。
 - 模型决策通过 Activity 返回并被记录；Workflow 根据已记录结果推进动态分支。
 - 重放使用已完成调用的记录，不重新询问模型已决定过的步骤。
 - 不在 Workflow 代码中直接访问网络、数据库或非确定性的外部状态。
@@ -479,13 +483,24 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 前端可见消息与模型协议记录分开。除最终文本外，还需保留用于后续调用的工具请求、工具结果、响应阶段及其他必要输出项。
 
-记录调用模型、参数、response_id、请求标识、用量、执行尝试和错误分类。供应商响应应脱敏，大块媒体内容归档后转换为资产引用。
+记录调用模型、参数、`response_id`、`request_id`、用量、执行尝试和错误分类。供应商响应应脱敏，大块媒体内容归档后转换为资产引用。
 
-网关返回的 response_id 用于查询、关联和排错，不能成为会话唯一存储。加密或不透明的推理项只在协议要求的范围内保存和传递，不将其当作可读取的用户消息。
+`response_id` 只用于查询、关联和排错，不能成为会话唯一存储，也不能用来隐式引用前文。每次调用都从持久化的消息、工具调用和工具结果显式构造完整 `input`；不使用 `previous_response_id`。加密或不透明的推理项只在协议要求的范围内保存和传递，不将其当作可读取的用户消息。
+
+#### Responses API 调用约定
+
+- 请求：`POST {baseUrl}/responses`，`stream: true`，`Accept: text/event-stream`。
+- 请求体包含 `model`、显式 `input`、`max_output_tokens`、可选的 `tools`、`tool_choice` 和 `reasoning.effort`。
+- `input` 是输出项数组：普通消息使用 `{role, content}`；历史工具调用使用 `{type: "function_call", call_id, name, arguments}`；工具结果使用 `{type: "function_call_output", call_id, output}`。
+- 工具定义使用 Responses 格式：`{type: "function", name, description, parameters}`。
+- 需要解析的 SSE 事件至少包括 `response.output_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
+- `response.completed` 中的 `response.id` 记录为 `response_id`；后续请求仍然重新提交完整 `input`，绝不使用 `previous_response_id`。
 
 ### 11.3 流式输出
 
 当前最小实现采用 HTTP SSE，入口为 `POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream`，响应类型为 `text/event-stream`。非流式消息接口保留，供不支持 SSE 或 Redis 暂时不可用的客户端轮询。
+
+上游模型调用同样只使用 Responses API 的 HTTP SSE（`stream: true`），不调用同步响应接口，也不使用 WebSocket。下游 API 到浏览器使用 SSE，Worker 到 API 通过 Redis pub/sub 解耦；即使客户端使用非流式消息接口轮询，Worker 对上游仍然使用 SSE。
 
 事件格式：
 
@@ -534,7 +549,7 @@ event: error      data: {"type":"error","message":"..."}
 
 ### 12.2 摘要生成流程
 
-远程 compact 不作为可用能力。采用普通文本模型生成结构化摘要：
+不使用 Responses compact 接口。compact 是一次普通的 Responses API 调用（HTTP SSE），由应用生成并持久化结构化摘要：
 
 1. 计算输入预算，包括文本、媒体和工具定义，并预留输出及后续工具调用空间。
 2. 在接近预算前触发摘要；初始阈值可以从可用预算的 70%～80% 试验，后续依据实际效果调整。
@@ -548,10 +563,10 @@ event: error      data: {"type":"error","message":"..."}
 
 ### 12.3 压缩后的上下文边界
 
-文本摘要是有损信息压缩，不等同于 Responses 原生 compact。
+文本摘要是有损信息压缩，不使用 Responses compact 接口。
 
 - 建立新的 context_epoch，从摘要和保留的消息重新构造输入。
-- 不继续链接包含旧历史的 previous_response_id，避免重复上下文或版本混用。
+- 完全不使用 `previous_response_id`；每次调用都显式提交摘要、保留消息和当前请求，避免重复上下文或版本混用。
 - 不复用依赖旧前缀的加密推理项；旧协议记录可以继续用于排错。
 - 新 epoch 内尽量追加新记录，减少无必要的前缀重写。
 - 摘要以带来源的历史资料加入上下文，不作为新的系统权限或预算指令。
@@ -718,7 +733,7 @@ billing 独立于 Agent 的自然语言判断。
 | 阶段 | 主要交付 | 验收重点 |
 | --- | --- | --- |
 | 1. 基础工程 | 八模块边界、数据库迁移、身份和工作空间、Temporal 基础环境 | API/Worker 可启动，迁移可从空库执行 |
-| 2. 对话与工具循环 | 消息持久化、上下文快照、模型调用、工作空间存储库、文件与剧本工具、动态分发 | 模型能直接回复或多轮调用工具，进程恢复不重复创建条目版本 |
+| 2. 对话与工具循环 | 消息持久化、上下文快照、Responses API HTTP SSE 调用、工作空间存储库、文件与剧本工具、动态分发 | 模型能直接回复或多轮调用工具；上游只使用 Responses API SSE；进程恢复不重复创建条目版本 |
 | 3. 图片闭环 | 素材上传、图片工具、费用预占、生成与归档 | 重复请求不重复扣费，产物可以查看和下载 |
 | 4. 上下文压缩 | 摘要、上下文版本、来源追溯和预算控制 | 压缩不丢失关键确认信息，不删除历史消息 |
 | 5. 视频闭环 | 视频工具、长任务等待、取消、封面和后台完成通知 | AgentRun 结束后生成可继续，归档失败单独恢复 |
@@ -751,14 +766,15 @@ billing 独立于 Agent 的自然语言判断。
 
 - common：统一响应、错误码、UUIDv7、自研 `@BizLog`。
 - identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）、工作空间与成员管理（见第 5 节）、登录选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新归档、所有权转让、平台管理员跨空间操作和审计。
-- agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation 落库、`AgentRunWorkflow` 调用 OpenAI 兼容 `/chat/completions` 并持久化回复；Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
+- agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation 落库、`AgentRunWorkflow` 当前仍使用 `/chat/completions` 完成文本回复；该实现与目标 Responses API 不一致，待迁移。Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
 - asset：工作空间存储库已实现文本条目、不可变版本、会话绑定和可见性过滤；提供创建、读取、更新、版本列表和绑定接口，更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB。V5 迁移创建 `workspace_item`、`workspace_item_version`、`conversation_item`。
 - agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_items`、`search_items`、`read_item`、`create_item`、`update_item`、`list_item_versions`、`bind_item`、`unbind_item` 八个工作空间工具。工具参数只包含条目 ID、路径和内容，工作空间/会话/用户来自服务端执行上下文。
 - 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
 
 尚未实现：
 
-- 模型 `tools` / `tool_calls` 解析和多步工具循环；工具注册表已就绪，但 AgentRunWorkflow 仍只调用一次模型并返回文本。
+- Responses API + HTTP SSE 上游迁移；当前 provider 仍使用 Chat Completions，且保留了同步 `complete` 路径。
+- Responses `function_call` / `function_call_output` 解析、工具调用和多步工具循环；工具注册表已就绪，但 AgentRunWorkflow 仍只调用一次模型并返回文本。
 - 会话创建者/可见性过滤。当前对话列表按 workspace 查询，空间成员可以读取同空间会话；这与第 5 节、第 11 节的边界尚未对齐。
 - 工具调用循环、上下文压缩、真实媒体生成、审核和多人分工。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
@@ -774,4 +790,4 @@ billing 独立于 Agent 的自然语言判断。
 - 摘要质量标准、上下文预算、历史和媒体的保留规则。
 - 第三方 UI 组件的具体版本与许可范围。
 
-网关兼容性按已约定前提处理，远程 compact 不纳入实现；Kafka 和 CDC 不作为上述待办的前置依赖。不能将本提案当作实现完成说明。
+上游对 OpenAI Responses API 的实现程度按已约定前提处理。目标协议已确定为 OpenAI Responses API + HTTP SSE：不使用 Chat Completions、同步上游响应、WebSocket、`previous_response_id` 或 Responses compact；compact 始终是一次普通的模型调用。这里不使用“OpenAI 兼容网关”这一说法，因为它通常指 Chat Completions 兼容，而本项目目标是 Responses API。Kafka 和 CDC 不作为上述待办的前置依赖。不能将本提案当作实现完成说明。
