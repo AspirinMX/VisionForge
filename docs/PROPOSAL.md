@@ -491,11 +491,24 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 #### Responses API 调用约定
 
 - 请求：通过官方 SDK 的 `responses().createStreaming()` 发起，底层为 `POST {baseUrl}/responses`、`stream: true`、`Accept: text/event-stream`。业务代码不直接拼装该 HTTP 请求，也不直接解析 SSE 文本。
-- 请求体包含 `model`、显式 `input`、`max_output_tokens`、可选的 `tools`、`tool_choice` 和 `reasoning.effort`。
-- `input` 是输出项数组：普通消息使用 `{role, content}`；历史工具调用使用 `{type: "function_call", call_id, name, arguments}`；工具结果使用 `{type: "function_call_output", call_id, output}`。
+- 请求体包含 `model`、显式 `input`、`max_output_tokens`、可选的 `tools`、`tool_choice`、`reasoning.effort` 和 `include: ["reasoning.encrypted_content"]`。
+- `input` 是输出项数组：普通消息使用 `{role, content}`；历史工具调用使用 `{type: "function_call", call_id, name, arguments}`；工具结果使用 `{type: "function_call_output", call_id, output}`；推理项使用 `{type: "reasoning", summary, encrypted_content}`。
 - 工具定义使用 Responses 格式：`{type: "function", name, description, parameters}`。
-- SDK 负责消费并映射 SSE 事件，provider 只读取 SDK 暴露的文本增量、最终 `Response`、工具调用、用量和 `response_id`。相关事件至少包括 `response.output_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
+- SDK 负责消费并映射 SSE 事件，provider 只读取 SDK 暴露的文本增量、推理增量、最终 `Response`、工具调用、用量和 `response_id`。相关事件至少包括 `response.output_text.delta`、`response.reasoning_text.delta`、`response.reasoning_summary_text.delta`、`response.output_item.added`、`response.output_item.done`、`response.function_call_arguments.delta`、`response.function_call_arguments.done`、`response.completed`、`response.failed` 和错误事件。
 - `response.completed` 中的 `response.id` 记录为 `response_id`；后续请求仍然重新提交完整 `input`，绝不使用 `previous_response_id`。
+
+#### 推理项
+
+推理模型可能返回两类推理项，处理方式不同：
+
+- 加密推理项：只带 `encrypted_content` 和 `summary`，内容对应用不可读。它是跨轮携带推理状态的唯一载体，必须在下一轮 `input` 中按原顺序回放；回放时省略服务端 `id`，保留 `encrypted_content`，并始终提交 `summary`（无摘要时提交空数组）。
+- 明文推理项：带可读的 `content` 或 `summary`，没有 `encrypted_content`。只持久化留档，不回放；部分供应商在后续请求中回传明文推理会直接报错。
+
+请求统一附加 `include: ["reasoning.encrypted_content"]`，保证加密推理项被返回。
+
+每个模型定义带 `reasoning_replay` 策略：`ENCRYPTED`（默认，只回放加密推理项）、`ALL`、`NONE`，用于适配口径不同的供应商。
+
+推理项绑定它被生成时的输入前缀，因此：不跨 AgentRun 回放；发生 compact 后，旧 epoch 产生的推理项作废。`agent_run_turn` 记录 `context_epoch` 和推理项原始内容，回放时按 turn 顺序、且只取当前 epoch 的记录。
 
 ### 11.3 流式输出
 
@@ -506,11 +519,15 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 事件格式：
 
 ```text
-event: accepted   data: {"type":"accepted","runId":"..."}
-event: delta      data: {"type":"delta","content":"..."}
-event: done       data: {"type":"done","assistantMessageId":"..."}
-event: error      data: {"type":"error","message":"..."}
+event: accepted          data: {"type":"accepted","runId":"..."}
+event: reasoning         data: {"type":"reasoning","content":"..."}
+event: reasoning_summary data: {"type":"reasoning_summary","content":"..."}
+event: delta             data: {"type":"delta","content":"..."}
+event: done              data: {"type":"done","assistantMessageId":"..."}
+event: error             data: {"type":"error","message":"..."}
 ```
+
+推理内容与正文一样实时推送给客户端：明文推理使用 `reasoning` 事件，加密推理的摘要部分使用 `reasoning_summary` 事件。两者在正文 `delta` 之前按上游顺序到达，同一轮内保持顺序，但不保证跨轮合并成完整文本。
 
 执行链路：
 
@@ -525,7 +542,7 @@ event: error      data: {"type":"error","message":"..."}
 - 当前事件只有 runId，没有 attempt_id 和顺序号；同一 run 的增量通过单线程订阅和同步分发保持顺序。需要断线续传时，再增加事件序号、短期缓存和 attempt_id。
 - SSE 超时默认 5 分钟，可配置；超时只关闭推送，不取消 AgentRun 或已授权的生成任务。
 - 浏览器不能使用 `EventSource` 携带 `Authorization` 头，应使用 `fetch` 流式读取。
-- 工具进度、任务卡片和生成状态复用同一 SSE 通道扩展；当前最小实现只推送模型文本增量。
+- 工具进度、任务卡片和生成状态复用同一 SSE 通道扩展；当前实现推送推理增量（`reasoning`、`reasoning_summary`）和模型文本增量（`delta`）。
 - 完整消息、工具调用和任务状态落 PostgreSQL；不逐 token 写业务表。
 - 新尝试不能直接拼接到旧文本尾部；失败重试由新的 AgentRun 或明确的续跑产生。
 
@@ -560,7 +577,48 @@ event: error      data: {"type":"error","message":"..."}
 6. 通过版本校验发布新的上下文版本；摘要期间到达的新消息仍保留在摘要范围之后。
 7. 保存原始消息和协议记录，compact 不负责删除历史。
 
-建议 context_summary 保存 from_seq、to_seq、source_message_ids、源范围校验信息、模型、版本及生成时间。摘要不得把未经用户确认的模型建议提升为已确认事实。
+#### 触发与区间
+
+- 每轮构建 `input` 前估算总量：系统指令、已有摘要、未压缩历史、当前 run 的 turns、工具定义和预留输出。超过预算的 80% 触发压缩，阈值可配置。
+- 压缩区间从最早未压缩消息开始，到“尾部保留边界”之前结束；尾部保留量按预算倒推（约占 25%），不按固定条数。
+- 切点只落在消息边界，不切开单条消息；当前用户消息和当前 run 的 turns 永不进入压缩区间。
+- 摘要区间内不得出现半对工具调用：历史 `function_call` / `function_call_output` 只存在于 run 协议记录中，压缩仅覆盖 `message`，因此不会切断调用对。
+
+#### 摘要调用
+
+- 复用当前会话模型的 baseUrl、apiKey 和 model；不带 `tools`，`max_output_tokens` 单独配置，reasoning effort 使用 `NONE` 或 `LOW`。
+- 走同一条 Responses 流式客户端，但增量不推送给客户端；调用结果以 `model_invocation.purpose = COMPACT` 记录，便于计费和排查。
+- 摘要按固定结构输出：目标、约束、已确认、已否决、待解决、涉及的存储条目 ID 与版本。
+- 摘要文本本身设长度上限，超出要求重写，避免摘要反而撑爆预算。
+
+#### 数据模型
+
+```text
+context_summary (
+  id                  uuid,
+  workspace_id        uuid,
+  conversation_id     uuid,
+  epoch               int,      -- 每次新摘要递增
+  from_seq            bigint,   -- 覆盖的第一条 message.sequence_no
+  to_seq              bigint,   -- 覆盖的最后一条
+  content             text,     -- 结构化摘要
+  source_digest       text,     -- 覆盖区间内容校验值
+  model_definition_id uuid,
+  prompt_version      text,
+  input_tokens        int,
+  output_tokens       int,
+  created_at          timestamptz,
+  unique (conversation_id, epoch)
+)
+```
+
+#### 发布与失效
+
+- 发布前校验覆盖区间未发生变化；不一致则丢弃本次结果。
+- 写入时 `epoch = 该会话当前最大 epoch + 1`，`unique(conversation_id, epoch)` 兜底并发。
+- 读取时校验 `source_digest`；不匹配视为过期摘要，忽略并重新压缩。
+- 摘要调用失败或结果为空时，回退到截断历史，不失败 AgentRun；连续失败需要计数，避免每轮重复付费。
+- 摘要不得把未经用户确认的模型建议提升为已确认事实。
 
 ### 12.3 压缩后的上下文边界
 
@@ -568,10 +626,20 @@ event: error      data: {"type":"error","message":"..."}
 
 - 建立新的 context_epoch，从摘要和保留的消息重新构造输入。
 - 完全不使用 `previous_response_id`；每次调用都显式提交摘要、保留消息和当前请求，避免重复上下文或版本混用。
-- 不复用依赖旧前缀的加密推理项；旧协议记录可以继续用于排错。
+- 不复用依赖旧前缀的加密推理项：`agent_run_turn.context_epoch` 与当前 epoch 不一致的推理项不再回放；旧协议记录继续用于排错。
 - 新 epoch 内尽量追加新记录，减少无必要的前缀重写。
 - 摘要以带来源的历史资料加入上下文，不作为新的系统权限或预算指令。
 - 避免无限执行“摘要的摘要”；需要时从原始记录重建，并始终保留独立的项目事实。
+
+### 12.4 当前 run 内的上下文增长
+
+第一阶段 compact 只覆盖已持久化的对话历史。当前 run 自身的 turns（工具参数和工具结果）不在压缩范围内，超出预算时该轮模型调用失败并结束 run。
+
+后续扩展沿用同一套摘要机制，覆盖 run 内已完成的 turn 区间：
+
+- 只在 turn 边界切分，`function_call` 与其 `function_call_output` 必须成对保留或成对丢弃。
+- 摘要替换被覆盖的 turn 后 `context_epoch` 递增，旧 epoch 的推理项一律不再回放。
+- 当前 turn 和最近若干 turn 始终保留。
 
 首版先使用明确引用和数据库查询找回历史事实，不默认引入向量数据库。出现跨大量历史内容的语义检索需求后再评估。
 
