@@ -38,7 +38,16 @@ Import the root `pom.xml` as the Maven project in your IDE. The repository inclu
 ./mvnw validate
 ```
 
-Dependency and plugin versions are managed centrally by the root POM (Java 21, Spring Boot 4.1.2 BOM, Temporal Java SDK 1.41.1 BOM). Minimal Spring Boot startup applications exist for the API and worker; the worker connects to Temporal and registers a self-check workflow. Database migrations, business modules, and generation pipelines are still pending.
+Dependency and plugin versions are managed centrally by the root POM (Java 21, Spring Boot 4.1.2 BOM, Temporal Java SDK 1.41.1 BOM). Minimal Spring Boot startup applications exist for the API and worker; the worker connects to Temporal and registers a self-check workflow.
+
+Business database migrations live in `database/src/main/resources/db/migration` and are managed by Flyway. Start PostgreSQL and apply migrations from the repository root:
+
+```sh
+docker compose up -d --wait postgres
+./mvnw -pl database flyway:migrate
+```
+
+The defaults target `jdbc:postgresql://localhost:5432/visionforge` with user and password `visionforge`. Override them with `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...`. Business modules and generation pipelines are still pending.
 
 ## Deployment
 

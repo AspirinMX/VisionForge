@@ -38,7 +38,16 @@ pnpm --dir frontend start
 ./mvnw validate
 ```
 
-依赖与插件版本由根 POM 统一管理（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）。API 与 Worker 已具备最小 Spring Boot 启动应用，Worker 可连接 Temporal 并注册自检 Workflow；数据库迁移、业务模块和生成流程仍待实现。
+依赖与插件版本由根 POM 统一管理（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）。API 与 Worker 已具备最小 Spring Boot 启动应用，Worker 可连接 Temporal 并注册自检 Workflow。
+
+业务数据库迁移脚本位于 `database/src/main/resources/db/migration`，由 Flyway 管理。在仓库根目录启动 PostgreSQL 并执行迁移：
+
+```sh
+docker compose up -d --wait postgres
+./mvnw -pl database flyway:migrate
+```
+
+默认连接 `jdbc:postgresql://localhost:5432/visionforge`，用户名和密码均为 `visionforge`；可通过 `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` 覆盖。业务模块和生成流程仍待实现。
 
 ## 部署
 

@@ -1,2 +1,21 @@
 services:
-  
+  postgres:
+    image: postgres:18-alpine
+    container_name: visionforge-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-visionforge}
+      POSTGRES_USER: ${POSTGRES_USER:-visionforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-visionforge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - visionforge-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  visionforge-postgres-data:
