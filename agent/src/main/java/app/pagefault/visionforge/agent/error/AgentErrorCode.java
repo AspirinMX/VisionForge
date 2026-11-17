@@ -15,7 +15,12 @@ public enum AgentErrorCode implements ErrorCode {
     AGENT_RUN_START_FAILED("AGENT_RUN_START_FAILED", 503, "对话执行启动失败，请稍后重试"),
     MESSAGE_EMPTY("AGENT_MESSAGE_EMPTY", 400, "消息内容不能为空"),
     MESSAGE_TOO_LONG("AGENT_MESSAGE_TOO_LONG", 400, "消息内容超过模型允许的输入长度"),
-    AGENT_RUN_INVALID_STATE("AGENT_RUN_INVALID_STATE", 409, "执行记录状态不允许该操作");
+    AGENT_RUN_INVALID_STATE("AGENT_RUN_INVALID_STATE", 409, "执行记录状态不允许该操作"),
+    TOOL_NOT_FOUND("AGENT_TOOL_NOT_FOUND", 404, "工具不存在"),
+    TOOL_ARGUMENTS_INVALID("AGENT_TOOL_ARGUMENTS_INVALID", 400, "工具参数不合法"),
+    TOOL_CONVERSATION_REQUIRED("AGENT_TOOL_CONVERSATION_REQUIRED", 409, "该工具必须在会话中执行"),
+    TOOL_INVOCATION_IN_PROGRESS("AGENT_TOOL_INVOCATION_IN_PROGRESS", 409, "同一工具调用正在执行"),
+    TOOL_EXECUTION_FAILED("AGENT_TOOL_EXECUTION_FAILED", 500, "工具执行失败");
 
     private final String code;
     private final int httpStatus;

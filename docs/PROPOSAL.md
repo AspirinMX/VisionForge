@@ -753,11 +753,12 @@ billing 独立于 Agent 的自然语言判断。
 - identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）、工作空间与成员管理（见第 5 节）、登录选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新归档、所有权转让、平台管理员跨空间操作和审计。
 - agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation 落库、`AgentRunWorkflow` 调用 OpenAI 兼容 `/chat/completions` 并持久化回复；Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
 - asset：工作空间存储库已实现文本条目、不可变版本、会话绑定和可见性过滤；提供创建、读取、更新、版本列表和绑定接口，更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB。V5 迁移创建 `workspace_item`、`workspace_item_version`、`conversation_item`。
+- agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_items`、`search_items`、`read_item`、`create_item`、`update_item`、`list_item_versions`、`bind_item`、`unbind_item` 八个工作空间工具。工具参数只包含条目 ID、路径和内容，工作空间/会话/用户来自服务端执行上下文。
 - 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
 
 尚未实现：
 
-- 文件工具和剧本工具；当前只有存储库 REST 接口，模型还不能调用工具读写条目。
+- 模型 `tools` / `tool_calls` 解析和多步工具循环；工具注册表已就绪，但 AgentRunWorkflow 仍只调用一次模型并返回文本。
 - 会话创建者/可见性过滤。当前对话列表按 workspace 查询，空间成员可以读取同空间会话；这与第 5 节、第 11 节的边界尚未对齐。
 - 工具调用循环、上下文压缩、真实媒体生成、审核和多人分工。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
