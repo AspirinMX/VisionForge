@@ -12,9 +12,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 
+import app.pagefault.visionforge.agent.conversation.AgentConversationReferenceChecker;
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
+import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 import app.pagefault.visionforge.agent.model.ApiKeyCipher;
 import app.pagefault.visionforge.agent.model.ModelDefinitionMapper;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
@@ -66,6 +68,12 @@ public class AgentConfiguration {
             Clock clock) {
         return new ModelDefinitionService(
                 modelDefinitionMapper, apiKeyCipher, idGenerator, clock);
+    }
+
+    @Bean
+    public ConversationReferenceChecker conversationReferenceChecker(
+            ConversationMapper conversationMapper) {
+        return new AgentConversationReferenceChecker(conversationMapper);
     }
 
     @Bean

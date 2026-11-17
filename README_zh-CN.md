@@ -117,6 +117,24 @@ event: error      data: {"type":"error","message":"..."}
 
 浏览器应使用 `fetch` 的流式 reader 消费，因为 `EventSource` 不能携带 `Authorization` 头。该接口需要 Redis；非流式消息接口在 Redis 不可用时仍可使用。Redis pub/sub 只负责实时投递；连接中断后以已持久化的助手消息为准。
 
+### 工作空间存储库
+
+脚本、分镜、提示词、图片和视频属于工作空间，不属于会话。会话通过 `conversation_item` 绑定存储条目；删除会话只删除绑定，不删除条目。更新条目会创建不可变版本，并必须携带 `baseVersion` 以检测并发修改。
+
+```text
+GET    /api/v1/workspaces/{workspaceId}/items
+POST   /api/v1/workspaces/{workspaceId}/items
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}
+PATCH  /api/v1/workspaces/{workspaceId}/items/{itemId}
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions/{version}
+GET    /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
+POST   /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
+DELETE /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items/{itemId}
+```
+
+首版将文本类条目（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。`visibility` 默认 `PRIVATE`，设为 `WORKSPACE` 后空间成员可见。`POST /items` 可携带 `conversationId`，在创建条目时一并绑定会话。V5 迁移创建 `workspace_item`、`workspace_item_version` 和 `conversation_item`。
+
 Worker 运行时配置位于 `visionforge.worker`，可通过 `WORKER_MAX_CONCURRENT_ACTIVITIES`、`WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`、`WORKER_WORKFLOW_CACHE_SIZE`、`WORKER_MAX_WORKFLOW_THREADS`、`WORKER_GRACEFUL_SHUTDOWN_TIMEOUT` 等环境变量覆盖。启动补偿由 `WORKER_START_COMPENSATION_ENABLED`、`WORKER_START_COMPENSATION_INTERVAL_MS`、`WORKER_START_COMPENSATION_BATCH_SIZE`、`WORKER_START_COMPENSATION_MAX_ATTEMPTS` 控制。
 
 ## 部署

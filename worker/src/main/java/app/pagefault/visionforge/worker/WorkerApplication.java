@@ -7,7 +7,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @SpringBootApplication(scanBasePackages = {
         "app.pagefault.visionforge.worker",
-        "app.pagefault.visionforge.agent"
+        "app.pagefault.visionforge.agent",
+        "app.pagefault.visionforge.asset"
 })
 public class WorkerApplication {
 

@@ -117,6 +117,24 @@ event: error      data: {"type":"error","message":"..."}
 
 Browsers should consume it with `fetch` and a streaming reader because `EventSource` cannot send the `Authorization` header. Redis is required for this endpoint; the non-streaming message endpoint still works without it. Redis pub/sub is best-effort for live delivery; the persisted assistant message remains the source of truth if the stream disconnects.
 
+### Workspace storage library
+
+Scripts, storyboards, prompts, images and videos belong to the workspace, not to a conversation. A conversation links library items through `conversation_item`; deleting a conversation removes the link, not the item. Item updates create immutable versions and require `baseVersion` to detect concurrent edits.
+
+```text
+GET    /api/v1/workspaces/{workspaceId}/items
+POST   /api/v1/workspaces/{workspaceId}/items
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}
+PATCH  /api/v1/workspaces/{workspaceId}/items/{itemId}
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions/{version}
+GET    /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
+POST   /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
+DELETE /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items/{itemId}
+```
+
+The first version stores text items (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. `visibility` defaults to `PRIVATE`; use `WORKSPACE` to expose an item to workspace members. `POST /items` may include `conversationId` to create and bind in one request. The V5 migration creates `workspace_item`, `workspace_item_version` and `conversation_item`.
+
 Worker runtime settings live under `visionforge.worker` and can be overridden with environment variables such as `WORKER_MAX_CONCURRENT_ACTIVITIES`, `WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`, `WORKER_WORKFLOW_CACHE_SIZE`, `WORKER_MAX_WORKFLOW_THREADS` and `WORKER_GRACEFUL_SHUTDOWN_TIMEOUT`. Start compensation is controlled by `WORKER_START_COMPENSATION_ENABLED`, `WORKER_START_COMPENSATION_INTERVAL_MS`, `WORKER_START_COMPENSATION_BATCH_SIZE` and `WORKER_START_COMPENSATION_MAX_ATTEMPTS`.
 
 ## Deployment
