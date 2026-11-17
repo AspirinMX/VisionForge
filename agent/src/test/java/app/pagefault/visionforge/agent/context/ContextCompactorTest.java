@@ -135,7 +135,7 @@ class ContextCompactorTest {
     private AgentRun run() {
         AgentRun run = new AgentRun();
         run.setId(RUN_ID);
-        run.setWorkspaceId(WORKSPACE_ID);
+        run.setUserId(WORKSPACE_ID);
         run.setConversationId(CONVERSATION_ID);
         run.setCreatedAt(NOW);
         return run;
@@ -159,7 +159,6 @@ class ContextCompactorTest {
             Message message = new Message();
             message.setId(UUID.randomUUID());
             message.setConversationId(CONVERSATION_ID);
-            message.setWorkspaceId(WORKSPACE_ID);
             message.setRole(index % 2 == 0 ? MessageRole.ASSISTANT : MessageRole.USER);
             message.setContent("x".repeat(contentLength));
             message.setSequenceNo(index);

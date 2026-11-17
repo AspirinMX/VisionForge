@@ -208,7 +208,7 @@ public class ContextCompactor {
             List<Message> range, String content) {
         ContextSummary summary = new ContextSummary();
         summary.setId(idGenerator.nextId());
-        summary.setWorkspaceId(run.getWorkspaceId());
+        summary.setUserId(run.getUserId());
         summary.setConversationId(run.getConversationId());
         summary.setEpoch(latest == null ? 1 : latest.getEpoch() + 1);
         summary.setFromSeq(range.get(0).getSequenceNo());

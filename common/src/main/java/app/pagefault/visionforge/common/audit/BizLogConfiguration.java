@@ -17,8 +17,8 @@ import app.pagefault.visionforge.common.id.UuidV7Generator;
 /**
  * Registers the self-built business audit infrastructure.
  *
- * <p>Applications provide {@link OperatorProvider}, {@link TenantProvider},
- * {@link BizLogStore}, {@link IdGenerator} and {@link Clock} beans as needed; sensible
+ * <p>Applications provide {@link OperatorProvider}, {@link BizLogStore},
+ * {@link IdGenerator} and {@link Clock} beans as needed; sensible
  * defaults are used otherwise. Import this configuration from api/worker.
  */
 @Configuration(proxyBeanMethods = false)
@@ -29,7 +29,6 @@ public class BizLogConfiguration {
     public BizLogAspect bizLogAspect(
             ObjectProvider<BizLogStore> storeProvider,
             ObjectProvider<OperatorProvider> operatorProvider,
-            ObjectProvider<TenantProvider> tenantProvider,
             ObjectProvider<IdGenerator> idGeneratorProvider,
             ObjectProvider<Clock> clockProvider,
             @Qualifier("bizLogExecutor") Executor bizLogExecutor) {
@@ -38,7 +37,6 @@ public class BizLogConfiguration {
         return new BizLogAspect(
                 storeProvider.getIfAvailable(LoggingBizLogStore::new),
                 operatorProvider.getIfAvailable(BizLogConfiguration::systemOperatorProvider),
-                tenantProvider.getIfAvailable(BizLogConfiguration::noTenantProvider),
                 idGenerator,
                 clock,
                 bizLogExecutor);
@@ -59,9 +57,5 @@ public class BizLogConfiguration {
 
     private static OperatorProvider systemOperatorProvider() {
         return Operator::system;
-    }
-
-    private static TenantProvider noTenantProvider() {
-        return () -> null;
     }
 }

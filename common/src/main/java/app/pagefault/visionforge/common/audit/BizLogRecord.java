@@ -14,7 +14,6 @@ public record BizLogRecord(
         String bizNo,
         UUID operatorId,
         String operatorName,
-        UUID workspaceId,
         boolean success,
         String detail,
         String extra,

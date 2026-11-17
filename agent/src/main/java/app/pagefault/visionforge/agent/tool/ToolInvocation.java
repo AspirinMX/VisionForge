@@ -18,8 +18,6 @@ public class ToolInvocation {
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
-    private UUID workspaceId;
-
     private UUID agentRunId;
 
     private UUID conversationId;

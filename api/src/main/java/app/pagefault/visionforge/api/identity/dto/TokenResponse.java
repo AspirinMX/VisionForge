@@ -3,15 +3,14 @@ package app.pagefault.visionforge.api.identity.dto;
 import java.util.UUID;
 
 import app.pagefault.visionforge.identity.auth.TokenPair;
-import app.pagefault.visionforge.identity.workspace.WorkspaceRole;
 
 public record TokenResponse(
         String accessToken,
         String refreshToken,
         String tokenType,
         long expiresIn,
-        UUID workspaceId,
-        WorkspaceRole workspaceRole) {
+        UUID userId,
+        String email) {
 
     public static TokenResponse from(TokenPair pair) {
         return new TokenResponse(
@@ -19,7 +18,7 @@ public record TokenResponse(
                 pair.refreshToken(),
                 pair.tokenType(),
                 pair.expiresIn(),
-                pair.workspaceId(),
-                pair.workspaceRole());
+                pair.userId(),
+                pair.email());
     }
 }

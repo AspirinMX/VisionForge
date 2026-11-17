@@ -2,8 +2,6 @@ package app.pagefault.visionforge.identity.auth;
 
 import java.util.UUID;
 
-import app.pagefault.visionforge.identity.workspace.WorkspaceRole;
-
 /**
  * Internal token result. HTTP layers expose only the token fields.
  */
@@ -13,7 +11,5 @@ public record TokenPair(
         String tokenType,
         long expiresIn,
         UUID userId,
-        String email,
-        UUID workspaceId,
-        WorkspaceRole workspaceRole) {
+        String email) {
 }

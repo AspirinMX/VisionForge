@@ -49,13 +49,11 @@ docker compose up -d --wait postgres redis
 
 默认连接 `jdbc:postgresql://localhost:5432/visionforge`，用户名和密码均为 `visionforge`。Flyway 可通过 `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` 覆盖；应用使用 `VISIONFORGE_DB_URL`、`VISIONFORGE_DB_USER`、`VISIONFORGE_DB_PASSWORD` 环境变量。
 
-### 认证与工作空间
+### 认证与数据隔离
 
-API 提供 `/api/v1/auth/register`、`/api/v1/auth/login`、`/api/v1/auth/workspace`、`/api/v1/auth/switch-workspace`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/api/v1/auth/me`。Access Token 为绑定单个工作空间的短有效期 JWT（包含 `wsid`、`ws_role`、`platform_admin`）；Refresh Token 为用户级会话，轮换并以哈希形式存储。
+API 提供 `/api/v1/auth/register`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/api/v1/auth/me`。Access Token 为短有效期 JWT，claims 包含 `sub`、`email`、`role`；Refresh Token 为用户级会话，轮换并以哈希形式存储。登录直接签发 TokenPair，没有空间选择和切换。
 
-只有一个工作空间的用户登录后直接获得 TokenPair；有多个工作空间的用户会获得短有效期 selectionToken，通过 `/api/v1/auth/workspace` 选择空间。切换空间通过 `/api/v1/auth/switch-workspace` 换取新的 Access Token，刷新时需携带当前 `workspaceId`。注册成功会自动创建个人工作空间。
-
-工作空间管理接口位于 `/api/v1/workspaces`、`/api/v1/workspaces/{id}`、`/members` 和 `/transfer`。所有带工作空间路径的请求，其 Access Token 的 `wsid` 必须与路径一致。系统角色为 `ADMIN` 和 `USER`；空间角色为 `OWNER`、`ADMIN`、`MEMBER`。平台管理员可切换进入任意工作空间，工作空间操作会写入审计日志。
+系统不存在工作空间实体和成员关系。每个用户只能看到自己的会话和文件，访问他人资源返回 `404`。系统角色 `ADMIN` / `USER` 只用于 `/api/v1/admin/**` 运维接口，不授予访问他人内容的权限。
 
 启动 API 前必须设置 `JWT_SECRET`（Base64 编码，至少 32 字节）：
 
@@ -96,12 +94,13 @@ API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型�
 会话接口：
 
 ```text
-POST /api/v1/workspaces/{workspaceId}/conversations
-GET  /api/v1/workspaces/{workspaceId}/conversations
-GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
-POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
-POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream
-GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
+POST /api/v1/conversations
+GET  /api/v1/conversations
+GET  /api/v1/conversations/{conversationId}
+GET  /api/v1/conversations/{conversationId}/messages
+POST /api/v1/conversations/{conversationId}/messages
+POST /api/v1/conversations/{conversationId}/messages/stream
+GET  /api/v1/agent-runs/{runId}
 ```
 
 发送消息返回 `202 Accepted` 和 `runId`；助手回复由 Workflow 异步写入，客户端轮询 AgentRun，直到状态为 `COMPLETED` 或 `FAILED`。如果 Temporal 暂时不可用，AgentRun 会保持 `PENDING`，由 Worker 的启动补偿任务重试启动 Workflow。
@@ -109,31 +108,33 @@ GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
 `/messages/stream` 返回 `text/event-stream`，需要 Redis（Compose 已提供），事件格式：
 
 ```text
-event: accepted   data: {"type":"accepted","runId":"..."}
-event: delta      data: {"type":"delta","content":"..."}
-event: done       data: {"type":"done","assistantMessageId":"..."}
-event: error      data: {"type":"error","message":"..."}
+event: accepted          data: {"type":"accepted","runId":"..."}
+event: reasoning         data: {"type":"reasoning","content":"..."}
+event: reasoning_summary data: {"type":"reasoning_summary","content":"..."}
+event: delta             data: {"type":"delta","content":"..."}
+event: done              data: {"type":"done","assistantMessageId":"..."}
+event: error             data: {"type":"error","message":"..."}
 ```
 
 浏览器应使用 `fetch` 的流式 reader 消费，因为 `EventSource` 不能携带 `Authorization` 头。该接口需要 Redis；非流式消息接口在 Redis 不可用时仍可使用。Redis pub/sub 只负责实时投递；连接中断后以已持久化的助手消息为准。
 
-### 工作空间存储库
+### 会话工作区
 
-脚本、分镜、提示词、图片和视频属于工作空间，不属于会话。会话通过 `conversation_item` 绑定存储条目；删除会话只删除绑定，不删除条目。更新条目会创建不可变版本，并必须携带 `baseVersion` 以检测并发修改。
+每个会话拥有自己的工作区。这次对话中创建的脚本、分镜、提示词、图片和视频都属于它，不与其他会话或用户共享。更新文件会创建不可变版本，并必须携带 `baseVersion` 以检测并发修改。
 
 ```text
-GET    /api/v1/workspaces/{workspaceId}/items
-POST   /api/v1/workspaces/{workspaceId}/items
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}
-PATCH  /api/v1/workspaces/{workspaceId}/items/{itemId}
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions/{version}
-GET    /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
-POST   /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
-DELETE /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items/{itemId}
+GET   /api/v1/conversations/{conversationId}/files
+POST  /api/v1/conversations/{conversationId}/files
+GET   /api/v1/conversations/{conversationId}/files/search
+GET   /api/v1/conversations/{conversationId}/files/{fileId}
+PATCH /api/v1/conversations/{conversationId}/files/{fileId}
+GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions
+GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
 ```
 
-首版将文本类条目（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。`visibility` 默认 `PRIVATE`，设为 `WORKSPACE` 后空间成员可见。`POST /items` 可携带 `conversationId`，在创建条目时一并绑定会话。V5 迁移创建 `workspace_item`、`workspace_item_version` 和 `conversation_item`。
+首版将文本类文件（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。
+
+模型可用的工具是 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions`；会话和用户始终来自服务端执行上下文。
 
 Worker 运行时配置位于 `visionforge.worker`，可通过 `WORKER_MAX_CONCURRENT_ACTIVITIES`、`WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`、`WORKER_WORKFLOW_CACHE_SIZE`、`WORKER_MAX_WORKFLOW_THREADS`、`WORKER_GRACEFUL_SHUTDOWN_TIMEOUT` 等环境变量覆盖。启动补偿由 `WORKER_START_COMPENSATION_ENABLED`、`WORKER_START_COMPENSATION_INTERVAL_MS`、`WORKER_START_COMPENSATION_BATCH_SIZE`、`WORKER_START_COMPENSATION_MAX_ATTEMPTS` 控制。
 

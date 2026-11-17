@@ -40,13 +40,12 @@ public class ConversationService {
     private final IdGenerator idGenerator;
     private final Clock clock;
 
-    public Conversation create(UUID workspaceId, UUID userId, String title) {
+    public Conversation create(UUID userId, String title) {
         Instant now = clock.instant();
         ModelDefinition defaultModel = modelDefinitionService.findDefaultEnabledOrNull();
 
         Conversation conversation = new Conversation();
         conversation.setId(idGenerator.nextId());
-        conversation.setWorkspaceId(workspaceId);
         conversation.setCreatedBy(userId);
         conversation.setTitle(normalizeTitle(title));
         conversation.setModelDefinitionId(defaultModel == null ? null : defaultModel.getId());
@@ -56,26 +55,26 @@ public class ConversationService {
         return conversation;
     }
 
-    public List<Conversation> list(UUID workspaceId) {
+    public List<Conversation> list(UUID userId) {
         return conversationMapper.selectList(
                 Wrappers.<Conversation>lambdaQuery()
-                        .eq(Conversation::getWorkspaceId, workspaceId)
+                        .eq(Conversation::getCreatedBy, userId)
                         .orderByDesc(Conversation::getLastMessageAt)
                         .orderByDesc(Conversation::getCreatedAt));
     }
 
-    public Conversation get(UUID workspaceId, UUID conversationId) {
+    public Conversation get(UUID userId, UUID conversationId) {
         Conversation conversation = conversationId == null
                 ? null
                 : conversationMapper.selectById(conversationId);
-        if (conversation == null || !workspaceId.equals(conversation.getWorkspaceId())) {
+        if (conversation == null || !userId.equals(conversation.getCreatedBy())) {
             throw new BusinessException(AgentErrorCode.CONVERSATION_NOT_FOUND);
         }
         return conversation;
     }
 
-    public List<Message> messages(UUID workspaceId, UUID conversationId) {
-        get(workspaceId, conversationId);
+    public List<Message> messages(UUID userId, UUID conversationId) {
+        get(userId, conversationId);
         return messageMapper.selectList(
                 Wrappers.<Message>lambdaQuery()
                         .eq(Message::getConversationId, conversationId)
@@ -83,13 +82,8 @@ public class ConversationService {
     }
 
     @Transactional
-    public AgentTurnResult startTurn(
-            UUID workspaceId,
-            UUID conversationId,
-            UUID userId,
-            boolean platformAdmin,
-            String content) {
-        Conversation conversation = get(workspaceId, conversationId);
+    public AgentTurnResult startTurn(UUID userId, UUID conversationId, String content) {
+        Conversation conversation = get(userId, conversationId);
         // Serialize per conversation: message sequence allocation and run creation must not race
         // with another turn of the same conversation.
         conversationMapper.selectForUpdate(conversationId);
@@ -102,7 +96,6 @@ public class ConversationService {
         Message userMessage = new Message();
         userMessage.setId(idGenerator.nextId());
         userMessage.setConversationId(conversationId);
-        userMessage.setWorkspaceId(workspaceId);
         userMessage.setSenderUserId(userId);
         userMessage.setRole(MessageRole.USER);
         userMessage.setContent(safeContent);
@@ -115,11 +108,9 @@ public class ConversationService {
         String workflowId = "agent-run-" + runId;
         AgentRun run = new AgentRun();
         run.setId(runId);
-        run.setWorkspaceId(workspaceId);
         run.setConversationId(conversationId);
         run.setUserMessageId(userMessage.getId());
         run.setUserId(userId);
-        run.setPlatformAdmin(platformAdmin);
         run.setModelDefinitionId(conversation.getModelDefinitionId());
         run.setStatus(AgentRunStatus.PENDING);
         run.setWorkflowId(workflowId);

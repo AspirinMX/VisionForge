@@ -2,11 +2,12 @@ package app.pagefault.visionforge.agent.tool;
 
 import java.util.UUID;
 
+/**
+ * Server-side execution context for a tool call. Identity never comes from model output.
+ */
 public record ToolExecutionContext(
-        UUID workspaceId,
-        UUID conversationId,
         UUID userId,
+        UUID conversationId,
         UUID agentRunId,
-        String toolCallId,
-        boolean platformAdmin) {
+        String toolCallId) {
 }

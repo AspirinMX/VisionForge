@@ -133,14 +133,12 @@ class AgentToolExecutorTest {
     }
 
     private ToolExecutionContext context() {
-        return new ToolExecutionContext(
-                WORKSPACE_ID, null, USER_ID, RUN_ID, CALL_ID, false);
+        return new ToolExecutionContext(USER_ID, null, RUN_ID, CALL_ID);
     }
 
     private ToolInvocation invocation(ToolInvocationStatus status) {
         ToolInvocation invocation = new ToolInvocation();
         invocation.setId(UUID.randomUUID());
-        invocation.setWorkspaceId(WORKSPACE_ID);
         invocation.setAgentRunId(RUN_ID);
         invocation.setToolCallId(CALL_ID);
         invocation.setToolName("mutable");

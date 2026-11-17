@@ -16,72 +16,63 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import app.pagefault.visionforge.agent.conversation.AgentTurnResult;
+import app.pagefault.visionforge.agent.conversation.Conversation;
+import app.pagefault.visionforge.agent.conversation.ConversationService;
 import app.pagefault.visionforge.api.agent.dto.AgentTurnResponse;
 import app.pagefault.visionforge.api.agent.dto.ConversationResponse;
 import app.pagefault.visionforge.api.agent.dto.CreateConversationRequest;
 import app.pagefault.visionforge.api.agent.dto.MessageResponse;
 import app.pagefault.visionforge.api.agent.dto.SendMessageRequest;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
-import app.pagefault.visionforge.api.security.WorkspaceRequestGuard;
 import app.pagefault.visionforge.api.stream.AgentRunStreamService;
-import app.pagefault.visionforge.agent.conversation.AgentTurnResult;
-import app.pagefault.visionforge.agent.conversation.Conversation;
-import app.pagefault.visionforge.agent.conversation.ConversationService;
 import app.pagefault.visionforge.common.api.ApiResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/workspaces/{workspaceId}/conversations")
+@RequestMapping("/api/v1/conversations")
 @RequiredArgsConstructor
 public class ConversationController {
 
     private final ConversationService conversationService;
     private final AgentRunStarter agentRunStarter;
     private final AgentRunStreamService agentRunStreamService;
-    private final WorkspaceRequestGuard workspaceRequestGuard;
 
     @GetMapping
-    public ApiResponse<List<ConversationResponse>> list(
-            @PathVariable UUID workspaceId, @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
-        List<ConversationResponse> conversations = conversationService.list(workspaceId).stream()
-                .map(ConversationResponse::from)
-                .toList();
+    public ApiResponse<List<ConversationResponse>> list(@AuthenticationPrincipal Jwt jwt) {
+        List<ConversationResponse> conversations =
+                conversationService.list(AuthenticatedUser.id(jwt)).stream()
+                        .map(ConversationResponse::from)
+                        .toList();
         return ApiResponse.success(conversations);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ConversationResponse> create(
-            @PathVariable UUID workspaceId,
             @Valid @RequestBody CreateConversationRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
         Conversation conversation = conversationService.create(
-                workspaceId, AuthenticatedUser.id(jwt), request.title());
+                AuthenticatedUser.id(jwt), request.title());
         return ApiResponse.success(ConversationResponse.from(conversation));
     }
 
     @GetMapping("/{conversationId}")
     public ApiResponse<ConversationResponse> get(
-            @PathVariable UUID workspaceId,
             @PathVariable UUID conversationId,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
-        return ApiResponse.success(
-                ConversationResponse.from(conversationService.get(workspaceId, conversationId)));
+        return ApiResponse.success(ConversationResponse.from(
+                conversationService.get(AuthenticatedUser.id(jwt), conversationId)));
     }
 
     @GetMapping("/{conversationId}/messages")
     public ApiResponse<List<MessageResponse>> messages(
-            @PathVariable UUID workspaceId,
             @PathVariable UUID conversationId,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
         List<MessageResponse> messages = conversationService
-                .messages(workspaceId, conversationId)
+                .messages(AuthenticatedUser.id(jwt), conversationId)
                 .stream()
                 .map(MessageResponse::from)
                 .toList();
@@ -91,17 +82,11 @@ public class ConversationController {
     @PostMapping("/{conversationId}/messages")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ApiResponse<AgentTurnResponse> send(
-            @PathVariable UUID workspaceId,
             @PathVariable UUID conversationId,
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
         AgentTurnResult result = conversationService.startTurn(
-                workspaceId,
-                conversationId,
-                AuthenticatedUser.id(jwt),
-                AuthenticatedUser.platformAdmin(jwt),
-                request.content());
+                AuthenticatedUser.id(jwt), conversationId, request.content());
         agentRunStarter.start(result.runId(), result.workflowId());
         return ApiResponse.success(AgentTurnResponse.from(result));
     }
@@ -110,17 +95,11 @@ public class ConversationController {
             value = "/{conversationId}/messages/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendStream(
-            @PathVariable UUID workspaceId,
             @PathVariable UUID conversationId,
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
         AgentTurnResult result = conversationService.startTurn(
-                workspaceId,
-                conversationId,
-                AuthenticatedUser.id(jwt),
-                AuthenticatedUser.platformAdmin(jwt),
-                request.content());
+                AuthenticatedUser.id(jwt), conversationId, request.content());
         SseEmitter emitter = agentRunStreamService.subscribe(result.runId());
         agentRunStarter.start(result.runId(), result.workflowId());
         return emitter;

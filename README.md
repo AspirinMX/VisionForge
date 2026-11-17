@@ -49,13 +49,11 @@ docker compose up -d --wait postgres redis
 
 The defaults target `jdbc:postgresql://localhost:5432/visionforge` with user and password `visionforge`. Override them with `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` for Flyway, or the `VISIONFORGE_DB_URL`, `VISIONFORGE_DB_USER` and `VISIONFORGE_DB_PASSWORD` environment variables for the applications.
 
-### Authentication and workspaces
+### Authentication and isolation
 
-The API exposes `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/workspace`, `/api/v1/auth/switch-workspace`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` and `/api/v1/auth/me`. Access tokens are short-lived JWTs bound to one workspace (`wsid`, `ws_role`, `platform_admin`); refresh tokens are user-level, rotated and stored as hashes.
+The API exposes `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` and `/api/v1/auth/me`. Access tokens are short-lived JWTs carrying `sub`, `email` and `role`; refresh tokens are user-level, rotated and stored as hashes. Login issues a token pair directly — there is no workspace selection or switching.
 
-A user with a single workspace receives a token pair directly. A user with multiple workspaces receives a short-lived selection token and exchanges it through `/api/v1/auth/workspace`. Switching workspaces issues a new access token, and refresh requests include the current `workspaceId`. Registration creates a personal workspace owned by the new user.
-
-Workspace administration uses `/api/v1/workspaces`, `/api/v1/workspaces/{id}`, `/members` and `/transfer`; every workspace-scoped request must present an access token whose `wsid` matches the path. System roles are `ADMIN` and `USER`; workspace roles are `OWNER`, `ADMIN` and `MEMBER`. System administrators can switch into any workspace, and workspace operations are written to the audit log.
+There is no workspace entity and no membership. Each user only sees their own conversations and files; requests for another user's resources return `404`. The system roles `ADMIN` and `USER` gate the operational `/api/v1/admin/**` endpoints only and do not grant access to other users' content.
 
 Set `JWT_SECRET` to a Base64-encoded value of at least 32 bytes before starting the API:
 
@@ -96,12 +94,13 @@ API keys are never returned; responses expose only `apiKeyConfigured`. The provi
 Conversation endpoints:
 
 ```text
-POST /api/v1/workspaces/{workspaceId}/conversations
-GET  /api/v1/workspaces/{workspaceId}/conversations
-GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
-POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
-POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream
-GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
+POST /api/v1/conversations
+GET  /api/v1/conversations
+GET  /api/v1/conversations/{conversationId}
+GET  /api/v1/conversations/{conversationId}/messages
+POST /api/v1/conversations/{conversationId}/messages
+POST /api/v1/conversations/{conversationId}/messages/stream
+GET  /api/v1/agent-runs/{runId}
 ```
 
 Sending a message returns `202 Accepted` with a `runId`. The workflow persists the assistant reply asynchronously; poll the AgentRun endpoint until its status is `COMPLETED` or `FAILED`. If Temporal is temporarily unavailable, the AgentRun stays `PENDING` and the worker's start compensator retries the workflow start.
@@ -109,31 +108,33 @@ Sending a message returns `202 Accepted` with a `runId`. The workflow persists t
 The `/messages/stream` endpoint returns `text/event-stream`. It requires Redis (provided by Compose) and emits:
 
 ```text
-event: accepted   data: {"type":"accepted","runId":"..."}
-event: delta      data: {"type":"delta","content":"..."}
-event: done       data: {"type":"done","assistantMessageId":"..."}
-event: error      data: {"type":"error","message":"..."}
+event: accepted          data: {"type":"accepted","runId":"..."}
+event: reasoning         data: {"type":"reasoning","content":"..."}
+event: reasoning_summary data: {"type":"reasoning_summary","content":"..."}
+event: delta             data: {"type":"delta","content":"..."}
+event: done              data: {"type":"done","assistantMessageId":"..."}
+event: error             data: {"type":"error","message":"..."}
 ```
 
 Browsers should consume it with `fetch` and a streaming reader because `EventSource` cannot send the `Authorization` header. Redis is required for this endpoint; the non-streaming message endpoint still works without it. Redis pub/sub is best-effort for live delivery; the persisted assistant message remains the source of truth if the stream disconnects.
 
-### Workspace storage library
+### Conversation work area
 
-Scripts, storyboards, prompts, images and videos belong to the workspace, not to a conversation. A conversation links library items through `conversation_item`; deleting a conversation removes the link, not the item. Item updates create immutable versions and require `baseVersion` to detect concurrent edits.
+Every conversation has its own work area. Scripts, storyboards, prompts, images and videos created in that conversation belong to it and are not shared with other conversations or users. File updates create immutable versions and require `baseVersion` to detect concurrent edits.
 
 ```text
-GET    /api/v1/workspaces/{workspaceId}/items
-POST   /api/v1/workspaces/{workspaceId}/items
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}
-PATCH  /api/v1/workspaces/{workspaceId}/items/{itemId}
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions
-GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions/{version}
-GET    /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
-POST   /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
-DELETE /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items/{itemId}
+GET   /api/v1/conversations/{conversationId}/files
+POST  /api/v1/conversations/{conversationId}/files
+GET   /api/v1/conversations/{conversationId}/files/search
+GET   /api/v1/conversations/{conversationId}/files/{fileId}
+PATCH /api/v1/conversations/{conversationId}/files/{fileId}
+GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions
+GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
 ```
 
-The first version stores text items (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. `visibility` defaults to `PRIVATE`; use `WORKSPACE` to expose an item to workspace members. `POST /items` may include `conversationId` to create and bind in one request. The V5 migration creates `workspace_item`, `workspace_item_version` and `conversation_item`.
+The first version stores text files (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. V12 creates `conversation_file` and `conversation_file_version`.
+
+The model uses the tools `list_files`, `search_files`, `read_file`, `create_file`, `update_file` and `list_file_versions`; the conversation and user always come from the server-side execution context.
 
 Worker runtime settings live under `visionforge.worker` and can be overridden with environment variables such as `WORKER_MAX_CONCURRENT_ACTIVITIES`, `WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`, `WORKER_WORKFLOW_CACHE_SIZE`, `WORKER_MAX_WORKFLOW_THREADS` and `WORKER_GRACEFUL_SHUTDOWN_TIMEOUT`. Start compensation is controlled by `WORKER_START_COMPENSATION_ENABLED`, `WORKER_START_COMPENSATION_INTERVAL_MS`, `WORKER_START_COMPENSATION_BATCH_SIZE` and `WORKER_START_COMPENSATION_MAX_ATTEMPTS`.
 

@@ -55,7 +55,6 @@ public class AgentToolExecutor {
 
         ToolInvocation invocation = new ToolInvocation();
         invocation.setId(idGenerator.nextId());
-        invocation.setWorkspaceId(context.workspaceId());
         invocation.setAgentRunId(context.agentRunId());
         invocation.setConversationId(context.conversationId());
         invocation.setToolCallId(context.toolCallId());
@@ -140,7 +139,6 @@ public class AgentToolExecutor {
 
     private void requireContext(ToolExecutionContext context) {
         if (context == null
-                || context.workspaceId() == null
                 || context.userId() == null
                 || context.agentRunId() == null
                 || context.toolCallId() == null

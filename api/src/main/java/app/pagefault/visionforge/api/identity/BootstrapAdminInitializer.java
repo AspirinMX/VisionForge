@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import app.pagefault.visionforge.common.logging.LogMasker;
 import app.pagefault.visionforge.identity.user.IdentityService;
 import app.pagefault.visionforge.identity.user.UserAccount;
-import app.pagefault.visionforge.identity.workspace.WorkspaceService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,19 +16,16 @@ import lombok.extern.slf4j.Slf4j;
 public class BootstrapAdminInitializer implements ApplicationRunner {
 
     private final IdentityService identityService;
-    private final WorkspaceService workspaceService;
     private final String email;
     private final String password;
     private final String displayName;
 
     public BootstrapAdminInitializer(
             IdentityService identityService,
-            WorkspaceService workspaceService,
             @Value("${visionforge.identity.bootstrap-admin.email:}") String email,
             @Value("${visionforge.identity.bootstrap-admin.password:}") String password,
             @Value("${visionforge.identity.bootstrap-admin.display-name:Administrator}") String displayName) {
         this.identityService = identityService;
-        this.workspaceService = workspaceService;
         this.email = email;
         this.password = password;
         this.displayName = displayName;
@@ -42,7 +38,6 @@ public class BootstrapAdminInitializer implements ApplicationRunner {
             return;
         }
         UserAccount admin = identityService.ensureAdmin(email, password, displayName);
-        workspaceService.ensurePersonalWorkspace(admin.getId());
         log.info("Bootstrap admin ensured: {}", LogMasker.email(admin.getEmail()));
     }
 }

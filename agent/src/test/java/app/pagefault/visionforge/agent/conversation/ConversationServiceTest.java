@@ -63,8 +63,7 @@ class ConversationServiceTest {
         when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
         when(agentRunMapper.selectCount(any())).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.startTurn(
-                WORKSPACE_ID, CONVERSATION_ID, USER_ID, false, "hello"))
+        assertThatThrownBy(() -> service.startTurn(USER_ID, CONVERSATION_ID, "hello"))
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(AgentErrorCode.CONVERSATION_BUSY));
@@ -80,8 +79,7 @@ class ConversationServiceTest {
         when(agentRunMapper.selectCount(any())).thenReturn(0L);
         when(messageMapper.selectOne(any())).thenReturn(null);
 
-        AgentTurnResult result = service.startTurn(
-                WORKSPACE_ID, CONVERSATION_ID, USER_ID, false, "hello");
+        AgentTurnResult result = service.startTurn(USER_ID, CONVERSATION_ID, "hello");
 
         assertThat(result.runId()).isNotNull();
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
@@ -92,13 +90,12 @@ class ConversationServiceTest {
         ArgumentCaptor<AgentRun> runCaptor = ArgumentCaptor.forClass(AgentRun.class);
         verify(agentRunMapper).insert(runCaptor.capture());
         assertThat(runCaptor.getValue().getUserId()).isEqualTo(USER_ID);
-        assertThat(runCaptor.getValue().isPlatformAdmin()).isFalse();
     }
 
     private Conversation conversation() {
         Conversation conversation = new Conversation();
         conversation.setId(CONVERSATION_ID);
-        conversation.setWorkspaceId(WORKSPACE_ID);
+        conversation.setCreatedBy(USER_ID);
         conversation.setTitle("Chat");
         conversation.setCreatedAt(NOW);
         conversation.setUpdatedAt(NOW);

@@ -20,8 +20,6 @@ public class Message {
 
     private UUID conversationId;
 
-    private UUID workspaceId;
-
     private UUID senderUserId;
 
     private MessageRole role;

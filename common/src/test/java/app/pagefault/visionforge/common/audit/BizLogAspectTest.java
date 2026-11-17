@@ -27,7 +27,6 @@ import app.pagefault.visionforge.common.logging.TraceContext;
 class BizLogAspectTest {
 
     private static final UUID OPERATOR_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID WORKSPACE_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private AnnotationConfigApplicationContext context;
     private TestService service;
@@ -62,7 +61,6 @@ class BizLogAspectTest {
         assertThat(record.bizNo()).isEqualTo("u-1");
         assertThat(record.operatorId()).isEqualTo(OPERATOR_ID);
         assertThat(record.operatorName()).isEqualTo("Alice");
-        assertThat(record.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(record.success()).isTrue();
         assertThat(record.detail()).isEqualTo("用户「alice」创建成功，邮箱=a***@example.com");
         assertThat(record.traceId()).isEqualTo("trace-12345678");
@@ -143,11 +141,6 @@ class BizLogAspectTest {
         @Bean
         OperatorProvider operatorProvider() {
             return () -> new Operator(OPERATOR_ID, "Alice");
-        }
-
-        @Bean
-        TenantProvider tenantProvider() {
-            return () -> WORKSPACE_ID;
         }
 
         @Bean

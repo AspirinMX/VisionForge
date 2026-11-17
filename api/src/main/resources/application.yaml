@@ -35,7 +35,6 @@ visionforge:
       audience: visionforge-api
       access-token-ttl: PT15M
       refresh-token-ttl: P30D
-      selection-token-ttl: PT5M
     password:
       bcrypt-strength: ${BCRYPT_STRENGTH:12}
   temporal:

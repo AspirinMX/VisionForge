@@ -64,9 +64,9 @@ public class AgentRunService {
     private final IdGenerator idGenerator;
     private final Clock clock;
 
-    public AgentRun getForWorkspace(UUID workspaceId, UUID runId) {
+    public AgentRun getForUser(UUID userId, UUID runId) {
         AgentRun run = runId == null ? null : agentRunMapper.selectById(runId);
-        if (run == null || !workspaceId.equals(run.getWorkspaceId())) {
+        if (run == null || !userId.equals(run.getUserId())) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_NOT_FOUND);
         }
         return run;
@@ -287,12 +287,10 @@ public class AgentRunService {
     public ToolExecutionContext toolContext(UUID runId, String toolCallId) {
         AgentRun run = get(runId);
         return new ToolExecutionContext(
-                run.getWorkspaceId(),
-                run.getConversationId(),
                 run.getUserId(),
+                run.getConversationId(),
                 runId,
-                toolCallId,
-                run.isPlatformAdmin());
+                toolCallId);
     }
 
     public void recordInvocation(
@@ -330,7 +328,7 @@ public class AgentRunService {
         Message assistantMessage = new Message();
         assistantMessage.setId(idGenerator.nextId());
         assistantMessage.setConversationId(run.getConversationId());
-        assistantMessage.setWorkspaceId(run.getWorkspaceId());
+        assistantMessage.setSenderUserId(run.getUserId());
         assistantMessage.setRole(MessageRole.ASSISTANT);
         assistantMessage.setContent(turn.getAssistantText());
         assistantMessage.setSequenceNo(nextSequence(run.getConversationId()));

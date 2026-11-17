@@ -22,7 +22,7 @@ public class ContextSummary {
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
-    private UUID workspaceId;
+    private UUID userId;
 
     private UUID conversationId;
 

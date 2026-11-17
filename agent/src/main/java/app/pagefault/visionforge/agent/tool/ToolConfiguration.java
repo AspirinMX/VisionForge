@@ -5,8 +5,8 @@ import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import app.pagefault.visionforge.agent.tool.workspace.WorkspaceTools;
-import app.pagefault.visionforge.asset.library.WorkspaceItemService;
+import app.pagefault.visionforge.agent.tool.files.ConversationFileTools;
+import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import tools.jackson.databind.ObjectMapper;
@@ -16,8 +16,9 @@ public class ToolConfiguration {
 
     @Bean
     public ToolRegistry toolRegistry(
-            WorkspaceItemService workspaceItemService, ObjectMapper objectMapper) {
-        return new ToolRegistry(new WorkspaceTools(workspaceItemService, objectMapper).all());
+            ConversationFileService conversationFileService, ObjectMapper objectMapper) {
+        return new ToolRegistry(
+                new ConversationFileTools(conversationFileService, objectMapper).all());
     }
 
     @Bean

@@ -25,7 +25,6 @@ public class MybatisBizLogStore implements BizLogStore {
         entity.setBizNo(record.bizNo());
         entity.setOperatorId(record.operatorId());
         entity.setOperatorName(record.operatorName());
-        entity.setWorkspaceId(record.workspaceId());
         entity.setSuccess(record.success());
         entity.setDetail(record.detail());
         entity.setExtra(record.extra());

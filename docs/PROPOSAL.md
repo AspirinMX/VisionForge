@@ -750,15 +750,15 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 18. 当前实现差距与后续决策
 
-截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已建立 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）；Compose 提供 PostgreSQL 和 Redis。第 5 节的工作空间模型已改为单用户隔离模型，代码层改造尚未开始。
+截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已到 V12：identity 表为 user_account、refresh_token、audit_log，会话工作区为 conversation_file、conversation_file_version，workspace 和 workspace_member 已在 V11 删除；Compose 提供 PostgreSQL 和 Redis。
 
 已实现：
 
 - common：统一响应、错误码、UUIDv7、自研 `@BizLog`。
-- identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）、工作空间与成员管理、登录选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新归档、所有权转让。其中工作空间与成员部分与第 5 节的新模型冲突，待按 §5.7 移除。
+- identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER，仅用于运维接口）、直接登录签发 TokenPair、refresh 轮换。工作空间、成员、空间选择和切换已全部移除；access token 不再包含空间 claims。
 - agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation/agent_run_turn 落库；模型调用通过 OpenAI 官方 Java SDK 的 `responses().createStreaming()` 请求 Responses API，显式构造 `input`，不使用 Chat Completions、同步上游或 `previous_response_id`。`AgentRunWorkflow` 已实现多步工具循环：模型 Activity 返回工具调用，Workflow 逐个调用工具 Activity，再以 `function_call_output` 回填进入下一轮；循环不设轮数上限，唯一的规模约束是当前对话上下文 token 预算；每轮模型输出写入 `agent_run_turn`，重放时不再重复请求模型。Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
-- asset：已实现文本条目、不可变版本、会话绑定和可见性过滤；提供创建、读取、更新、版本列表和绑定接口，更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB。V5 迁移创建 `workspace_item`、`workspace_item_version`、`conversation_item`，待按第 13 节改为会话级文件表。
-- agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_items`、`search_items`、`read_item`、`create_item`、`update_item`、`list_item_versions`、`bind_item`、`unbind_item` 八个工具。待改为会话工作区的 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions`，`bind_item` / `unbind_item` 随绑定模型一起移除。
+- asset：会话工作区文件已实现，提供创建、读取、更新、搜索、版本列表和指定版本读取；更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB，所有查询按 `conversation_id` + `user_id` 限定。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。
+- agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions` 六个会话工作区工具。工具参数只包含文件 ID、路径和内容，会话和用户来自服务端执行上下文。
 - 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
 - 会话串行：同一会话在任意时刻只允许一个 PENDING/RUNNING 的 AgentRun；消息序号分配在会话行锁内完成，存储层用部分唯一索引兜底，活跃期间再次发送返回 409。
 - 本地 compact：接近输入预算时，用一次普通的 Responses 调用把最早的消息区间压成结构化摘要，写入 `context_summary` 并递增 epoch；摘要按覆盖区间校验 `source_digest` 判定是否过期，摘要调用以 `purpose=COMPACT` 记录。失败或摘要为空时回退到裁剪历史，不失败 AgentRun。
@@ -766,7 +766,6 @@ billing 独立于 Agent 的自然语言判断。
 
 尚未实现：
 
-- 工作空间模型改造：删除 workspace/workspace_member、Token 去掉空间 claims、会话按用户隔离、存储表改为会话级文件表（见 §5.7）。
 - 工具调用的 SSE 进度事件。
 - run 内 turn 级压缩（第一阶段只压缩已持久化的对话历史）、真实媒体生成。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。

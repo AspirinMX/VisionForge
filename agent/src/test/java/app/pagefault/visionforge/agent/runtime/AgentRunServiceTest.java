@@ -262,7 +262,7 @@ class AgentRunServiceTest {
     private AgentRun run(AgentRunStatus status) {
         AgentRun run = new AgentRun();
         run.setId(RUN_ID);
-        run.setWorkspaceId(WORKSPACE_ID);
+        run.setUserId(WORKSPACE_ID);
         run.setConversationId(CONVERSATION_ID);
         run.setUserMessageId(UUID.randomUUID());
         run.setStatus(status);
@@ -274,7 +274,7 @@ class AgentRunServiceTest {
     private Conversation conversation() {
         Conversation conversation = new Conversation();
         conversation.setId(CONVERSATION_ID);
-        conversation.setWorkspaceId(WORKSPACE_ID);
+        conversation.setCreatedBy(WORKSPACE_ID);
         conversation.setTitle("Chat");
         conversation.setCreatedAt(NOW);
         conversation.setUpdatedAt(NOW);
@@ -298,7 +298,6 @@ class AgentRunServiceTest {
         Message message = new Message();
         message.setId(UUID.randomUUID());
         message.setConversationId(CONVERSATION_ID);
-        message.setWorkspaceId(WORKSPACE_ID);
         message.setRole(role);
         message.setContent(content);
         message.setSequenceNo(sequence);

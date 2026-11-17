@@ -18,8 +18,6 @@ public class Conversation {
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
-    private UUID workspaceId;
-
     private String title;
 
     private UUID createdBy;

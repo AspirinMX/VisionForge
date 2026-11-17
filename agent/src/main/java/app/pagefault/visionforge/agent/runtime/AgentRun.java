@@ -20,8 +20,6 @@ public class AgentRun {
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
-    private UUID workspaceId;
-
     private UUID conversationId;
 
     private UUID userMessageId;
@@ -32,8 +30,6 @@ public class AgentRun {
 
     /** The user who started the run; tool execution is scoped to this actor. */
     private UUID userId;
-
-    private boolean platformAdmin;
 
     private AgentRunStatus status;
 

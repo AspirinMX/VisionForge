@@ -28,8 +28,6 @@ public class AuditLogEntity {
 
     private String operatorName;
 
-    private UUID workspaceId;
-
     private boolean success;
 
     private String detail;

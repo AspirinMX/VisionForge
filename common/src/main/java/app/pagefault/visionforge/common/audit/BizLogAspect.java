@@ -38,7 +38,6 @@ public class BizLogAspect {
 
     private final BizLogStore store;
     private final OperatorProvider operatorProvider;
-    private final TenantProvider tenantProvider;
     private final IdGenerator idGenerator;
     private final Clock clock;
     private final Executor executor;
@@ -69,7 +68,6 @@ public class BizLogAspect {
             return;
         }
         Operator operator = resolveOperator();
-        UUID workspaceId = resolveWorkspaceId();
         String traceId = TraceContext.currentTraceId();
         StandardEvaluationContext context = createContext(joinPoint, result, failure, operator, traceId);
 
@@ -90,7 +88,6 @@ public class BizLogAspect {
                 bizNo,
                 operator.id(),
                 operator.name(),
-                workspaceId,
                 failure == null,
                 detail,
                 null,
@@ -142,15 +139,6 @@ public class BizLogAspect {
         } catch (RuntimeException exception) {
             log.warn("Failed to resolve operator for business log", exception);
             return Operator.system();
-        }
-    }
-
-    private UUID resolveWorkspaceId() {
-        try {
-            return tenantProvider.currentWorkspaceId();
-        } catch (RuntimeException exception) {
-            log.warn("Failed to resolve workspace for business log", exception);
-            return null;
         }
     }
 

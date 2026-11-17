@@ -10,11 +10,10 @@ import org.springframework.context.annotation.Configuration;
 
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 
-import app.pagefault.visionforge.asset.library.ConversationItemMapper;
+import app.pagefault.visionforge.asset.library.ConversationFileMapper;
+import app.pagefault.visionforge.asset.library.ConversationFileService;
+import app.pagefault.visionforge.asset.library.ConversationFileVersionMapper;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
-import app.pagefault.visionforge.asset.library.WorkspaceItemMapper;
-import app.pagefault.visionforge.asset.library.WorkspaceItemService;
-import app.pagefault.visionforge.asset.library.WorkspaceItemVersionMapper;
 import app.pagefault.visionforge.asset.persistence.AssetUuidTypeHandler;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -29,17 +28,15 @@ public class AssetConfiguration {
     }
 
     @Bean
-    public WorkspaceItemService workspaceItemService(
-            WorkspaceItemMapper workspaceItemMapper,
-            WorkspaceItemVersionMapper workspaceItemVersionMapper,
-            ConversationItemMapper conversationItemMapper,
+    public ConversationFileService conversationFileService(
+            ConversationFileMapper conversationFileMapper,
+            ConversationFileVersionMapper conversationFileVersionMapper,
             ConversationReferenceChecker conversationReferenceChecker,
             IdGenerator idGenerator,
             Clock clock) {
-        return new WorkspaceItemService(
-                workspaceItemMapper,
-                workspaceItemVersionMapper,
-                conversationItemMapper,
+        return new ConversationFileService(
+                conversationFileMapper,
+                conversationFileVersionMapper,
                 conversationReferenceChecker,
                 idGenerator,
                 clock);

@@ -12,26 +12,23 @@ import org.springframework.web.bind.annotation.RestController;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.api.agent.dto.AgentRunResponse;
-import app.pagefault.visionforge.api.security.WorkspaceRequestGuard;
+import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.common.api.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/workspaces/{workspaceId}/agent-runs")
+@RequestMapping("/api/v1/agent-runs")
 @RequiredArgsConstructor
 public class AgentRunController {
 
     private final AgentRunService agentRunService;
-    private final WorkspaceRequestGuard workspaceRequestGuard;
 
     @GetMapping("/{runId}")
     public ApiResponse<AgentRunResponse> get(
-            @PathVariable UUID workspaceId,
             @PathVariable UUID runId,
             @AuthenticationPrincipal Jwt jwt) {
-        workspaceRequestGuard.require(jwt, workspaceId);
-        AgentRun run = agentRunService.getForWorkspace(workspaceId, runId);
+        AgentRun run = agentRunService.getForUser(AuthenticatedUser.id(jwt), runId);
         return ApiResponse.success(AgentRunResponse.from(run));
     }
 }

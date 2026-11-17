@@ -14,11 +14,11 @@ public class AgentConversationReferenceChecker implements ConversationReferenceC
     private final ConversationMapper conversationMapper;
 
     @Override
-    public void require(UUID workspaceId, UUID conversationId) {
+    public void requireOwned(UUID userId, UUID conversationId) {
         Conversation conversation = conversationId == null
                 ? null
                 : conversationMapper.selectById(conversationId);
-        if (conversation == null || !workspaceId.equals(conversation.getWorkspaceId())) {
+        if (conversation == null || !userId.equals(conversation.getCreatedBy())) {
             throw new BusinessException(AgentErrorCode.CONVERSATION_NOT_FOUND);
         }
     }

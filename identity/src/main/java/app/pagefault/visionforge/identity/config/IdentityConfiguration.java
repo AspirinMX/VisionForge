@@ -6,11 +6,9 @@ import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -33,9 +31,6 @@ import app.pagefault.visionforge.identity.auth.RefreshTokenMapper;
 import app.pagefault.visionforge.identity.auth.TokenService;
 import app.pagefault.visionforge.identity.user.IdentityService;
 import app.pagefault.visionforge.identity.user.UserMapper;
-import app.pagefault.visionforge.identity.workspace.WorkspaceMapper;
-import app.pagefault.visionforge.identity.workspace.WorkspaceMemberMapper;
-import app.pagefault.visionforge.identity.workspace.WorkspaceService;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(IdentityProperties.class)
@@ -58,7 +53,6 @@ public class IdentityConfiguration {
     }
 
     @Bean
-    @Primary
     public JwtDecoder jwtDecoder(IdentityProperties properties) {
         IdentityProperties.Jwt jwt = requireJwt(properties);
         NimbusJwtDecoder decoder = NimbusJwtDecoder
@@ -71,27 +65,9 @@ public class IdentityConfiguration {
         return decoder;
     }
 
-    /**
-     * Selection tokens use a separate audience so they can never be accepted as API access tokens
-     * by the resource server.
-     */
-    @Bean
-    public JwtDecoder workspaceSelectionTokenDecoder(IdentityProperties properties) {
-        IdentityProperties.Jwt jwt = requireJwt(properties);
-        NimbusJwtDecoder decoder = NimbusJwtDecoder
-                .withSecretKey(secretKey(properties))
-                .macAlgorithm(MacAlgorithm.HS256)
-                .build();
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(jwt.issuer()),
-                audienceValidator(jwt.selectionAudience())));
-        return decoder;
-    }
-
     @Bean
     public TokenService tokenService(
             JwtEncoder jwtEncoder,
-            @Qualifier("workspaceSelectionTokenDecoder") JwtDecoder workspaceSelectionTokenDecoder,
             IdentityProperties properties,
             RefreshTokenMapper refreshTokenMapper,
             UserMapper userMapper,
@@ -100,7 +76,6 @@ public class IdentityConfiguration {
         return new TokenService(
                 jwtEncoder,
                 properties,
-                workspaceSelectionTokenDecoder,
                 refreshTokenMapper,
                 userMapper,
                 idGenerator,
@@ -117,22 +92,10 @@ public class IdentityConfiguration {
     }
 
     @Bean
-    public WorkspaceService workspaceService(
-            WorkspaceMapper workspaceMapper,
-            WorkspaceMemberMapper workspaceMemberMapper,
-            UserMapper userMapper,
-            IdGenerator idGenerator,
-            Clock clock) {
-        return new WorkspaceService(
-                workspaceMapper, workspaceMemberMapper, userMapper, idGenerator, clock);
-    }
-
-    @Bean
     public AuthService authService(
             IdentityService identityService,
-            TokenService tokenService,
-            WorkspaceService workspaceService) {
-        return new AuthService(identityService, tokenService, workspaceService);
+            TokenService tokenService) {
+        return new AuthService(identityService, tokenService);
     }
 
     private OAuth2TokenValidator<Jwt> audienceValidator(String audience) {
@@ -166,8 +129,7 @@ public class IdentityConfiguration {
                 || jwt.issuer() == null
                 || jwt.audience() == null
                 || jwt.accessTokenTtl() == null
-                || jwt.refreshTokenTtl() == null
-                || jwt.selectionTokenTtl() == null) {
+                || jwt.refreshTokenTtl() == null) {
             throw new IllegalStateException("visionforge.security.jwt configuration is incomplete");
         }
         return jwt;
