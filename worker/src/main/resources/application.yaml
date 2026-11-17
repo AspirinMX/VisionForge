@@ -19,6 +19,12 @@ visionforge:
     task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
   model:
     config-secret: ${MODEL_CONFIG_SECRET:}
+  context:
+    # Fraction of max_input_tokens that triggers local compaction.
+    compact-threshold: ${CONTEXT_COMPACT_THRESHOLD:0.8}
+    # Share of the budget kept as uncompacted trailing messages.
+    compact-keep-ratio: ${CONTEXT_COMPACT_KEEP_RATIO:0.25}
+    summary-max-output-tokens: ${CONTEXT_SUMMARY_MAX_OUTPUT_TOKENS:1024}
   worker:
     max-concurrent-activity-execution-size: ${WORKER_MAX_CONCURRENT_ACTIVITIES:20}
     max-concurrent-workflow-task-execution-size: ${WORKER_MAX_CONCURRENT_WORKFLOW_TASKS:20}

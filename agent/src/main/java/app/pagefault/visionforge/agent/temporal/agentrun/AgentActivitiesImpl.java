@@ -16,6 +16,7 @@ import app.pagefault.visionforge.agent.runtime.AgentModelInput;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.AgentRunTurn;
+import app.pagefault.visionforge.agent.runtime.ModelInvocationPurpose;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationStatus;
 import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.agent.tool.AgentToolExecutor;
@@ -76,7 +77,12 @@ public class AgentActivitiesImpl implements AgentActivities {
 
             agentRunService.recordTurn(runId, turnNo, response);
             agentRunService.recordInvocation(
-                    runId, model.getId(), ModelInvocationStatus.SUCCEEDED, response, null);
+                    runId,
+                    model.getId(),
+                    ModelInvocationPurpose.CHAT,
+                    ModelInvocationStatus.SUCCEEDED,
+                    response,
+                    null);
             return new ModelTurn(
                     turnNo,
                     response.toolCalls().stream().map(ModelToolCall::callId).toList(),
@@ -139,7 +145,12 @@ public class AgentActivitiesImpl implements AgentActivities {
         try {
             if (model != null) {
                 agentRunService.recordInvocation(
-                        runId, model.getId(), ModelInvocationStatus.FAILED, null, message);
+                        runId,
+                        model.getId(),
+                        ModelInvocationPurpose.CHAT,
+                        ModelInvocationStatus.FAILED,
+                        null,
+                        message);
             }
             if (agentRunService.fail(runId, message)) {
                 streamPublisher.publishError(runId, message);

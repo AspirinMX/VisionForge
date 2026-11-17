@@ -24,6 +24,8 @@ public class ModelInvocation {
 
     private ModelInvocationStatus status;
 
+    private ModelInvocationPurpose purpose;
+
     private Integer inputTokens;
 
     private Integer outputTokens;

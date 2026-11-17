@@ -16,6 +16,8 @@ import app.pagefault.visionforge.agent.conversation.AgentConversationReferenceCh
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
+import app.pagefault.visionforge.agent.context.ContextCompactor;
+import app.pagefault.visionforge.agent.context.ContextSummaryMapper;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 import app.pagefault.visionforge.agent.model.ApiKeyCipher;
 import app.pagefault.visionforge.agent.model.ModelDefinitionMapper;
@@ -27,6 +29,7 @@ import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.AgentRunTurnMapper;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationMapper;
+import app.pagefault.visionforge.agent.runtime.ModelInvocationRecorder;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentActivitiesImpl;
@@ -100,27 +103,60 @@ public class AgentConfiguration {
     }
 
     @Bean
+    public ModelInvocationRecorder modelInvocationRecorder(
+            ModelInvocationMapper modelInvocationMapper,
+            IdGenerator idGenerator,
+            Clock clock) {
+        return new ModelInvocationRecorder(modelInvocationMapper, idGenerator, clock);
+    }
+
+    @Bean
+    public ContextCompactor contextCompactor(
+            ContextSummaryMapper contextSummaryMapper,
+            ModelDefinitionService modelDefinitionService,
+            ResponsesModelClient responsesModelClient,
+            ModelInvocationRecorder modelInvocationRecorder,
+            IdGenerator idGenerator,
+            Clock clock,
+            @Value("${visionforge.context.compact-threshold:0.8}") double compactThreshold,
+            @Value("${visionforge.context.compact-keep-ratio:0.25}") double compactKeepRatio,
+            @Value("${visionforge.context.summary-max-output-tokens:1024}") int summaryMaxOutputTokens) {
+        return new ContextCompactor(
+                contextSummaryMapper,
+                modelDefinitionService,
+                responsesModelClient,
+                modelInvocationRecorder,
+                idGenerator,
+                clock,
+                compactThreshold,
+                compactKeepRatio,
+                summaryMaxOutputTokens);
+    }
+
+    @Bean
     public AgentRunService agentRunService(
             AgentRunMapper agentRunMapper,
-            ModelInvocationMapper modelInvocationMapper,
+            ModelInvocationRecorder modelInvocationRecorder,
             AgentRunTurnMapper agentRunTurnMapper,
             ToolInvocationMapper toolInvocationMapper,
             WorkflowStartRequestMapper workflowStartRequestMapper,
             ConversationMapper conversationMapper,
             MessageMapper messageMapper,
             ModelDefinitionService modelDefinitionService,
+            ContextCompactor contextCompactor,
             ObjectMapper objectMapper,
             IdGenerator idGenerator,
             Clock clock) {
         return new AgentRunService(
                 agentRunMapper,
-                modelInvocationMapper,
+                modelInvocationRecorder,
                 agentRunTurnMapper,
                 toolInvocationMapper,
                 workflowStartRequestMapper,
                 conversationMapper,
                 messageMapper,
                 modelDefinitionService,
+                contextCompactor,
                 objectMapper,
                 idGenerator,
                 clock);

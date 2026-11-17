@@ -2,6 +2,7 @@ package app.pagefault.visionforge.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,7 @@ import app.pagefault.visionforge.agent.conversation.Message;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
 import app.pagefault.visionforge.agent.conversation.MessageRole;
 import app.pagefault.visionforge.agent.conversation.MessageStatus;
+import app.pagefault.visionforge.agent.context.ContextCompactor;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
@@ -50,30 +52,34 @@ class AgentRunServiceTest {
     private WorkflowStartRequestMapper workflowStartRequestMapper;
     private ConversationMapper conversationMapper;
     private ModelDefinitionService modelDefinitionService;
+    private ContextCompactor contextCompactor;
     private AgentRunService service;
 
     @BeforeEach
     void setUp() {
         agentRunMapper = mock(AgentRunMapper.class);
-        ModelInvocationMapper modelInvocationMapper = mock(ModelInvocationMapper.class);
+        ModelInvocationRecorder invocationRecorder = mock(ModelInvocationRecorder.class);
         agentRunTurnMapper = mock(AgentRunTurnMapper.class);
         toolInvocationMapper = mock(ToolInvocationMapper.class);
         workflowStartRequestMapper = mock(WorkflowStartRequestMapper.class);
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
         modelDefinitionService = mock(ModelDefinitionService.class);
+        contextCompactor = mock(ContextCompactor.class);
+        when(contextCompactor.ensureWithinBudget(any(), any(), any(), anyInt())).thenReturn(null);
         AtomicLong sequence = new AtomicLong();
         IdGenerator idGenerator = () -> new UUID(0, sequence.incrementAndGet());
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new AgentRunService(
                 agentRunMapper,
-                modelInvocationMapper,
+                invocationRecorder,
                 agentRunTurnMapper,
                 toolInvocationMapper,
                 workflowStartRequestMapper,
                 conversationMapper,
                 messageMapper,
                 modelDefinitionService,
+                contextCompactor,
                 new ObjectMapper(),
                 idGenerator,
                 clock);

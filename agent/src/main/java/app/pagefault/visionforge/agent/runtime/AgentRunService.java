@@ -18,6 +18,8 @@ import app.pagefault.visionforge.agent.conversation.Message;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
 import app.pagefault.visionforge.agent.conversation.MessageRole;
 import app.pagefault.visionforge.agent.conversation.MessageStatus;
+import app.pagefault.visionforge.agent.context.ContextCompactor;
+import app.pagefault.visionforge.agent.context.ContextSummary;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
@@ -48,13 +50,14 @@ public class AgentRunService {
     private static final int ERROR_MAX_LENGTH = 2_000;
 
     private final AgentRunMapper agentRunMapper;
-    private final ModelInvocationMapper modelInvocationMapper;
+    private final ModelInvocationRecorder invocationRecorder;
     private final AgentRunTurnMapper agentRunTurnMapper;
     private final ToolInvocationMapper toolInvocationMapper;
     private final WorkflowStartRequestMapper workflowStartRequestMapper;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final ModelDefinitionService modelDefinitionService;
+    private final ContextCompactor contextCompactor;
     private final ObjectMapper objectMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
@@ -111,48 +114,42 @@ public class AgentRunService {
         ModelDefinition model = modelDefinitionService.get(run.getModelDefinitionId());
         int budget = model.getMaxInputTokens();
 
-        long limit = Long.MAX_VALUE;
         Message userMessage = run.getUserMessageId() == null
                 ? null
                 : messageMapper.selectById(run.getUserMessageId());
-        if (userMessage != null) {
-            limit = userMessage.getSequenceNo();
+        final long limit = userMessage == null ? Long.MAX_VALUE : userMessage.getSequenceNo();
+
+        List<ModelInputItem> runItems = runItems(runId);
+        int used = SYSTEM_PROMPT.length();
+        for (ModelInputItem item : runItems) {
+            used += itemCost(item);
         }
 
-        List<ModelInputItem> runItems = new ArrayList<>();
-        int used = 0;
-        for (AgentRunTurn turn : listTurns(runId)) {
-            if (turn.getAssistantText() != null && !turn.getAssistantText().isBlank()) {
-                runItems.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
-                used += turn.getAssistantText().length();
-            }
-            for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
-                runItems.add(new ModelInputItem.FunctionCall(
-                        call.callId(), call.name(), call.arguments()));
-                used += length(call.arguments());
-                ToolInvocation invocation = findInvocation(runId, call.callId());
-                if (invocation != null) {
-                    String output = toolOutput(invocation);
-                    runItems.add(new ModelInputItem.FunctionCallOutput(call.callId(), output));
-                    used += output.length();
-                }
-            }
+        List<Message> history = messageMapper.selectList(
+                        Wrappers.<Message>lambdaQuery()
+                                .eq(Message::getConversationId, run.getConversationId())
+                                .orderByAsc(Message::getSequenceNo))
+                .stream()
+                .filter(message -> message.getSequenceNo() <= limit)
+                .filter(message -> message.getStatus() == MessageStatus.COMPLETED)
+                .toList();
+
+        ContextSummary summary = contextCompactor.ensureWithinBudget(
+                run, model, history, used);
+        long coveredToSeq = summary == null ? 0 : summary.getToSeq();
+        if (summary != null) {
+            used += ContextCompactor.inputContent(summary).length();
         }
         if (used > budget) {
             throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
         }
 
-        List<Message> history = messageMapper.selectList(
-                Wrappers.<Message>lambdaQuery()
-                        .eq(Message::getConversationId, run.getConversationId())
-                        .orderByAsc(Message::getSequenceNo));
-
         LinkedList<ModelInputItem> historyItems = new LinkedList<>();
         boolean currentUserMessageIncluded = false;
         for (int index = history.size() - 1; index >= 0; index--) {
             Message message = history.get(index);
-            if (message.getSequenceNo() > limit || message.getStatus() != MessageStatus.COMPLETED) {
-                continue;
+            if (message.getSequenceNo() <= coveredToSeq) {
+                break;
             }
             String content = message.getContent();
             int cost = length(content);
@@ -169,10 +166,42 @@ public class AgentRunService {
             throw new BusinessException(AgentErrorCode.MESSAGE_TOO_LONG);
         }
 
-        List<ModelInputItem> input = new ArrayList<>(historyItems.size() + runItems.size());
+        List<ModelInputItem> input = new ArrayList<>(
+                historyItems.size() + runItems.size() + 1);
+        if (summary != null) {
+            input.add(new ModelInputItem.Message(
+                    "system", ContextCompactor.inputContent(summary)));
+        }
         input.addAll(historyItems);
         input.addAll(runItems);
         return new AgentModelInput(SYSTEM_PROMPT, input);
+    }
+
+    private List<ModelInputItem> runItems(UUID runId) {
+        List<ModelInputItem> items = new ArrayList<>();
+        for (AgentRunTurn turn : listTurns(runId)) {
+            if (turn.getAssistantText() != null && !turn.getAssistantText().isBlank()) {
+                items.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
+            }
+            for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
+                items.add(new ModelInputItem.FunctionCall(
+                        call.callId(), call.name(), call.arguments()));
+                ToolInvocation invocation = findInvocation(runId, call.callId());
+                if (invocation != null) {
+                    items.add(new ModelInputItem.FunctionCallOutput(
+                            call.callId(), toolOutput(invocation)));
+                }
+            }
+        }
+        return items;
+    }
+
+    private int itemCost(ModelInputItem item) {
+        return switch (item) {
+            case ModelInputItem.Message message -> length(message.content());
+            case ModelInputItem.FunctionCall call -> length(call.arguments());
+            case ModelInputItem.FunctionCallOutput output -> length(output.output());
+        };
     }
 
     public AgentRunTurn findTurn(UUID runId, int turnNo) {
@@ -236,22 +265,12 @@ public class AgentRunService {
     public void recordInvocation(
             UUID runId,
             UUID modelDefinitionId,
+            ModelInvocationPurpose purpose,
             ModelInvocationStatus status,
             ModelResponse result,
             String errorMessage) {
-        ModelInvocation invocation = new ModelInvocation();
-        invocation.setId(idGenerator.nextId());
-        invocation.setAgentRunId(runId);
-        invocation.setModelDefinitionId(modelDefinitionId);
-        invocation.setStatus(status);
-        invocation.setInputTokens(result == null ? null : result.inputTokens());
-        invocation.setOutputTokens(result == null ? null : result.outputTokens());
-        invocation.setLatencyMs(result == null ? null : result.latencyMs());
-        invocation.setFinishReason(result == null ? null : result.finishReason());
-        invocation.setResponseId(result == null ? null : result.responseId());
-        invocation.setErrorMessage(errorMessage);
-        invocation.setCreatedAt(clock.instant());
-        modelInvocationMapper.insert(invocation);
+        invocationRecorder.record(
+                runId, modelDefinitionId, purpose, status, result, errorMessage);
     }
 
     @Transactional
