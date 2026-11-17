@@ -222,6 +222,63 @@ Seedance 与万相异步图片/视频更接近：都是“提交 → 保存任�
 
 官方未明确承诺且网关未证明的能力均标记 UNKNOWN，不以“兼容 OpenAI”推断其存在。缺少网关文档不阻碍本地任务、存储和处理实现，但阻止宣称网关适配已验证。
 
+### 2.7 官方 SDK 与依赖选型
+
+三个上游都提供官方 Java SDK，**媒体请求不需要手写 HTTP/SSE**。但 SDK 只封装传输和类型，不提供任务状态机、重启恢复、幂等、归档和结算；`REMOTE_TASK` 的轮询、状态映射与 UNKNOWN 处理仍属于本系统。
+
+| 上游 | 官方 SDK | 坐标与版本 | 覆盖范围 |
+| --- | --- | --- | --- |
+| 火山方舟（Seedream / Seedance） | Ark Runtime Java SDK | `com.volcengine:ark-runtime`（当前 0.17.0；旧版 `com.volcengine:volcengine-java-sdk-ark-runtime`） | Chat、Responses、图片生成、视频任务、Embeddings、Files |
+| OpenAI（GPT Image） | OpenAI 官方 Java SDK | `com.openai:openai-java`（仓库现有 4.99.0） | `images().generate()`、`images().edit()`、Responses 图片工具 |
+| 阿里云百炼（万相图片 / 视频） | DashScope Java SDK | `com.alibaba:dashscope-sdk-java`（当前 2.23.2） | `ImageGeneration`、`VideoSynthesis`、异步任务提交与查询 |
+
+版本号以 Maven Central 当前稳定版为准，生产构建必须锁定具体版本，不使用 `LATEST` 或开放区间。三家均为 Apache 2.0。
+
+#### Ark SDK
+
+- 客户端：`ArkService.volc()` / `ArkService.byteplus()` 自动配置区域；`ArkService.builder().baseUrl(...).apiKey(...)` 可指向网关。模型名是请求字段，网关别名直接传入。
+- 图片：`service.generateImages(GenerateImagesRequest)` 返回 `ImagesResponse`；`data[]` 中带 `url` 或 `b64_json`。参考图通过 `image(...)` 提交，`size`、`responseFormat`、`outputFormat`、`watermark` 与 HTTP 字段一致。
+- 视频：`service.createContentGenerationTask(CreateContentGenerationTaskRequest)` 返回任务 ID；`service.getContentGenerationTask(taskId)` 返回 `ContentGenerationTask`，状态为 `queued/running/succeeded/failed/cancelled/expired`。**SDK 示例本身就是手写轮询，不提供 Workflow 级等待。**
+- Ark 同时提供 OpenAI 兼容入口，图片可以用 OpenAI SDK 调用 `/api/v3/images/generations`；**视频任务接口不是 OpenAI 协议**，OpenAI SDK 覆盖不了。
+- 新 SDK 使用 `com.volcengine.ark.runtime.models.*`；旧版 `com.volcengine.ark.runtime.model.*` 不要与新包混用请求/响应类型。
+
+#### OpenAI SDK
+
+- 生成：`client.images().generate(ImageGenerateParams)`；编辑：`client.images().edit(ImageEditParams)`，编辑走 multipart，输入直接传字节流，不需要公网 URL。
+- GPT Image 只返回 `b64_json`，SDK 不返回 `url`；Worker 必须解码并归档。
+- 多图编辑存在已知问题：`ImageEditParams.Image.ofInputStreams(...)` 会让所有图片复用同一个 `filename` / `contentType`，混用 JPEG 与 PNG 时上游返回 400 MIME mismatch。变通方式是先统一转码；当前锁定的 4.99.0 是否已修复需要实测。
+- 2.6 的 `complexity`、`markup`、SVG/GIF 等新字段若 typed builder 尚未跟上，使用 SDK 的附加请求属性透传，不退回手写 HTTP。
+- SDK 的自动重试必须显式关闭或收紧（沿用文本客户端 `maxRetries(0)` 的原则），付费媒体请求不能盲目重试。
+
+#### DashScope SDK
+
+- 全局端点：`Constants.baseHttpApiUrl = "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1"`；各区域 API Key 不通用。
+- 图片：`ImageGenerationParam` + `ImageGeneration.call(param)` 为同步，`asyncCall(param)` 返回 `output.task_id`。SDK 的“同步”是内部封装 HTTP 异步流程并阻塞等待，不是上游存在同步接口。
+- 视频：`VideoSynthesisParam` + `VideoSynthesis.call(param)` 阻塞到出片，`asyncCall(param)` 提交任务，`fetch(taskId, apiKey)` 查询结果（部分版本提供 `wait` 阻塞等待）。`VideoSynthesisParam.Media` 对应 `first_frame`、`last_frame`、`reference_image` 等类型。
+- 版本下限：wan2.7 图片要求 DashScope Java SDK ≥ 2.22.13；wan3.0 视频要求 ≥ 2.22.31。统一锁定 2.23.2 及以上。
+- `Constants.baseHttpApiUrl` 是全局静态配置；多地域部署时必须把 SDK 调用隔离在独立配置中，不能靠一个全局变量切换。
+
+#### 选型规则
+
+先确认网关协议，再决定 SDK；SDK 的 `baseUrl` 可以改，但路径和请求体不会自动适配。
+
+| 能力 | 首选 | 备选 |
+| --- | --- | --- |
+| GPT Image | 现有 `openai-java` | 无（不要引入第二个 OpenAI SDK） |
+| Seedream | 网关兼容 OpenAI Images 时用 `openai-java` | 仅支持 Ark 原生协议时用 `ark-runtime` |
+| Seedance | `ark-runtime` | 网关自定义异步协议时写薄适配器 |
+| 万相图片 | `dashscope-sdk-java` | 网关兼容 OpenAI Images 时用 `openai-java` |
+| 万相视频 | `dashscope-sdk-java` | 网关自定义异步协议时写薄适配器 |
+
+架构约束：
+
+1. SDK 类型只能出现在 `agent.provider` 的适配器内部；`MediaGenerationProvider`、`GenerationRequest`、`RemoteTaskRef` 等领域类型不得引用 `com.openai`、`com.volcengine`、`com.alibaba`。
+2. 每个进程只持有一个 SDK 客户端和连接池；Ark 的 `ArkService` 在关闭时调用 `shutdownExecutor()`，不要每次调用新建客户端。
+3. 阻塞式 `call`（DashScope 图片/视频、Ark 同步图片）不得放进 2 分钟的工具 Activity；仍按 `INLINE_RESULT` / `REMOTE_TASK` 进入独立 Media Workflow。
+4. SDK 的自动重试、超时和连接池必须显式配置；媒体请求不继承文本客户端的默认值。
+5. 依赖风险：`ark-runtime` 传递 Jackson 2、Retrofit、OkHttp、RxJava 2；`dashscope-sdk-java` 传递 Gson、OkHttp、RxJava 2、Kotlin stdlib。项目使用 Jackson 3 与 Spring Boot 4，包名不同可以共存，但引入后必须执行 `./mvnw dependency:tree` 检查 Jackson 2、OkHttp、Kotlin 的版本收敛。
+6. 依赖引入顺序：先接入 `openai-java` 的 GPT Image，再按网关实际协议接入 Ark 或 DashScope；不要为了“可能用到”同时引入两个媒体 SDK。
+
 ## 3. 架构与接口边界
 
 ```mermaid
@@ -275,7 +332,7 @@ interface CancellableJobProvider extends RemoteJobProvider {
 
 两种执行策略分别是 `INLINE_RESULT`（在本次上游调用内读到完整产物，耗时可能很长）与 `REMOTE_TASK`（返回可查询任务 ID）。JSON/SSE 是独立传输选项：SSE 图片流不自动变成可恢复的远端任务。未知付费结果仍进入 UNKNOWN，不能用统一接口掩盖恢复能力差异。
 
-如果使用 OpenAI Images 兼容入口，优先复用现有官方 Java SDK 的 images 服务；其余协议使用相应 SDK 或受控 HTTP 客户端，DTO 与字段/状态映射留在 provider 包。SDK 暴露同步方法时需核实是否内部轮询，REMOTE_TASK 路径只使用明确提交和查询方法。官方 Java SDK 支持配置重试次数。[S12] 这项 SDK 选择属于开头说明的媒体协议调整范围。
+SDK 选型与坐标见 §2.7：GPT Image 复用现有 `openai-java`；Seedream、Seedance 按网关协议选择 `openai-java` 或 `ark-runtime`；万相图片/视频使用 `dashscope-sdk-java`。所有 SDK 调用封装在 provider 适配器内，DTO 与字段/状态映射留在 provider 包。SDK 暴露的“同步”方法可能内部轮询并阻塞，`REMOTE_TASK` 路径只使用明确提交和查询方法；自动重试必须显式关闭或收紧。[S12] 这项 SDK 选择属于开头说明的媒体协议调整范围。
 
 模型目录先在现有 `model_definition` 上兼容扩展，不要求立即拆出 provider_config：
 
@@ -577,6 +634,8 @@ workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载
 | E. 视频闭环 | Seedance/万相按已开通模型接入、复用远端任务策略、ffprobe/封面/播放变体、等待工具 | 对话完成/浏览器断线不取消视频；取消语义按协议处理；依赖任务可继续图生视频 |
 | F. 上线准备 | 用量核对、超时人工入口、限流、故障恢复、备份恢复 | 能恢复数据库与对象对应关系；升级后已有 Workflow 可继续 |
 
+SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream、Seedance 与万相按 §2.7 的网关协议判断结果引入 `ark-runtime` 或 `dashscope-sdk-java`。每个 SDK 至少有一个只验证请求构造、字段映射和错误归类的离线测试，真实付费调用仍受阶段 A 的授权约束。
+
 基础设施兼容测试必须覆盖实际部署版本的 PUT/GET/HEAD/DELETE、预签名外部域名、multipart Complete/Abort、Range/206、CORS、条件复制或替代不可变上传方案、checksum 与超时重试。生命周期规则不支持时用应用清理任务，不能阻断原始资产读写。
 
 必须覆盖的故障测试：
@@ -625,3 +684,7 @@ workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载
 - [S21] 阿里云万相：2.7 图生视频 API。`https://help.aliyun.com/zh/model-studio/image-to-video-general-api-reference`
 - [S22] 阿里云百炼：管理异步任务（查询、取消与子项状态）。`https://help.aliyun.com/zh/model-studio/manage-asynchronous-tasks`
 - [S23] 阿里云万相：图像生成与编辑 2.6（含图文混排 SSE）。`https://help.aliyun.com/zh/model-studio/wan-image-generation-api-reference`
+- [S24] 火山方舟：安装及升级 SDK（`com.volcengine:ark-runtime`）。`https://docs.volcengine.com/docs/ark/install-and-upgrade-sdk`
+- [S25] 火山方舟：Ark Runtime Java SDK（图片、视频任务与示例）。`https://github.com/volcengine/ark-runtime-java`
+- [S26] 阿里云百炼：安装 SDK（DashScope Java SDK）。`https://help.aliyun.com/zh/model-studio/install-sdk`
+- [S27] DashScope Java SDK（`ImageGeneration`、`VideoSynthesis`）。`https://github.com/dashscope/dashscope-sdk-java`
