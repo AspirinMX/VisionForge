@@ -6,9 +6,11 @@ import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -31,6 +33,9 @@ import app.pagefault.visionforge.identity.auth.RefreshTokenMapper;
 import app.pagefault.visionforge.identity.auth.TokenService;
 import app.pagefault.visionforge.identity.user.IdentityService;
 import app.pagefault.visionforge.identity.user.UserMapper;
+import app.pagefault.visionforge.identity.workspace.WorkspaceMapper;
+import app.pagefault.visionforge.identity.workspace.WorkspaceMemberMapper;
+import app.pagefault.visionforge.identity.workspace.WorkspaceService;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(IdentityProperties.class)
@@ -53,31 +58,53 @@ public class IdentityConfiguration {
     }
 
     @Bean
+    @Primary
     public JwtDecoder jwtDecoder(IdentityProperties properties) {
         IdentityProperties.Jwt jwt = requireJwt(properties);
         NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withSecretKey(secretKey(properties))
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        OAuth2TokenValidator<Jwt> audienceValidator = token -> token.getAudience().contains(jwt.audience())
-                ? OAuth2TokenValidatorResult.success()
-                : OAuth2TokenValidatorResult.failure(
-                        new OAuth2Error("invalid_token", "Invalid audience", null));
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(jwt.issuer()),
-                audienceValidator));
+                audienceValidator(jwt.audience())));
+        return decoder;
+    }
+
+    /**
+     * Selection tokens use a separate audience so they can never be accepted as API access tokens
+     * by the resource server.
+     */
+    @Bean
+    public JwtDecoder workspaceSelectionTokenDecoder(IdentityProperties properties) {
+        IdentityProperties.Jwt jwt = requireJwt(properties);
+        NimbusJwtDecoder decoder = NimbusJwtDecoder
+                .withSecretKey(secretKey(properties))
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(jwt.issuer()),
+                audienceValidator(jwt.selectionAudience())));
         return decoder;
     }
 
     @Bean
     public TokenService tokenService(
             JwtEncoder jwtEncoder,
+            @Qualifier("workspaceSelectionTokenDecoder") JwtDecoder workspaceSelectionTokenDecoder,
             IdentityProperties properties,
             RefreshTokenMapper refreshTokenMapper,
             UserMapper userMapper,
             IdGenerator idGenerator,
             Clock clock) {
-        return new TokenService(jwtEncoder, properties, refreshTokenMapper, userMapper, idGenerator, clock);
+        return new TokenService(
+                jwtEncoder,
+                properties,
+                workspaceSelectionTokenDecoder,
+                refreshTokenMapper,
+                userMapper,
+                idGenerator,
+                clock);
     }
 
     @Bean
@@ -90,8 +117,29 @@ public class IdentityConfiguration {
     }
 
     @Bean
-    public AuthService authService(IdentityService identityService, TokenService tokenService) {
-        return new AuthService(identityService, tokenService);
+    public WorkspaceService workspaceService(
+            WorkspaceMapper workspaceMapper,
+            WorkspaceMemberMapper workspaceMemberMapper,
+            UserMapper userMapper,
+            IdGenerator idGenerator,
+            Clock clock) {
+        return new WorkspaceService(
+                workspaceMapper, workspaceMemberMapper, userMapper, idGenerator, clock);
+    }
+
+    @Bean
+    public AuthService authService(
+            IdentityService identityService,
+            TokenService tokenService,
+            WorkspaceService workspaceService) {
+        return new AuthService(identityService, tokenService, workspaceService);
+    }
+
+    private OAuth2TokenValidator<Jwt> audienceValidator(String audience) {
+        return token -> token.getAudience().contains(audience)
+                ? OAuth2TokenValidatorResult.success()
+                : OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("invalid_token", "Invalid audience", null));
     }
 
     private SecretKey secretKey(IdentityProperties properties) {
@@ -118,7 +166,8 @@ public class IdentityConfiguration {
                 || jwt.issuer() == null
                 || jwt.audience() == null
                 || jwt.accessTokenTtl() == null
-                || jwt.refreshTokenTtl() == null) {
+                || jwt.refreshTokenTtl() == null
+                || jwt.selectionTokenTtl() == null) {
             throw new IllegalStateException("visionforge.security.jwt configuration is incomplete");
         }
         return jwt;

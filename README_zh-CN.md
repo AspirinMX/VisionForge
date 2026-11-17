@@ -49,9 +49,13 @@ docker compose up -d --wait postgres
 
 默认连接 `jdbc:postgresql://localhost:5432/visionforge`，用户名和密码均为 `visionforge`。Flyway 可通过 `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` 覆盖；应用使用 `VISIONFORGE_DB_URL`、`VISIONFORGE_DB_USER`、`VISIONFORGE_DB_PASSWORD` 环境变量。
 
-### 认证与角色
+### 认证与工作空间
 
-API 提供 `/api/v1/auth/register`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/api/v1/auth/me`。Access Token 为短有效期 JWT；Refresh Token 轮换并以哈希形式存储。系统角色为 `ADMIN` 和 `USER`。
+API 提供 `/api/v1/auth/register`、`/api/v1/auth/login`、`/api/v1/auth/workspace`、`/api/v1/auth/switch-workspace`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/api/v1/auth/me`。Access Token 为绑定单个工作空间的短有效期 JWT（包含 `wsid`、`ws_role`、`platform_admin`）；Refresh Token 为用户级会话，轮换并以哈希形式存储。
+
+只有一个工作空间的用户登录后直接获得 TokenPair；有多个工作空间的用户会获得短有效期 selectionToken，通过 `/api/v1/auth/workspace` 选择空间。切换空间通过 `/api/v1/auth/switch-workspace` 换取新的 Access Token，刷新时需携带当前 `workspaceId`。注册成功会自动创建个人工作空间。
+
+工作空间管理接口位于 `/api/v1/workspaces`、`/api/v1/workspaces/{id}`、`/members` 和 `/transfer`。所有带工作空间路径的请求，其 Access Token 的 `wsid` 必须与路径一致。系统角色为 `ADMIN` 和 `USER`；空间角色为 `OWNER`、`ADMIN`、`MEMBER`。平台管理员可切换进入任意工作空间，工作空间操作会写入审计日志。
 
 启动 API 前必须设置 `JWT_SECRET`（Base64 编码，至少 32 字节）：
 

@@ -49,9 +49,13 @@ docker compose up -d --wait postgres
 
 The defaults target `jdbc:postgresql://localhost:5432/visionforge` with user and password `visionforge`. Override them with `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` for Flyway, or the `VISIONFORGE_DB_URL`, `VISIONFORGE_DB_USER` and `VISIONFORGE_DB_PASSWORD` environment variables for the applications.
 
-### Authentication and roles
+### Authentication and workspaces
 
-The API exposes `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` and `/api/v1/auth/me`. Access tokens are short-lived JWTs; refresh tokens are rotated and stored as hashes. System roles are `ADMIN` and `USER`.
+The API exposes `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/workspace`, `/api/v1/auth/switch-workspace`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` and `/api/v1/auth/me`. Access tokens are short-lived JWTs bound to one workspace (`wsid`, `ws_role`, `platform_admin`); refresh tokens are user-level, rotated and stored as hashes.
+
+A user with a single workspace receives a token pair directly. A user with multiple workspaces receives a short-lived selection token and exchanges it through `/api/v1/auth/workspace`. Switching workspaces issues a new access token, and refresh requests include the current `workspaceId`. Registration creates a personal workspace owned by the new user.
+
+Workspace administration uses `/api/v1/workspaces`, `/api/v1/workspaces/{id}`, `/members` and `/transfer`; every workspace-scoped request must present an access token whose `wsid` matches the path. System roles are `ADMIN` and `USER`; workspace roles are `OWNER`, `ADMIN` and `MEMBER`. System administrators can switch into any workspace, and workspace operations are written to the audit log.
 
 Set `JWT_SECRET` to a Base64-encoded value of at least 32 bytes before starting the API:
 

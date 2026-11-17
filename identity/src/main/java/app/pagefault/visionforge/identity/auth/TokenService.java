@@ -11,10 +11,12 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
@@ -26,6 +28,8 @@ import app.pagefault.visionforge.identity.user.UserAccount;
 import app.pagefault.visionforge.identity.user.UserMapper;
 import app.pagefault.visionforge.identity.user.UserRole;
 import app.pagefault.visionforge.identity.user.UserStatus;
+import app.pagefault.visionforge.identity.workspace.WorkspaceRole;
+import app.pagefault.visionforge.identity.workspace.WorkspaceSummary;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,30 +37,94 @@ import lombok.RequiredArgsConstructor;
 public class TokenService {
 
     private static final int REFRESH_TOKEN_BYTES = 32;
+    private static final String SELECTION_SCOPE = "workspace:select";
 
     private final JwtEncoder jwtEncoder;
     private final IdentityProperties properties;
+    private final JwtDecoder workspaceSelectionTokenDecoder;
     private final RefreshTokenMapper refreshTokenMapper;
     private final UserMapper userMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public TokenPair issue(UUID userId, String email, UserRole role) {
+    public TokenPair issue(UserAccount user, WorkspaceSummary workspace) {
         Instant now = clock.instant();
         String rawRefreshToken = generateRefreshToken();
-        createRefreshToken(userId, rawRefreshToken, now);
-        String accessToken = createAccessToken(userId, email, role, now);
+        createRefreshToken(user.getId(), rawRefreshToken, now);
+        String accessToken = createAccessToken(user, workspace.id(), workspace.role(), now);
         return new TokenPair(
                 accessToken,
                 rawRefreshToken,
                 "Bearer",
                 properties.jwt().accessTokenTtl().toSeconds(),
-                userId,
-                email);
+                user.getId(),
+                user.getEmail(),
+                workspace.id(),
+                workspace.role());
     }
 
-    public TokenPair refresh(String rawRefreshToken) {
+    public AccessToken issueAccessToken(UserAccount user, WorkspaceSummary workspace) {
+        Instant now = clock.instant();
+        String accessToken = createAccessToken(user, workspace.id(), workspace.role(), now);
+        return new AccessToken(
+                accessToken,
+                "Bearer",
+                properties.jwt().accessTokenTtl().toSeconds(),
+                user.getId(),
+                user.getEmail(),
+                workspace.id(),
+                workspace.role());
+    }
+
+    public TokenPair issueWithRefresh(
+            UserAccount user, WorkspaceSummary workspace, String rawRefreshToken) {
+        Instant now = clock.instant();
+        String accessToken = createAccessToken(user, workspace.id(), workspace.role(), now);
+        return new TokenPair(
+                accessToken,
+                rawRefreshToken,
+                "Bearer",
+                properties.jwt().accessTokenTtl().toSeconds(),
+                user.getId(),
+                user.getEmail(),
+                workspace.id(),
+                workspace.role());
+    }
+
+    public String issueSelectionToken(UserAccount user) {
+        Instant now = clock.instant();
+        IdentityProperties.Jwt jwt = properties.jwt();
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(jwt.issuer())
+                .subject(user.getId().toString())
+                .audience(List.of(jwt.selectionAudience()))
+                .issuedAt(now)
+                .expiresAt(now.plus(jwt.selectionTokenTtl()))
+                .id(idGenerator.nextId().toString())
+                .claim("scope", SELECTION_SCOPE)
+                .build();
+        return encode(claims);
+    }
+
+    public UUID parseSelectionToken(String rawSelectionToken) {
+        if (rawSelectionToken == null || rawSelectionToken.isBlank()) {
+            throw new BusinessException(IdentityErrorCode.TOKEN_INVALID);
+        }
+        try {
+            Jwt jwt = workspaceSelectionTokenDecoder.decode(rawSelectionToken);
+            if (!SELECTION_SCOPE.equals(jwt.getClaimAsString("scope"))) {
+                throw new BusinessException(IdentityErrorCode.TOKEN_INVALID);
+            }
+            return UUID.fromString(jwt.getSubject());
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new BusinessException(IdentityErrorCode.TOKEN_INVALID);
+        }
+    }
+
+    public RefreshSession authenticateRefresh(String rawRefreshToken) {
         RefreshToken current = findByHash(hash(rawRefreshToken));
         Instant now = clock.instant();
         if (current == null
@@ -69,21 +137,18 @@ public class TokenService {
         if (user == null || user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException(IdentityErrorCode.TOKEN_INVALID);
         }
+        return new RefreshSession(user, current);
+    }
 
+    public String rotateRefresh(RefreshSession session) {
+        Instant now = clock.instant();
         String rawReplacement = generateRefreshToken();
-        RefreshToken replacement = createRefreshToken(user.getId(), rawReplacement, now);
+        RefreshToken replacement = createRefreshToken(session.user().getId(), rawReplacement, now);
+        RefreshToken current = session.token();
         current.setRevokedAt(now);
         current.setReplacedByTokenId(replacement.getId());
         refreshTokenMapper.updateById(current);
-
-        String accessToken = createAccessToken(user.getId(), user.getEmail(), user.getRole(), now);
-        return new TokenPair(
-                accessToken,
-                rawReplacement,
-                "Bearer",
-                properties.jwt().accessTokenTtl().toSeconds(),
-                user.getId(),
-                user.getEmail());
+        return rawReplacement;
     }
 
     public void revoke(String rawRefreshToken) {
@@ -111,17 +176,27 @@ public class TokenService {
                 Wrappers.<RefreshToken>lambdaQuery().eq(RefreshToken::getTokenHash, tokenHash));
     }
 
-    private String createAccessToken(UUID userId, String email, UserRole role, Instant now) {
-        JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer(properties.jwt().issuer())
-                .subject(userId.toString())
-                .audience(List.of(properties.jwt().audience()))
+    private String createAccessToken(
+            UserAccount user, UUID workspaceId, WorkspaceRole workspaceRole, Instant now) {
+        IdentityProperties.Jwt jwt = properties.jwt();
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
+                .issuer(jwt.issuer())
+                .subject(user.getId().toString())
+                .audience(List.of(jwt.audience()))
                 .issuedAt(now)
-                .expiresAt(now.plus(properties.jwt().accessTokenTtl()))
+                .expiresAt(now.plus(jwt.accessTokenTtl()))
                 .id(idGenerator.nextId().toString())
-                .claim("email", email)
-                .claim("role", role.name())
-                .build();
+                .claim("email", user.getEmail())
+                .claim("role", user.getRole().name())
+                .claim("wsid", workspaceId.toString())
+                .claim("platform_admin", user.getRole() == UserRole.ADMIN);
+        if (workspaceRole != null) {
+            claims.claim("ws_role", workspaceRole.name());
+        }
+        return encode(claims.build());
+    }
+
+    private String encode(JwtClaimsSet claims) {
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
@@ -140,5 +215,8 @@ public class TokenService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
+    }
+
+    public record RefreshSession(UserAccount user, RefreshToken token) {
     }
 }

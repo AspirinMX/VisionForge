@@ -12,7 +12,12 @@ public record IdentityProperties(Jwt jwt, Password password) {
             String issuer,
             String audience,
             Duration accessTokenTtl,
-            Duration refreshTokenTtl) {
+            Duration refreshTokenTtl,
+            Duration selectionTokenTtl) {
+
+        public String selectionAudience() {
+            return audience + "-workspace-select";
+        }
     }
 
     public record Password(int bcryptStrength) {
