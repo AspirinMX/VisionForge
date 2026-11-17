@@ -14,5 +14,10 @@ public record ModelDefinitionInput(
         Integer maxInputTokens,
         Integer maxOutputTokens,
         Boolean enabled,
-        Boolean defaultModel) {
+        Boolean defaultModel,
+        ModelCapabilityType capabilityType,
+        MediaProtocol protocol,
+        ExecutionMode executionMode,
+        Long priceUnits,
+        Boolean supportsImageInput) {
 }

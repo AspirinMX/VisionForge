@@ -57,7 +57,12 @@ public class AdminModelController {
                 request.maxInputTokens(),
                 request.maxOutputTokens(),
                 request.enabled(),
-                request.defaultModel()));
+                request.defaultModel(),
+                request.capabilityType(),
+                request.protocol(),
+                request.executionMode(),
+                request.priceUnits(),
+                request.supportsImageInput()));
         return ApiResponse.success(ModelResponse.from(model));
     }
 
@@ -74,7 +79,12 @@ public class AdminModelController {
                 request.maxInputTokens(),
                 request.maxOutputTokens(),
                 request.enabled(),
-                request.defaultModel()));
+                request.defaultModel(),
+                request.capabilityType(),
+                request.protocol(),
+                request.executionMode(),
+                request.priceUnits(),
+                request.supportsImageInput()));
         return ApiResponse.success(ModelResponse.from(model));
     }
 

@@ -171,6 +171,76 @@ public class AssetService {
         return requireAsset(userId, assetId);
     }
 
+    public Asset getForConversation(UUID userId, UUID conversationId, UUID assetId) {
+        Asset asset = requireAsset(userId, assetId);
+        if (!conversationId.equals(asset.getConversationId())) {
+            throw new BusinessException(AssetErrorCode.ASSET_NOT_FOUND);
+        }
+        return asset;
+    }
+
+    /**
+     * Stores bytes produced by a generation task under the task's stable output key. The object
+     * write is intentionally outside a database transaction: a retry rewrites the same key, and
+     * the caller records the returned asset id before publishing a conversation file.
+     */
+    public Asset createGeneratedAsset(
+            UUID userId,
+            UUID conversationId,
+            UUID taskId,
+            UUID outputId,
+            AssetKind kind,
+            String mimeType,
+            byte[] content) {
+        requireConversation(userId, conversationId);
+        if (taskId == null || outputId == null) {
+            throw new BusinessException(AssetErrorCode.ASSET_NOT_FOUND);
+        }
+        if (kind == null || !kind.supports(mimeType)) {
+            throw new BusinessException(AssetErrorCode.ASSET_MIME_UNSUPPORTED);
+        }
+        if (content == null || content.length == 0) {
+            throw new BusinessException(AssetErrorCode.ASSET_SIZE_INVALID);
+        }
+        ObjectStorage storage = storage();
+        String normalizedType = AssetKind.normalizeMimeType(mimeType);
+        String objectKey = ObjectKeys.generation(
+                userId,
+                conversationId,
+                taskId,
+                outputId,
+                extensionFor(normalizedType));
+        StoredObject stored;
+        try (java.io.InputStream input = new java.io.ByteArrayInputStream(content)) {
+            stored = storage.put(new app.pagefault.visionforge.asset.storage.StoragePutRequest(
+                    objectKey, normalizedType, content.length, input));
+        } catch (java.io.IOException exception) {
+            throw storageFailure(new ObjectStorageException(false, exception.getMessage(), exception));
+        } catch (ObjectStorageException exception) {
+            throw storageFailure(exception);
+        }
+
+        Instant now = clock.instant();
+        Asset asset = new Asset();
+        asset.setId(idGenerator.nextId());
+        asset.setUserId(userId);
+        asset.setConversationId(conversationId);
+        asset.setKind(kind);
+        asset.setStorageBackend(storage.backend());
+        asset.setBucket(storageProperties.bucket());
+        asset.setObjectKey(objectKey);
+        asset.setMimeType(normalizedType);
+        asset.setSizeBytes(stored.sizeBytes() > 0 ? stored.sizeBytes() : content.length);
+        asset.setChecksum(stored.checksum());
+        asset.setSource(AssetSource.GENERATION);
+        asset.setGenerationTaskId(taskId);
+        asset.setStatus(AssetStatus.READY);
+        asset.setCreatedAt(now);
+        asset.setUpdatedAt(now);
+        assetMapper.insert(asset);
+        return asset;
+    }
+
     public AssetDownloadTicket createDownloadUrl(UUID userId, UUID assetId) {
         Asset asset = requireAsset(userId, assetId);
         if (asset.getStatus() != AssetStatus.READY) {

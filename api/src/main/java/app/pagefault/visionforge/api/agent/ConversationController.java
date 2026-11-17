@@ -86,7 +86,7 @@ public class ConversationController {
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         AgentTurnResult result = conversationService.startTurn(
-                AuthenticatedUser.id(jwt), conversationId, request.content());
+                AuthenticatedUser.id(jwt), conversationId, request.content(), request.assetIds());
         agentRunStarter.start(result.runId(), result.workflowId());
         return ApiResponse.success(AgentTurnResponse.from(result));
     }
@@ -99,7 +99,7 @@ public class ConversationController {
             @Valid @RequestBody SendMessageRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         AgentTurnResult result = conversationService.startTurn(
-                AuthenticatedUser.id(jwt), conversationId, request.content());
+                AuthenticatedUser.id(jwt), conversationId, request.content(), request.assetIds());
         SseEmitter emitter = agentRunStreamService.subscribe(result.runId());
         agentRunStarter.start(result.runId(), result.workflowId());
         return emitter;

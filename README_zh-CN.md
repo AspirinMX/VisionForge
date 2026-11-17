@@ -134,7 +134,9 @@ GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
 
 首版将文本类文件（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。
 
-模型可用的工具是 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions`；会话和用户始终来自服务端执行上下文。
+模型可用的会话文件工具是 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions`；会话和用户始终来自服务端执行上下文。媒体工具为 `generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset`。
+
+`POST /api/v1/conversations/{conversationId}/messages` 和 `/messages/stream` 支持可选的 `assetIds`（最多 8 个会话内图片）。主模型在本轮调用中会把这些图片作为 `input_image` 看到；历史消息默认只回放文本。
 
 Worker 运行时配置位于 `visionforge.worker`，可通过 `WORKER_MAX_CONCURRENT_ACTIVITIES`、`WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`、`WORKER_WORKFLOW_CACHE_SIZE`、`WORKER_MAX_WORKFLOW_THREADS`、`WORKER_GRACEFUL_SHUTDOWN_TIMEOUT` 等环境变量覆盖。启动补偿由 `WORKER_START_COMPENSATION_ENABLED`、`WORKER_START_COMPENSATION_INTERVAL_MS`、`WORKER_START_COMPENSATION_BATCH_SIZE`、`WORKER_START_COMPENSATION_MAX_ATTEMPTS` 控制。
 
@@ -160,6 +162,22 @@ POST /api/v1/conversations/{conversationId}/uploads/{uploadSessionId}/complete
 GET  /api/v1/assets/{assetId}/download-url
   -> 返回短期预签名 GET URL
 ```
+
+### 媒体生成任务
+
+V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和额度账本。模型配置增加 `capabilityType`（`CHAT`/`IMAGE`/`VIDEO`）、`protocol`、`executionMode` 和 `priceUnits`；默认模型按能力类型分别唯一。
+
+```text
+POST /api/v1/generation-tasks                202 + Location，支持 Idempotency-Key
+GET  /api/v1/generation-tasks?conversationId=
+GET  /api/v1/generation-tasks/{taskId}
+POST /api/v1/generation-tasks/{taskId}/cancel
+POST /api/v1/generation-tasks/{taskId}/retry-archive
+```
+
+生成受理在单个事务内完成任务、输入冻结、输出占位、额度预占和启动请求；`MediaGenerationWorkflow` 独立于 AgentRun，负责提交、等待、归档、发布与结算。归档失败只允许 `retry-archive`，不会重新生成或重复扣费。
+
+当前只提供离线 `STUB` 协议：图片输出真实 PNG，视频输出占位字节，用于验证任务、归档、交付和账本，**不是可播放视频，也不代表真实网关已联调**。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。真实网关适配器、ffprobe/封面/转码、前端生成入口仍未实现。
 
 ## 部署
 

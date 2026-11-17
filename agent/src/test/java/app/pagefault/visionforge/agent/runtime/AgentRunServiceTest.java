@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -22,6 +23,9 @@ import app.pagefault.visionforge.agent.conversation.Conversation;
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.Message;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
+import app.pagefault.visionforge.agent.conversation.MessagePart;
+import app.pagefault.visionforge.agent.conversation.MessagePartMapper;
+import app.pagefault.visionforge.agent.conversation.MessagePartType;
 import app.pagefault.visionforge.agent.conversation.MessageRole;
 import app.pagefault.visionforge.agent.conversation.MessageStatus;
 import app.pagefault.visionforge.agent.context.ContextCompactor;
@@ -33,6 +37,8 @@ import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
 import app.pagefault.visionforge.agent.tool.ToolInvocation;
 import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
 import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
+import app.pagefault.visionforge.asset.media.AssetDownloadTicket;
+import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import tools.jackson.databind.ObjectMapper;
@@ -50,6 +56,8 @@ class AgentRunServiceTest {
     private AgentRunTurnMapper agentRunTurnMapper;
     private ToolInvocationMapper toolInvocationMapper;
     private MessageMapper messageMapper;
+    private MessagePartMapper messagePartMapper;
+    private AssetService assetService;
     private WorkflowStartRequestMapper workflowStartRequestMapper;
     private ConversationMapper conversationMapper;
     private ModelDefinitionService modelDefinitionService;
@@ -65,6 +73,8 @@ class AgentRunServiceTest {
         workflowStartRequestMapper = mock(WorkflowStartRequestMapper.class);
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
+        messagePartMapper = mock(MessagePartMapper.class);
+        assetService = mock(AssetService.class);
         modelDefinitionService = mock(ModelDefinitionService.class);
         contextCompactor = mock(ContextCompactor.class);
         when(contextCompactor.ensureWithinBudget(any(), any(), any(), anyInt())).thenReturn(null);
@@ -79,6 +89,8 @@ class AgentRunServiceTest {
                 workflowStartRequestMapper,
                 conversationMapper,
                 messageMapper,
+                messagePartMapper,
+                assetService,
                 modelDefinitionService,
                 contextCompactor,
                 new ObjectMapper(),
@@ -139,6 +151,40 @@ class AgentRunServiceTest {
                 new ModelInputItem.Message("assistant", "checking"),
                 new ModelInputItem.FunctionCall("call_1", "read_item", "{}"),
                 new ModelInputItem.FunctionCallOutput("call_1", "{\"ok\":true}"));
+    }
+
+    @Test
+    void attachesCurrentMessageImagesAsInputImage() {
+        AgentRun run = run(AgentRunStatus.RUNNING);
+        run.setModelDefinitionId(MODEL_ID);
+        Message user = message(MessageRole.USER, "Hello", 1);
+        user.setId(USER_MESSAGE_ID);
+        run.setUserMessageId(USER_MESSAGE_ID);
+        UUID assetId = UUID.randomUUID();
+        MessagePart part = new MessagePart();
+        part.setId(UUID.randomUUID());
+        part.setMessageId(USER_MESSAGE_ID);
+        part.setPartType(MessagePartType.ASSET_REFERENCE);
+        part.setAssetId(assetId);
+        part.setOrdinal(0);
+
+        ModelDefinition model = model();
+        model.setMaxInputTokens(100_000);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(modelDefinitionService.get(MODEL_ID)).thenReturn(model);
+        when(messageMapper.selectById(USER_MESSAGE_ID)).thenReturn(user);
+        when(messageMapper.selectList(any())).thenReturn(List.of(user));
+        when(messagePartMapper.selectList(any())).thenReturn(List.of(part));
+        when(assetService.createDownloadUrl(WORKSPACE_ID, assetId)).thenReturn(
+                new AssetDownloadTicket(
+                        assetId, URI.create("https://media.example.com/ref.png"), NOW));
+
+        AgentModelInput input = service.buildInput(RUN_ID);
+
+        assertThat(input.input()).contains(new ModelInputItem.UserMessage(
+                "Hello",
+                List.of(new ModelInputItem.ImageInput(
+                        "https://media.example.com/ref.png", "auto"))));
     }
 
     @Test

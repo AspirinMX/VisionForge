@@ -89,6 +89,59 @@ public class ConversationFileService {
         return file;
     }
 
+    /**
+     * Publishes an archived media asset as a new conversation file version. Generated output is
+     * always a new file; replacing an existing work requires a separate explicit operation.
+     */
+    @Transactional
+    public PublishedMediaFile createMediaFile(
+            UUID userId,
+            UUID conversationId,
+            ConversationFileKind kind,
+            String title,
+            UUID assetId,
+            String mimeType,
+            long sizeBytes,
+            String checksum) {
+        requireConversation(userId, conversationId);
+        if (kind != ConversationFileKind.IMAGE && kind != ConversationFileKind.VIDEO) {
+            throw new BusinessException(AssetErrorCode.FILE_KIND_UNSUPPORTED);
+        }
+        if (assetId == null) {
+            throw new BusinessException(AssetErrorCode.ASSET_NOT_FOUND);
+        }
+        String safeTitle = requireTitle(title);
+        Instant now = clock.instant();
+
+        ConversationFile file = new ConversationFile();
+        file.setId(idGenerator.nextId());
+        file.setConversationId(conversationId);
+        file.setUserId(userId);
+        file.setKind(kind);
+        file.setTitle(safeTitle);
+        file.setPath(null);
+        file.setMimeType(mimeType);
+        file.setStorageKind(ConversationFileStorageKind.OBJECT_STORAGE);
+        file.setCurrentVersion(1);
+        file.setStatus(ConversationFileStatus.READY);
+        file.setCreatedAt(now);
+        file.setUpdatedAt(now);
+        fileMapper.insert(file);
+
+        ConversationFileVersion version = new ConversationFileVersion();
+        version.setId(idGenerator.nextId());
+        version.setFileId(file.getId());
+        version.setVersion(1);
+        version.setAssetId(assetId);
+        version.setSizeBytes(sizeBytes);
+        version.setChecksum(checksum);
+        version.setSource(ConversationFileSource.GENERATED);
+        version.setCreatedBy(userId);
+        version.setCreatedAt(now);
+        versionMapper.insert(version);
+        return new PublishedMediaFile(file, version);
+    }
+
     public ConversationFile get(UUID userId, UUID conversationId, UUID fileId) {
         requireConversation(userId, conversationId);
         return requireFile(userId, conversationId, fileId);

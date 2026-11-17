@@ -13,6 +13,20 @@ public sealed interface ModelInputItem {
     record Message(String role, String content) implements ModelInputItem {
     }
 
+    /**
+     * A user message with optional image attachments. Image URLs are short-lived and resolved by
+     * the provider immediately before the call; they are never persisted in message history.
+     */
+    record UserMessage(String text, List<ImageInput> images) implements ModelInputItem {
+
+        public UserMessage {
+            images = images == null ? List.of() : List.copyOf(images);
+        }
+    }
+
+    record ImageInput(String imageUrl, String detail) {
+    }
+
     record FunctionCall(String callId, String name, String arguments) implements ModelInputItem {
     }
 

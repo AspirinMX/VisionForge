@@ -22,7 +22,10 @@ import com.openai.models.responses.Response;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseIncludable;
+import com.openai.models.responses.ResponseInputContent;
+import com.openai.models.responses.ResponseInputImage;
 import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseInputText;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputText;
 import com.openai.models.responses.ResponseReasoningItem;
@@ -129,6 +132,12 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                                 .role(messageRole(message.role()))
                                 .content(message.content())
                                 .build()));
+                case ModelInputItem.UserMessage message -> result.add(
+                        ResponseInputItem.ofEasyInputMessage(EasyInputMessage.builder()
+                                .role(EasyInputMessage.Role.USER)
+                                .contentOfResponseInputMessageContentList(
+                                        userMessageContent(message))
+                                .build()));
                 case ModelInputItem.FunctionCall call -> result.add(
                         ResponseInputItem.ofFunctionCall(ResponseFunctionToolCall.builder()
                                 .callId(call.callId())
@@ -146,6 +155,40 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
             }
         }
         return result;
+    }
+
+    private List<ResponseInputContent> userMessageContent(ModelInputItem.UserMessage message) {
+        List<ResponseInputContent> content = new ArrayList<>(message.images().size() + 1);
+        if (message.text() != null && !message.text().isBlank()) {
+            content.add(ResponseInputContent.ofInputText(
+                    ResponseInputText.builder().text(message.text()).build()));
+        }
+        for (ModelInputItem.ImageInput image : message.images()) {
+            if (image.imageUrl() == null || image.imageUrl().isBlank()) {
+                continue;
+            }
+            content.add(ResponseInputContent.ofInputImage(ResponseInputImage.builder()
+                    .imageUrl(image.imageUrl())
+                    .detail(imageDetail(image.detail()))
+                    .build()));
+        }
+        if (content.isEmpty()) {
+            content.add(ResponseInputContent.ofInputText(
+                    ResponseInputText.builder().text("").build()));
+        }
+        return content;
+    }
+
+    private ResponseInputImage.Detail imageDetail(String detail) {
+        if (detail == null) {
+            return ResponseInputImage.Detail.AUTO;
+        }
+        return switch (detail.toLowerCase(java.util.Locale.ROOT)) {
+            case "low" -> ResponseInputImage.Detail.LOW;
+            case "high" -> ResponseInputImage.Detail.HIGH;
+            case "original" -> ResponseInputImage.Detail.ORIGINAL;
+            default -> ResponseInputImage.Detail.AUTO;
+        };
     }
 
     /**

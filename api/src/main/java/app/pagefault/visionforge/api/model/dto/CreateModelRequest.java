@@ -1,12 +1,14 @@
 package app.pagefault.visionforge.api.model.dto;
 
+import app.pagefault.visionforge.agent.model.ExecutionMode;
+import app.pagefault.visionforge.agent.model.MediaProtocol;
+import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
 import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -26,14 +28,18 @@ public record CreateModelRequest(
         String modelId,
         ReasoningEffort reasoningEffort,
         ReasoningReplayPolicy reasoningReplay,
-        @NotNull(message = "最大输入 Token 不能为空")
         @Min(value = 1, message = "最大输入 Token 必须大于 0")
         @Max(value = 2_000_000, message = "最大输入 Token 不能超过 2000000")
         Integer maxInputTokens,
-        @NotNull(message = "最大输出 Token 不能为空")
         @Min(value = 1, message = "最大输出 Token 必须大于 0")
         @Max(value = 1_000_000, message = "最大输出 Token 不能超过 1000000")
         Integer maxOutputTokens,
         Boolean enabled,
-        Boolean defaultModel) {
+        Boolean defaultModel,
+        ModelCapabilityType capabilityType,
+        MediaProtocol protocol,
+        ExecutionMode executionMode,
+        @Min(value = 0, message = "单任务价格不能为负数")
+        Long priceUnits,
+        Boolean supportsImageInput) {
 }

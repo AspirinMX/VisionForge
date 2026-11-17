@@ -134,7 +134,9 @@ GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
 
 The first version stores text files (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. V12 creates `conversation_file` and `conversation_file_version`.
 
-The model uses the tools `list_files`, `search_files`, `read_file`, `create_file`, `update_file` and `list_file_versions`; the conversation and user always come from the server-side execution context.
+The model uses the conversation-file tools `list_files`, `search_files`, `read_file`, `create_file`, `update_file` and `list_file_versions`; the conversation and user always come from the server-side execution context. Media tools are `generate_image`, `generate_video`, `get_generation`, `cancel_generation` and `inspect_asset`.
+
+`POST /api/v1/conversations/{conversationId}/messages` and `/messages/stream` accept an optional `assetIds` list (at most 8 images of the same conversation). The main model sees them as `input_image` content for that turn; history replays text only.
 
 Worker runtime settings live under `visionforge.worker` and can be overridden with environment variables such as `WORKER_MAX_CONCURRENT_ACTIVITIES`, `WORKER_MAX_CONCURRENT_WORKFLOW_TASKS`, `WORKER_WORKFLOW_CACHE_SIZE`, `WORKER_MAX_WORKFLOW_THREADS` and `WORKER_GRACEFUL_SHUTDOWN_TIMEOUT`. Start compensation is controlled by `WORKER_START_COMPENSATION_ENABLED`, `WORKER_START_COMPENSATION_INTERVAL_MS`, `WORKER_START_COMPENSATION_BATCH_SIZE` and `WORKER_START_COMPENSATION_MAX_ATTEMPTS`.
 
@@ -160,6 +162,22 @@ POST /api/v1/conversations/{conversationId}/uploads/{uploadSessionId}/complete
 GET  /api/v1/assets/{assetId}/download-url
   -> short-lived presigned GET
 ```
+
+### Media generation tasks
+
+V14 creates `generation_task`, `generation_attempt`, `generation_input`, `generation_output`, `message_part` and the credit ledger. Model definitions gain `capabilityType` (`CHAT`/`IMAGE`/`VIDEO`), `protocol`, `executionMode` and `priceUnits`; one default model exists per capability type.
+
+```text
+POST /api/v1/generation-tasks                202 + Location, honors Idempotency-Key
+GET  /api/v1/generation-tasks?conversationId=
+GET  /api/v1/generation-tasks/{taskId}
+POST /api/v1/generation-tasks/{taskId}/cancel
+POST /api/v1/generation-tasks/{taskId}/retry-archive
+```
+
+Acceptance writes the task, frozen inputs, output placeholder, credit reservation and workflow start request in one local transaction. `MediaGenerationWorkflow` is independent of the AgentRun and owns submit, wait, archive, publish and settlement. An archive failure can only be repaired with `retry-archive`; it never regenerates or double-charges.
+
+Only the offline `STUB` protocol is implemented: images are real PNGs, video output is placeholder bytes. It validates tasks, archiving, delivery and billing; it is **not playable video and does not mean a real gateway has been integrated**. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000). Real gateway adapters, ffprobe/cover/transcoding and the frontend generation UI are still pending.
 
 ## Deployment
 

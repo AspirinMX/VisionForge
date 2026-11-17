@@ -3,6 +3,9 @@ package app.pagefault.visionforge.api.model.dto;
 import java.time.Instant;
 import java.util.UUID;
 
+import app.pagefault.visionforge.agent.model.ExecutionMode;
+import app.pagefault.visionforge.agent.model.MediaProtocol;
+import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
 import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
@@ -14,8 +17,13 @@ public record ModelResponse(
         String modelId,
         ReasoningEffort reasoningEffort,
         ReasoningReplayPolicy reasoningReplay,
-        int maxInputTokens,
-        int maxOutputTokens,
+        ModelCapabilityType capabilityType,
+        MediaProtocol protocol,
+        ExecutionMode executionMode,
+        long priceUnits,
+        boolean supportsImageInput,
+        Integer maxInputTokens,
+        Integer maxOutputTokens,
         boolean enabled,
         boolean defaultModel,
         boolean apiKeyConfigured,
@@ -30,6 +38,11 @@ public record ModelResponse(
                 model.getModelId(),
                 model.getReasoningEffort(),
                 model.getReasoningReplay(),
+                model.getCapabilityType(),
+                model.getProtocol(),
+                model.getExecutionMode(),
+                model.getPriceUnits(),
+                model.isSupportsImageInput(),
                 model.getMaxInputTokens(),
                 model.getMaxOutputTokens(),
                 model.isEnabled(),

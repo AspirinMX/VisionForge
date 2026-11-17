@@ -75,7 +75,8 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existing);
 
         ModelDefinition updated = service.update(MODEL_ID, new ModelDefinitionInput(
-                "Renamed", null, null, null, null, null, null, null, null, null));
+                "Renamed", null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null));
 
         assertThat(updated.getDisplayName()).isEqualTo("Renamed");
         assertThat(updated.getApiKeyCiphertext()).isEqualTo(ciphertext);
@@ -87,7 +88,8 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existingModel());
 
         assertThatThrownBy(() -> service.update(MODEL_ID, new ModelDefinitionInput(
-                null, null, " ", null, null, null, null, null, null, null)))
+                null, null, " ", null, null, null, null, null, null, null,
+                null, null, null, null, null)))
                 .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_API_KEY_REQUIRED));
     }
 
@@ -120,7 +122,12 @@ class ModelDefinitionServiceTest {
                 8_000,
                 1_000,
                 true,
-                defaultModel);
+                defaultModel,
+                ModelCapabilityType.CHAT,
+                MediaProtocol.OPENAI_RESPONSES,
+                ExecutionMode.INLINE_RESULT,
+                0L,
+                true);
     }
 
     private ModelDefinition existingModel() {
@@ -131,6 +138,9 @@ class ModelDefinitionServiceTest {
         model.setApiKeyCiphertext(cipher.encrypt("sk-old"));
         model.setModelId("mock-model");
         model.setReasoningEffort(ReasoningEffort.MEDIUM);
+        model.setCapabilityType(ModelCapabilityType.CHAT);
+        model.setProtocol(MediaProtocol.OPENAI_RESPONSES);
+        model.setExecutionMode(ExecutionMode.INLINE_RESULT);
         model.setMaxInputTokens(8_000);
         model.setMaxOutputTokens(1_000);
         model.setEnabled(true);

@@ -19,7 +19,12 @@ import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartStatus;
+import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
+import app.pagefault.visionforge.asset.media.Asset;
+import app.pagefault.visionforge.asset.media.AssetService;
+import app.pagefault.visionforge.asset.media.AssetStatus;
 import app.pagefault.visionforge.common.error.BusinessException;
+import app.pagefault.visionforge.asset.error.AssetErrorCode;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -34,9 +39,11 @@ public class ConversationService {
 
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
+    private final MessagePartMapper messagePartMapper;
     private final AgentRunMapper agentRunMapper;
     private final WorkflowStartRequestMapper workflowStartRequestMapper;
     private final ModelDefinitionService modelDefinitionService;
+    private final AssetService assetService;
     private final IdGenerator idGenerator;
     private final Clock clock;
 
@@ -81,8 +88,13 @@ public class ConversationService {
                         .orderByAsc(Message::getSequenceNo));
     }
 
-    @Transactional
     public AgentTurnResult startTurn(UUID userId, UUID conversationId, String content) {
+        return startTurn(userId, conversationId, content, List.of());
+    }
+
+    @Transactional
+    public AgentTurnResult startTurn(
+            UUID userId, UUID conversationId, String content, List<UUID> assetIds) {
         Conversation conversation = get(userId, conversationId);
         // Serialize per conversation: message sequence allocation and run creation must not race
         // with another turn of the same conversation.
@@ -103,6 +115,7 @@ public class ConversationService {
         userMessage.setStatus(MessageStatus.COMPLETED);
         userMessage.setCreatedAt(now);
         messageMapper.insert(userMessage);
+        attachAssets(userId, conversationId, userMessage.getId(), assetIds, now);
 
         UUID runId = idGenerator.nextId();
         String workflowId = "agent-run-" + runId;
@@ -125,6 +138,9 @@ public class ConversationService {
         WorkflowStartRequest startRequest = new WorkflowStartRequest();
         startRequest.setId(idGenerator.nextId());
         startRequest.setAgentRunId(runId);
+        startRequest.setWorkflowType(WorkflowStartType.AGENT_RUN);
+        startRequest.setBusinessId(runId);
+        startRequest.setInputSchemaVersion(1);
         startRequest.setWorkflowId(workflowId);
         startRequest.setStatus(WorkflowStartStatus.PENDING);
         startRequest.setAttempts(0);
@@ -140,6 +156,37 @@ public class ConversationService {
         conversationMapper.updateById(conversation);
 
         return new AgentTurnResult(runId, workflowId, userMessage.getId());
+    }
+
+    private void attachAssets(
+            UUID userId,
+            UUID conversationId,
+            UUID messageId,
+            List<UUID> assetIds,
+            Instant now) {
+        if (assetIds == null || assetIds.isEmpty()) {
+            return;
+        }
+        List<UUID> distinct = assetIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.size() > 8) {
+            throw new BusinessException(
+                    CommonErrorCode.INVALID_ARGUMENT, "单条消息最多附带 8 个素材");
+        }
+        int ordinal = 0;
+        for (UUID assetId : distinct) {
+            Asset asset = assetService.getForConversation(userId, conversationId, assetId);
+            if (asset.getStatus() != AssetStatus.READY) {
+                throw new BusinessException(AssetErrorCode.ASSET_NOT_READY);
+            }
+            MessagePart part = new MessagePart();
+            part.setId(idGenerator.nextId());
+            part.setMessageId(messageId);
+            part.setPartType(MessagePartType.ASSET_REFERENCE);
+            part.setOrdinal(ordinal++);
+            part.setAssetId(assetId);
+            part.setCreatedAt(now);
+            messagePartMapper.insert(part);
+        }
     }
 
     private boolean hasActiveRun(UUID conversationId) {

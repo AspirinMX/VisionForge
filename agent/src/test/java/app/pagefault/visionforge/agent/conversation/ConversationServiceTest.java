@@ -23,6 +23,7 @@ import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
+import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -42,18 +43,22 @@ class ConversationServiceTest {
     void setUp() {
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
+        MessagePartMapper messagePartMapper = mock(MessagePartMapper.class);
         agentRunMapper = mock(AgentRunMapper.class);
         WorkflowStartRequestMapper startRequestMapper = mock(WorkflowStartRequestMapper.class);
         ModelDefinitionService modelDefinitionService = mock(ModelDefinitionService.class);
+        AssetService assetService = mock(AssetService.class);
         AtomicLong sequence = new AtomicLong();
         IdGenerator idGenerator = () -> new UUID(0, sequence.incrementAndGet());
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new ConversationService(
                 conversationMapper,
                 messageMapper,
+                messagePartMapper,
                 agentRunMapper,
                 startRequestMapper,
                 modelDefinitionService,
+                assetService,
                 idGenerator,
                 clock);
     }

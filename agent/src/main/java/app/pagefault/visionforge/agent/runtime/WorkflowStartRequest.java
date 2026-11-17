@@ -22,6 +22,12 @@ public class WorkflowStartRequest {
 
     private UUID agentRunId;
 
+    private WorkflowStartType workflowType;
+
+    private UUID businessId;
+
+    private int inputSchemaVersion;
+
     private String workflowId;
 
     private WorkflowStartStatus status;

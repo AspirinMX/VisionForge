@@ -1,5 +1,8 @@
 package app.pagefault.visionforge.api.model.dto;
 
+import app.pagefault.visionforge.agent.model.ExecutionMode;
+import app.pagefault.visionforge.agent.model.MediaProtocol;
+import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
 import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
@@ -27,5 +30,11 @@ public record UpdateModelRequest(
         @Max(value = 1_000_000, message = "最大输出 Token 不能超过 1000000")
         Integer maxOutputTokens,
         Boolean enabled,
-        Boolean defaultModel) {
+        Boolean defaultModel,
+        ModelCapabilityType capabilityType,
+        MediaProtocol protocol,
+        ExecutionMode executionMode,
+        @Min(value = 0, message = "单任务价格不能为负数")
+        Long priceUnits,
+        Boolean supportsImageInput) {
 }

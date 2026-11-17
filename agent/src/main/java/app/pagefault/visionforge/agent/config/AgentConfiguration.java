@@ -1,6 +1,7 @@
 package app.pagefault.visionforge.agent.config;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -16,9 +17,21 @@ import app.pagefault.visionforge.agent.conversation.AgentConversationReferenceCh
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
+import app.pagefault.visionforge.agent.conversation.MessagePartMapper;
 import app.pagefault.visionforge.agent.context.ContextCompactor;
 import app.pagefault.visionforge.agent.context.ContextSummaryMapper;
+import app.pagefault.visionforge.agent.generation.GenerationAttemptMapper;
+import app.pagefault.visionforge.agent.generation.GenerationInputMapper;
+import app.pagefault.visionforge.agent.generation.GenerationOutputMapper;
+import app.pagefault.visionforge.agent.generation.GenerationTaskMapper;
+import app.pagefault.visionforge.agent.generation.GenerationTaskService;
+import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
+import app.pagefault.visionforge.agent.provider.media.StubMediaProvider;
+import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationActivitiesImpl;
+import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
+import app.pagefault.visionforge.asset.media.AssetService;
+import app.pagefault.visionforge.billing.credit.CreditService;
 import app.pagefault.visionforge.agent.model.ApiKeyCipher;
 import app.pagefault.visionforge.agent.model.ModelDefinitionMapper;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
@@ -87,17 +100,21 @@ public class AgentConfiguration {
     public ConversationService conversationService(
             ConversationMapper conversationMapper,
             MessageMapper messageMapper,
+            MessagePartMapper messagePartMapper,
             AgentRunMapper agentRunMapper,
             WorkflowStartRequestMapper workflowStartRequestMapper,
             ModelDefinitionService modelDefinitionService,
+            AssetService assetService,
             IdGenerator idGenerator,
             Clock clock) {
         return new ConversationService(
                 conversationMapper,
                 messageMapper,
+                messagePartMapper,
                 agentRunMapper,
                 workflowStartRequestMapper,
                 modelDefinitionService,
+                assetService,
                 idGenerator,
                 clock);
     }
@@ -142,6 +159,8 @@ public class AgentConfiguration {
             WorkflowStartRequestMapper workflowStartRequestMapper,
             ConversationMapper conversationMapper,
             MessageMapper messageMapper,
+            MessagePartMapper messagePartMapper,
+            AssetService assetService,
             ModelDefinitionService modelDefinitionService,
             ContextCompactor contextCompactor,
             ObjectMapper objectMapper,
@@ -155,11 +174,59 @@ public class AgentConfiguration {
                 workflowStartRequestMapper,
                 conversationMapper,
                 messageMapper,
+                messagePartMapper,
+                assetService,
                 modelDefinitionService,
                 contextCompactor,
                 objectMapper,
                 idGenerator,
                 clock);
+    }
+
+    @Bean
+    public MediaProviderRegistry mediaProviderRegistry() {
+        return new MediaProviderRegistry(List.of(new StubMediaProvider()));
+    }
+
+    @Bean
+    public GenerationTaskService generationTaskService(
+            GenerationTaskMapper generationTaskMapper,
+            GenerationAttemptMapper generationAttemptMapper,
+            GenerationInputMapper generationInputMapper,
+            GenerationOutputMapper generationOutputMapper,
+            WorkflowStartRequestMapper workflowStartRequestMapper,
+            ModelDefinitionService modelDefinitionService,
+            ConversationReferenceChecker conversationReferenceChecker,
+            AssetService assetService,
+            ConversationFileService conversationFileService,
+            CreditService creditService,
+            MediaProviderRegistry mediaProviderRegistry,
+            ObjectMapper objectMapper,
+            IdGenerator idGenerator,
+            Clock clock) {
+        return new GenerationTaskService(
+                generationTaskMapper,
+                generationAttemptMapper,
+                generationInputMapper,
+                generationOutputMapper,
+                workflowStartRequestMapper,
+                modelDefinitionService,
+                conversationReferenceChecker,
+                assetService,
+                conversationFileService,
+                creditService,
+                mediaProviderRegistry,
+                objectMapper,
+                idGenerator,
+                clock);
+    }
+
+    @Bean
+    public MediaGenerationActivitiesImpl mediaGenerationActivities(
+            GenerationTaskService generationTaskService,
+            MediaProviderRegistry mediaProviderRegistry) {
+        return new MediaGenerationActivitiesImpl(
+                generationTaskService, mediaProviderRegistry);
     }
 
     @Bean

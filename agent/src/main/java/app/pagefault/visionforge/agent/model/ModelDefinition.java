@@ -30,9 +30,19 @@ public class ModelDefinition {
 
     private ReasoningReplayPolicy reasoningReplay;
 
-    private int maxInputTokens;
+    private ModelCapabilityType capabilityType;
 
-    private int maxOutputTokens;
+    private MediaProtocol protocol;
+
+    private ExecutionMode executionMode;
+
+    private long priceUnits;
+
+    private boolean supportsImageInput;
+
+    private Integer maxInputTokens;
+
+    private Integer maxOutputTokens;
 
     private boolean enabled;
 

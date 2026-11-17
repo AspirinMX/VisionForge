@@ -9,9 +9,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import app.pagefault.visionforge.agent.generation.GenerationTaskService;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
+import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflow;
+import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationWorkflow;
 import app.pagefault.visionforge.worker.config.WorkerProperties;
 
 import io.temporal.client.WorkflowClient;
@@ -20,6 +23,7 @@ import io.temporal.client.WorkflowOptions;
 
 /**
  * Retries workflow starts that were committed to the database but not confirmed by Temporal.
+ * The dispatch uses the persisted workflow type, never a class name from the request.
  */
 @Component
 @ConditionalOnProperty(
@@ -33,16 +37,19 @@ public class AgentRunStartCompensator {
 
     private final WorkflowClient workflowClient;
     private final AgentRunService agentRunService;
+    private final GenerationTaskService generationTaskService;
     private final WorkerProperties properties;
     private final String taskQueue;
 
     public AgentRunStartCompensator(
             WorkflowClient workflowClient,
             AgentRunService agentRunService,
+            GenerationTaskService generationTaskService,
             WorkerProperties properties,
             @Value("${visionforge.temporal.task-queue}") String taskQueue) {
         this.workflowClient = workflowClient;
         this.agentRunService = agentRunService;
+        this.generationTaskService = generationTaskService;
         this.properties = properties;
         this.taskQueue = taskQueue;
     }
@@ -52,15 +59,24 @@ public class AgentRunStartCompensator {
             initialDelayString = "${visionforge.worker.start-compensation.initial-delay-ms:5000}")
     public void compensate() {
         WorkerProperties.StartCompensation config = properties.startCompensation();
-        List<WorkflowStartRequest> requests =
+        List<WorkflowStartRequest> agentRequests =
                 agentRunService.pendingStartRequests(config.batchSize());
-        for (WorkflowStartRequest request : requests) {
-            compensate(request, config);
+        for (WorkflowStartRequest request : agentRequests) {
+            compensateAgent(request, config);
+        }
+        List<WorkflowStartRequest> mediaRequests =
+                generationTaskService.pendingStartRequests(config.batchSize());
+        for (WorkflowStartRequest request : mediaRequests) {
+            compensateMedia(request, config);
         }
     }
 
-    private void compensate(
+    private void compensateAgent(
             WorkflowStartRequest request, WorkerProperties.StartCompensation config) {
+        if (request.getWorkflowType() == WorkflowStartType.MEDIA_GENERATION) {
+            compensateMedia(request, config);
+            return;
+        }
         try {
             AgentRunWorkflow workflow = workflowClient.newWorkflowStub(
                     AgentRunWorkflow.class,
@@ -74,9 +90,7 @@ public class AgentRunStartCompensator {
         } catch (WorkflowExecutionAlreadyStarted exception) {
             agentRunService.markWorkflowStarted(request.getWorkflowId());
         } catch (RuntimeException exception) {
-            String message = exception.getMessage() == null
-                    ? exception.getClass().getSimpleName()
-                    : exception.getMessage();
+            String message = message(exception);
             log.warn(
                     "Could not compensate AgentRun workflow start {} (attempt {})",
                     request.getWorkflowId(),
@@ -84,5 +98,37 @@ public class AgentRunStartCompensator {
                     exception);
             agentRunService.recordWorkflowStartFailure(request, message, config.maxAttempts());
         }
+    }
+
+    private void compensateMedia(
+            WorkflowStartRequest request, WorkerProperties.StartCompensation config) {
+        try {
+            MediaGenerationWorkflow workflow = workflowClient.newWorkflowStub(
+                    MediaGenerationWorkflow.class,
+                    WorkflowOptions.newBuilder()
+                            .setWorkflowId(request.getWorkflowId())
+                            .setTaskQueue(taskQueue)
+                            .build());
+            WorkflowClient.start(workflow::run, request.getBusinessId());
+            generationTaskService.markWorkflowStarted(request.getWorkflowId());
+            log.info("Compensated media generation workflow start {}", request.getWorkflowId());
+        } catch (WorkflowExecutionAlreadyStarted exception) {
+            generationTaskService.markWorkflowStarted(request.getWorkflowId());
+        } catch (RuntimeException exception) {
+            String message = message(exception);
+            log.warn(
+                    "Could not compensate media generation workflow start {} (attempt {})",
+                    request.getWorkflowId(),
+                    request.getAttempts() + 1,
+                    exception);
+            generationTaskService.recordWorkflowStartFailure(
+                    request, message, config.maxAttempts());
+        }
+    }
+
+    private String message(RuntimeException exception) {
+        return exception.getMessage() == null
+                ? exception.getClass().getSimpleName()
+                : exception.getMessage();
     }
 }

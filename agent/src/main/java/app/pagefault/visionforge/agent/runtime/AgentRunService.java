@@ -16,6 +16,9 @@ import app.pagefault.visionforge.agent.conversation.Conversation;
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.Message;
 import app.pagefault.visionforge.agent.conversation.MessageMapper;
+import app.pagefault.visionforge.agent.conversation.MessagePart;
+import app.pagefault.visionforge.agent.conversation.MessagePartMapper;
+import app.pagefault.visionforge.agent.conversation.MessagePartType;
 import app.pagefault.visionforge.agent.conversation.MessageRole;
 import app.pagefault.visionforge.agent.conversation.MessageStatus;
 import app.pagefault.visionforge.agent.context.ContextCompactor;
@@ -34,6 +37,8 @@ import app.pagefault.visionforge.agent.tool.ToolInvocation;
 import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
 import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
 import app.pagefault.visionforge.agent.tool.ToolResult;
+import app.pagefault.visionforge.asset.media.AssetDownloadTicket;
+import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -45,11 +50,15 @@ public class AgentRunService {
 
     private static final String SYSTEM_PROMPT = """
             你是 VisionForge（幻影工坊）的创作助手，帮助用户讨论创意、完善提示词、编写脚本和规划图片或视频。
-            你可以调用工作空间存储工具读写脚本、分镜和提示词条目：需要查看或修改文件时先调用工具，不要臆造条目内容。
-            当前版本还不能生成图片或视频，不要声称已经生成媒体。
+            你可以调用会话文件工具读写剧本、分镜和提示词：需要查看或修改文件时先调用工具，不要臆造条目内容。
+            剧本使用 Markdown（kind=SCRIPT）；分镜使用结构化 JSON（kind=STORYBOARD）；修改必须带 baseVersion。
+            你可以调用 generate_image / generate_video 创建生成任务。工具只返回 ACCEPTED 和 taskId，任务在后台继续，
+            不要声称图片或视频已经生成；用户询问结果时调用 get_generation。用户取消时调用 cancel_generation。
+            当前消息附带的图片会作为 input_image 提供给你；inspect_asset 只返回元数据，不等于视觉理解。
             回答保持清晰、具体，并在需要时主动询问缺失的创作信息。
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
+    private static final int IMAGE_CONTEXT_COST = 4_000;
 
     private final AgentRunMapper agentRunMapper;
     private final ModelInvocationRecorder invocationRecorder;
@@ -58,6 +67,8 @@ public class AgentRunService {
     private final WorkflowStartRequestMapper workflowStartRequestMapper;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
+    private final MessagePartMapper messagePartMapper;
+    private final AssetService assetService;
     private final ModelDefinitionService modelDefinitionService;
     private final ContextCompactor contextCompactor;
     private final ObjectMapper objectMapper;
@@ -154,12 +165,14 @@ public class AgentRunService {
             if (message.getSequenceNo() <= coveredToSeq) {
                 break;
             }
-            String content = message.getContent();
-            int cost = length(content);
+            ModelInputItem item = message.getId().equals(run.getUserMessageId())
+                    ? userMessageItem(run, message)
+                    : new ModelInputItem.Message(role(message.getRole()), message.getContent());
+            int cost = itemCost(item);
             if (used + cost > budget) {
                 break;
             }
-            historyItems.addFirst(new ModelInputItem.Message(role(message.getRole()), content));
+            historyItems.addFirst(item);
             used += cost;
             if (message.getId().equals(run.getUserMessageId())) {
                 currentUserMessageIncluded = true;
@@ -209,9 +222,33 @@ public class AgentRunService {
         return items;
     }
 
+    private ModelInputItem userMessageItem(AgentRun run, Message message) {
+        List<MessagePart> parts = messagePartMapper.selectList(
+                Wrappers.<MessagePart>lambdaQuery()
+                        .eq(MessagePart::getMessageId, message.getId())
+                        .eq(MessagePart::getPartType, MessagePartType.ASSET_REFERENCE)
+                        .orderByAsc(MessagePart::getOrdinal));
+        if (parts.isEmpty()) {
+            return new ModelInputItem.Message(role(message.getRole()), message.getContent());
+        }
+        List<ModelInputItem.ImageInput> images = new ArrayList<>(parts.size());
+        for (MessagePart part : parts) {
+            if (part.getAssetId() == null) {
+                continue;
+            }
+            AssetDownloadTicket ticket =
+                    assetService.createDownloadUrl(run.getUserId(), part.getAssetId());
+            images.add(new ModelInputItem.ImageInput(
+                    ticket.downloadUrl().toString(), "auto"));
+        }
+        return new ModelInputItem.UserMessage(message.getContent(), images);
+    }
+
     private int itemCost(ModelInputItem item) {
         return switch (item) {
             case ModelInputItem.Message message -> length(message.content());
+            case ModelInputItem.UserMessage message -> length(message.text())
+                    + message.images().size() * IMAGE_CONTEXT_COST;
             case ModelInputItem.FunctionCall call -> length(call.arguments());
             case ModelInputItem.FunctionCallOutput output -> length(output.output());
             case ModelInputItem.Reasoning reasoning -> length(reasoning.encryptedContent())
@@ -366,6 +403,7 @@ public class AgentRunService {
         int safeLimit = Math.min(Math.max(limit, 1), 200);
         return workflowStartRequestMapper.selectList(
                 Wrappers.<WorkflowStartRequest>lambdaQuery()
+                        .eq(WorkflowStartRequest::getWorkflowType, WorkflowStartType.AGENT_RUN)
                         .eq(WorkflowStartRequest::getStatus, WorkflowStartStatus.PENDING)
                         .orderByAsc(WorkflowStartRequest::getCreatedAt)
                         .last("LIMIT " + safeLimit));

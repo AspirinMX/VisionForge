@@ -838,11 +838,17 @@ billing 独立于 Agent 的自然语言判断。
 - 会话串行：同一会话在任意时刻只允许一个 PENDING/RUNNING 的 AgentRun；消息序号分配在会话行锁内完成，存储层用部分唯一索引兜底，活跃期间再次发送返回 409。
 - 本地 compact：接近输入预算时，用一次普通的 Responses 调用把最早的消息区间压成结构化摘要，写入 `context_summary` 并递增 epoch；摘要按覆盖区间校验 `source_digest` 判定是否过期，摘要调用以 `purpose=COMPACT` 记录。失败或摘要为空时回退到裁剪历史，不失败 AgentRun。
 - 推理项：请求统一携带 `include: ["reasoning.encrypted_content"]`；每轮把推理项原文写入 `agent_run_turn.reasoning`，并记录 `context_epoch`。下一轮按 `model_definition.reasoning_replay` 回放：默认只回放带 `encrypted_content` 的推理项，且省略服务端 `id`、始终提交 `summary`；明文推理只留档不回放。`context_epoch` 与当前 epoch 不一致的推理项不再回放。明文推理增量和加密推理的摘要增量分别以 `reasoning`、`reasoning_summary` 事件实时推送给客户端。
+- 媒体生成（第一阶段后端切片）：V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和最小额度账本；模型配置区分 CHAT/IMAGE/VIDEO、协议与执行方式，默认模型按能力类型唯一。生成受理在单个本地事务内完成任务、输入冻结、输出占位、额度预占与 `workflow_start_request`，`MediaGenerationWorkflow` 在独立生命周期内提交、等待、归档并结算；`generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset` 已注册为工具；`POST/GET /api/v1/generation-tasks`、取消和 `retry-archive` 已提供。
+- 多模态输入：用户消息可通过 `assetIds` 附带最多 8 张会话内图片，服务端写入 `message_part`；构建本轮输入时由 asset 服务签发短时 URL，provider 映射为 `input_image` 内容块；历史消息默认只回放文本。
+- 离线媒体桩：`STUB` 协议图片输出真实 PNG，视频输出仅用于验证受理、归档、交付与结算的占位字节，不代表可播放视频，也不代表真实网关已联调。
 
 尚未实现：
 
-- 工具调用的 SSE 进度事件。
-- run 内 turn 级压缩（第一阶段只压缩已持久化的对话历史）、真实媒体生成。
+- 真实媒体网关适配器与联调（OpenAI Images、Ark、DashScope 等），以及 `REMOTE_TASK` 的真实轮询/取消实现。
+- ffprobe 探测、封面、播放转码、缩略图等媒体处理；当前归档直接发布原文件。
+- 前端生成入口、任务卡片、候选比较页面。
+- `await_generation` 等待工具、批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
+- 真实额度充值/管理接口；当前新账户按 `BILLING_INITIAL_CREDIT_UNITS` 初始化。
 - Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
 
 已确认的创作数据格式：
