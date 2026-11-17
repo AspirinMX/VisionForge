@@ -260,7 +260,9 @@ public interface ErrorCode {
 ### 6.1 主键：UUIDv7（必须）
 
 - 所有新建业务表的主键**必须**使用 UUIDv7（RFC 9562），数据库类型 `UUID`。
-- 应用侧使用 `com.github.f4b6a3:uuid-creator`（版本由根 POM 管理）生成 time-ordered UUIDv7；数据库默认值可以使用 PostgreSQL 18 的 `uuidv7()` 作为兜底。
+- 应用侧使用 `common.id.UuidV7Generator` 生成 time-ordered UUIDv7：48-bit 毫秒时间戳 + 12-bit rand_a + 62-bit rand_b，`version=7`、`variant=2`；随机源使用 JDK `SecureRandom` 或 Hutool `RandomUtil`，时间源注入 `Clock`。
+- Hutool 5.8.48 的 `IdUtil` 只有 UUIDv4、ObjectId 和 Snowflake，**不得**用 `IdUtil.randomUUID()`/`simpleUUID()` 生成业务主键；UUIDv7 位布局由项目实现并测试。
+- 数据库默认值可以使用 PostgreSQL 18 的 `uuidv7()` 作为兜底；应用侧生成是主路径。
 - **禁止**新表使用 UUIDv4 或 `gen_random_uuid()` 作为主键；随机主键会造成索引页分裂。
 - Java 类型使用 `java.util.UUID`；对外 JSON 使用标准 UUID 字符串。
 - 外键、索引、唯一约束使用 UUID 类型。
@@ -300,7 +302,9 @@ public interface ErrorCode {
 
 - 表名、列名使用 snake_case；Java 字段使用 camelCase。
 - 使用 `@TableName`、`@TableId` 显式声明表与主键。
-- 主键使用 `IdType.ASSIGN_ID`，并配置自定义 `IdentifierGenerator` 生成 UUIDv7；不得使用默认 Snowflake 数字 ID。
+- 主键使用 `@TableId(value = "id", type = IdType.INPUT)`，由应用层 `IdGenerator` 在创建实体时生成 UUIDv7 并显式赋值。
+- **不得**使用 `IdType.ASSIGN_ID`（其 `IdentifierGenerator.nextId()` 返回 `Number`）或 `IdType.ASSIGN_UUID`（生成 UUIDv4 字符串）。
+- `IdType.INPUT` 下必须保证所有插入路径都显式赋值；`MetaObjectHandler` 仅可作为兜底，不作为唯一生成点。
 - 通用审计字段：`created_at`、`updated_at`、`version`（乐观锁）、`deleted`（逻辑删除，按表需要）。
 - Entity **应该**使用 `@Getter`/`@Setter` 或显式访问器；**禁止**在 Entity 上使用 `@Data`/`@EqualsAndHashCode`。
 - 禁止把 Entity 作为 API 请求/响应类型。
@@ -403,7 +407,7 @@ public UserAccount register(RegisterCommand command) { ... }
 - `condition`：SpEL 布尔表达式，为 false 时不记录。
 - `recordOnFailure`：默认 true；失败时保留异常并按 fail 模板记录。
 - `sync`：默认 false（异步）；关键审计可设为 true。
-- 模板中**禁止**输出密码、令牌、完整请求体；PII 必须使用 `mask()` 函数。
+- 模板中**禁止**输出密码、令牌、完整请求体；PII 必须使用 `#maskEmail(...)`、`#maskPhone(...)`、`#maskToken(...)` 等内置脱敏函数。
 - 未通过代码评审的模板不得上线。
 
 #### 执行语义
@@ -542,6 +546,13 @@ public UserAccount register(RegisterCommand command) { ... }
 - **禁止**：Entity 上 `@Data`/`@EqualsAndHashCode`；`@SneakyThrows`；用 Lombok 生成可变 DTO。
 - `lombok.config` 统一配置，不随模块漂移。
 
+### 13.5 工具库
+
+- 通用工具优先使用 JDK 标准库。
+- 需要第三方工具时使用 `cn.hutool:hutool-core`（当前基线 5.8.48，版本由根 POM 统一管理），**不要**引入 `hutool-all`。
+- UUIDv7 生成不依赖第三方 UUIDv7 API，由 `common.id.UuidV7Generator` 实现并测试。
+- 新增第三方依赖必须评估许可证、维护状态、Boot 4 兼容性和依赖体积。
+
 ## 14. API 与数据版本兼容
 
 - 新增字段/错误码/可选参数：兼容。
@@ -624,7 +635,42 @@ public class MybatisPlusConfiguration {
 }
 ```
 
-UUIDv7 生成器：实现 MyBatis-Plus `IdentifierGenerator`，返回 `UuidCreator.getTimeOrderedEpoch()`；主键字段使用 `@TableId(type = IdType.ASSIGN_ID)` 和 `UUID` 类型。
+UUIDv7 生成器：由应用层 `IdGenerator`（`common.id`）生成，主键字段使用 `@TableId(type = IdType.INPUT)` 和 `UUID` 类型。**不要**实现 MyBatis-Plus `IdentifierGenerator` 来生成 UUIDv7：其 `nextId()` 返回 `Number`，`nextUUID()` 返回字符串，`ASSIGN_UUID` 生成的是 UUIDv4。
+
+```java
+public interface IdGenerator {
+    UUID nextId();
+}
+
+public final class UuidV7Generator implements IdGenerator {
+
+    private static final long TIMESTAMP_MASK = 0xFFFF_FFFF_FFFFL; // 48 bits
+    private static final long RAND_A_MASK = 0xFFFL;               // 12 bits
+    private static final long RAND_B_MASK = 0x3FFF_FFFF_FFFF_FFFFL; // 62 bits
+    private static final long VARIANT_10 = 0x8000_0000_0000_0000L;
+
+    private final Clock clock;
+    private final RandomGenerator random = new SecureRandom();
+
+    public UuidV7Generator(Clock clock) {
+        this.clock = clock;
+    }
+
+    @Override
+    public UUID nextId() {
+        long timestamp = clock.millis() & TIMESTAMP_MASK;
+        long randA = random.nextLong() & RAND_A_MASK;
+        long most = (timestamp << 16) | (0x7L << 12) | randA;
+
+        long randB = random.nextLong() & RAND_B_MASK;
+        long least = VARIANT_10 | randB;
+
+        return new UUID(most, least);
+    }
+}
+```
+
+测试必须覆盖：`version() == 7`、`variant() == 2`、时间戳可提取、批量生成不重复。同一毫秒内不保证严格递增；对索引局部性足够，需要严格单调时在 rand_a 中加入计数器。
 
 ### E. `audit_log` DDL 草案（实施时通过 Flyway 迁移）
 
@@ -667,4 +713,4 @@ CREATE INDEX idx_audit_log_trace ON audit_log (trace_id);
 
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
-| v1.0 | 2026-11-17 | 初版：务实 REST、统一包络、UUIDv7、MyBatis-Plus、自研 `@BizLog`、日志与质量规范 |
+| v1.0 | 2026-11-17 | 初版：务实 REST、统一包络、UUIDv7 自研生成器、MyBatis-Plus `IdType.INPUT`、自研 `@BizLog`、日志与质量规范 |
