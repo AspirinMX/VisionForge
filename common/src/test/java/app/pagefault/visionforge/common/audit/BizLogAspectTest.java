@@ -94,6 +94,19 @@ class BizLogAspectTest {
     }
 
     @Test
+    void recordsFailureWhenBizNoExpressionCannotBeEvaluated() {
+        assertThatThrownBy(() -> service.failWithResultBizNo(new TestUser("u-4", "dave", "dave@example.com")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("broken");
+
+        assertThat(store.records()).hasSize(1);
+        BizLogRecord record = store.records().get(0);
+        assertThat(record.success()).isFalse();
+        assertThat(record.bizNo()).isNull();
+        assertThat(record.detail()).isEqualTo("失败：broken");
+    }
+
+    @Test
     void respectsCondition() {
         service.conditional(true);
         service.conditional(false);
@@ -206,6 +219,16 @@ class BizLogAspectTest {
         @BizLog(type = "TEST_USER", subType = "IGNORE_FAILURE", recordOnFailure = false, sync = true)
         public void ignoreFailure() {
             throw new IllegalStateException("ignored");
+        }
+
+        @BizLog(
+                type = "TEST_USER",
+                subType = "FAIL_RESULT_BIZ_NO",
+                bizNo = "#result.id",
+                fail = "失败：{{#errorMessage}}",
+                sync = true)
+        public TestUser failWithResultBizNo(TestUser user) {
+            throw new IllegalStateException("broken");
         }
 
         @BizLog(

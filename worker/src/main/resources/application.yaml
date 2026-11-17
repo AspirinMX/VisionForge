@@ -3,9 +3,17 @@ spring:
     name: vision-forge-worker
   main:
     web-application-type: none
+  datasource:
+    url: ${VISIONFORGE_DB_URL:jdbc:postgresql://localhost:5432/visionforge}
+    username: ${VISIONFORGE_DB_USER:visionforge}
+    password: ${VISIONFORGE_DB_PASSWORD:visionforge}
 
 visionforge:
   temporal:
     target: ${TEMPORAL_TARGET:localhost:7233}
     namespace: ${TEMPORAL_NAMESPACE:default}
     task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
+
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"

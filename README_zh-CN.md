@@ -47,7 +47,19 @@ docker compose up -d --wait postgres
 ./mvnw -pl database flyway:migrate
 ```
 
-默认连接 `jdbc:postgresql://localhost:5432/visionforge`，用户名和密码均为 `visionforge`；可通过 `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` 覆盖。业务模块和生成流程仍待实现。
+默认连接 `jdbc:postgresql://localhost:5432/visionforge`，用户名和密码均为 `visionforge`。Flyway 可通过 `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` 覆盖；应用使用 `VISIONFORGE_DB_URL`、`VISIONFORGE_DB_USER`、`VISIONFORGE_DB_PASSWORD` 环境变量。
+
+### 认证与角色
+
+API 提供 `/api/v1/auth/register`、`/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`、`/api/v1/auth/me`。Access Token 为短有效期 JWT；Refresh Token 轮换并以哈希形式存储。系统角色为 `ADMIN` 和 `USER`。
+
+启动 API 前必须设置 `JWT_SECRET`（Base64 编码，至少 32 字节）：
+
+```sh
+export JWT_SECRET="$(openssl rand -base64 32)"
+```
+
+如需初始化首个管理员，再设置 `BOOTSTRAP_ADMIN_EMAIL` 和 `BOOTSTRAP_ADMIN_PASSWORD`（至少 12 个字符）。账号不存在时会创建，已存在时会提升为 `ADMIN`。Worker 使用相同的数据库配置，需在 PostgreSQL 可用后启动。
 
 ## 部署
 

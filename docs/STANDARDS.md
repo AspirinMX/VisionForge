@@ -287,9 +287,11 @@ public interface ErrorCode {
 ### 7.1 版本与依赖
 
 - 使用 `com.baomidou:mybatis-plus-spring-boot4-starter`，版本 `3.5.18.1`（Boot 4 专用 starter，依赖 `mybatis-spring 4.1.0`）。
-- 根 POM 导入 `mybatis-plus-bom:3.5.18` 统一版本；子模块不重复声明版本。
+- 分页、防全表更新等插件需要 `com.baomidou:mybatis-plus-jsqlparser:3.5.18.1`，与 starter 同步引入。
+- 版本由根 POM 的 `dependencyManagement` 统一管理；子模块不重复声明版本。
 - PostgreSQL 驱动由 Spring Boot BOM 管理。
 - 复杂 SQL 允许使用 MyBatis XML；简单 CRUD 使用 MyBatis-Plus `BaseMapper`。
+- MyBatis 3.5.x 不内置 UUID TypeHandler，应用必须全局注册基于 `setObject/getObject(UUID.class)` 的处理器。
 
 ### 7.2 归属与可见性（必须）
 

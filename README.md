@@ -47,7 +47,19 @@ docker compose up -d --wait postgres
 ./mvnw -pl database flyway:migrate
 ```
 
-The defaults target `jdbc:postgresql://localhost:5432/visionforge` with user and password `visionforge`. Override them with `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...`. Business modules and generation pipelines are still pending.
+The defaults target `jdbc:postgresql://localhost:5432/visionforge` with user and password `visionforge`. Override them with `-Dvisionforge.db.url=... -Dvisionforge.db.user=... -Dvisionforge.db.password=...` for Flyway, or the `VISIONFORGE_DB_URL`, `VISIONFORGE_DB_USER` and `VISIONFORGE_DB_PASSWORD` environment variables for the applications.
+
+### Authentication and roles
+
+The API exposes `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout` and `/api/v1/auth/me`. Access tokens are short-lived JWTs; refresh tokens are rotated and stored as hashes. System roles are `ADMIN` and `USER`.
+
+Set `JWT_SECRET` to a Base64-encoded value of at least 32 bytes before starting the API:
+
+```sh
+export JWT_SECRET="$(openssl rand -base64 32)"
+```
+
+To bootstrap the first administrator, also set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` (at least 12 characters). The account is created, or promoted to `ADMIN` if it already exists. The worker shares the same database settings and must be started after PostgreSQL is available.
 
 ## Deployment
 

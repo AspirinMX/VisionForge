@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: vision-forge-api
+  datasource:
+    url: ${VISIONFORGE_DB_URL:jdbc:postgresql://localhost:5432/visionforge}
+    username: ${VISIONFORGE_DB_USER:visionforge}
+    password: ${VISIONFORGE_DB_PASSWORD:visionforge}
 
 management:
   endpoints:
@@ -14,3 +18,23 @@ management:
     health:
       probes:
         enabled: true
+
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"
+
+visionforge:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:}
+      issuer: visionforge
+      audience: visionforge-api
+      access-token-ttl: PT15M
+      refresh-token-ttl: P30D
+    password:
+      bcrypt-strength: ${BCRYPT_STRENGTH:12}
+  identity:
+    bootstrap-admin:
+      email: ${BOOTSTRAP_ADMIN_EMAIL:}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+      display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:Administrator}
