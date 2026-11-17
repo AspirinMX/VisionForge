@@ -1,0 +1,44 @@
+package app.pagefault.visionforge.agent.error;
+
+import app.pagefault.visionforge.common.error.ErrorCode;
+
+public enum AgentErrorCode implements ErrorCode {
+
+    MODEL_NOT_FOUND("AGENT_MODEL_NOT_FOUND", 404, "模型配置不存在"),
+    MODEL_NOT_CONFIGURED("AGENT_MODEL_NOT_CONFIGURED", 409, "尚未配置可用的文本模型"),
+    MODEL_CONFIG_INVALID("AGENT_MODEL_CONFIG_INVALID", 400, "模型配置不合法"),
+    MODEL_API_KEY_REQUIRED("AGENT_MODEL_API_KEY_REQUIRED", 400, "创建模型时必须提供 API Key"),
+    MODEL_PROVIDER_ERROR("AGENT_MODEL_PROVIDER_ERROR", 502, "模型网关调用失败"),
+    MODEL_RESPONSE_INVALID("AGENT_MODEL_RESPONSE_INVALID", 502, "模型网关返回了无法解析的响应"),
+    CONVERSATION_NOT_FOUND("AGENT_CONVERSATION_NOT_FOUND", 404, "会话不存在"),
+    AGENT_RUN_NOT_FOUND("AGENT_RUN_NOT_FOUND", 404, "执行记录不存在"),
+    AGENT_RUN_START_FAILED("AGENT_RUN_START_FAILED", 503, "对话执行启动失败，请稍后重试"),
+    MESSAGE_EMPTY("AGENT_MESSAGE_EMPTY", 400, "消息内容不能为空"),
+    MESSAGE_TOO_LONG("AGENT_MESSAGE_TOO_LONG", 400, "消息内容超过模型允许的输入长度"),
+    AGENT_RUN_INVALID_STATE("AGENT_RUN_INVALID_STATE", 409, "执行记录状态不允许该操作");
+
+    private final String code;
+    private final int httpStatus;
+    private final String message;
+
+    AgentErrorCode(String code, int httpStatus, String message) {
+        this.code = code;
+        this.httpStatus = httpStatus;
+        this.message = message;
+    }
+
+    @Override
+    public String code() {
+        return code;
+    }
+
+    @Override
+    public int httpStatus() {
+        return httpStatus;
+    }
+
+    @Override
+    public String message() {
+        return message;
+    }
+}

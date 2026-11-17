@@ -65,6 +65,46 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 To bootstrap the first administrator, also set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` (at least 12 characters). The account is created, or promoted to `ADMIN` if it already exists. The worker shares the same database settings and must be started after PostgreSQL is available.
 
+### Text model configuration and conversations
+
+The API and worker both require `MODEL_CONFIG_SECRET` (Base64, exactly 32 bytes) to encrypt provider API keys at rest:
+
+```sh
+export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
+```
+
+A system administrator configures an OpenAI-compatible endpoint through `/api/v1/admin/models`:
+
+```sh
+curl -X POST http://localhost:8080/api/v1/admin/models \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Primary Text Model",
+    "baseUrl": "https://gateway.example.com/v1",
+    "apiKey": "sk-...",
+    "modelId": "gpt-6-astra",
+    "reasoningEffort": "MEDIUM",
+    "maxInputTokens": 32000,
+    "maxOutputTokens": 4096,
+    "defaultModel": true
+  }'
+```
+
+API keys are never returned; responses expose only `apiKeyConfigured`. The provider calls `{baseUrl}/chat/completions` and sends `max_tokens` plus `reasoning_effort` when configured. The worker must be running to execute AgentRun workflows.
+
+Conversation endpoints:
+
+```text
+POST /api/v1/workspaces/{workspaceId}/conversations
+GET  /api/v1/workspaces/{workspaceId}/conversations
+GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
+```
+
+Sending a message returns `202 Accepted` with a `runId`. The workflow persists the assistant reply asynchronously; poll the AgentRun endpoint until its status is `COMPLETED` or `FAILED`.
+
 ## Deployment
 
 Deployment files are located at the repository root. The Dockerfile and Compose file remain placeholders; runnable service definitions will be added separately.

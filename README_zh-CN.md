@@ -65,6 +65,46 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 如需初始化首个管理员，再设置 `BOOTSTRAP_ADMIN_EMAIL` 和 `BOOTSTRAP_ADMIN_PASSWORD`（至少 12 个字符）。账号不存在时会创建，已存在时会提升为 `ADMIN`。Worker 使用相同的数据库配置，需在 PostgreSQL 可用后启动。
 
+### 文本模型配置与对话
+
+API 和 Worker 都必须设置 `MODEL_CONFIG_SECRET`（Base64，恰好 32 字节），用于加密存储模型 API Key：
+
+```sh
+export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
+```
+
+系统管理员通过 `/api/v1/admin/models` 配置 OpenAI 兼容网关：
+
+```sh
+curl -X POST http://localhost:8080/api/v1/admin/models \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "主文本模型",
+    "baseUrl": "https://gateway.example.com/v1",
+    "apiKey": "sk-...",
+    "modelId": "gpt-6-astra",
+    "reasoningEffort": "MEDIUM",
+    "maxInputTokens": 32000,
+    "maxOutputTokens": 4096,
+    "defaultModel": true
+  }'
+```
+
+API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用请求发送到 `{baseUrl}/chat/completions`，使用 `max_tokens`，配置了 reasoning effort 时同时发送 `reasoning_effort`。AgentRun 由 Worker 执行，Worker 必须保持运行。
+
+会话接口：
+
+```text
+POST /api/v1/workspaces/{workspaceId}/conversations
+GET  /api/v1/workspaces/{workspaceId}/conversations
+GET  /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages
+GET  /api/v1/workspaces/{workspaceId}/agent-runs/{runId}
+```
+
+发送消息返回 `202 Accepted` 和 `runId`；助手回复由 Workflow 异步写入，客户端轮询 AgentRun，直到状态为 `COMPLETED` 或 `FAILED`。
+
 ## 部署
 
 部署文件位于仓库根目录。Dockerfile 和 Compose 文件仍为占位配置，可运行的服务定义将在后续添加。

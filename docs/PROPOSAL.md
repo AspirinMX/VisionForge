@@ -641,11 +641,11 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 18. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。Flyway 迁移基座与 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）已经建立，Compose 已提供 PostgreSQL 服务。common 基础层（统一响应、错误码、UUIDv7、自研 @BizLog）已实现；identity 已实现 bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）与审计日志落库。工作空间与成员管理已经实现（见第 5 节）：用户与工作空间多对多、空间级 OWNER/ADMIN/MEMBER、登录后选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新与归档、所有权转让、平台管理员跨空间执行任何操作，审计日志已能记录 workspace_id。不能将本提案当作实现完成说明。
+截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。Flyway 迁移基座与 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）已经建立，Compose 已提供 PostgreSQL 服务。common 基础层（统一响应、错误码、UUIDv7、自研 @BizLog）已实现；identity 已实现 bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）与审计日志落库。工作空间与成员管理已经实现（见第 5 节）：用户与工作空间多对多、空间级 OWNER/ADMIN/MEMBER、登录后选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新与归档、所有权转让、平台管理员跨空间执行任何操作，审计日志已能记录 workspace_id。agent 已实现最小文本对话闭环：管理员通过 `/api/v1/admin/models` 配置 baseUrl、加密存储的 apiKey、模型 ID、reasoning effort、最大输入输出；conversation、message、agent_run、model_invocation 落库；`AgentRunWorkflow` 调用 OpenAI 兼容的 `/chat/completions` 并持久化回复，失败时记录失败状态。尚未接入工具调用、流式输出、上下文压缩和真实媒体生成。不能将本提案当作实现完成说明。
 
 已观察到的基础工程待办：
 
-- 邀请未注册用户、跨空间越权尝试的安全审计、工具执行、上下文管理和真实生成流程尚待实现。
+- 邀请未注册用户、工具执行、上下文压缩、流式输出、AgentRun 启动补偿和真实生成流程尚待实现。
 - Dockerfile 仍为占位配置；Compose 目前仅包含 PostgreSQL。
 
 需要通过实现验证或产品决策确定的事项：

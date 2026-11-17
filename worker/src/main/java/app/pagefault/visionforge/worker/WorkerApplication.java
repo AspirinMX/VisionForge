@@ -3,7 +3,10 @@ package app.pagefault.visionforge.worker;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+        "app.pagefault.visionforge.worker",
+        "app.pagefault.visionforge.agent"
+})
 public class WorkerApplication {
 
     public static void main(String[] args) {

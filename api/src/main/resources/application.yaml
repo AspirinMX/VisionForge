@@ -34,6 +34,12 @@ visionforge:
       selection-token-ttl: PT5M
     password:
       bcrypt-strength: ${BCRYPT_STRENGTH:12}
+  temporal:
+    target: ${TEMPORAL_TARGET:localhost:7233}
+    namespace: ${TEMPORAL_NAMESPACE:default}
+    task-queue: ${TEMPORAL_TASK_QUEUE:vision-forge}
+  model:
+    config-secret: ${MODEL_CONFIG_SECRET:}
   identity:
     bootstrap-admin:
       email: ${BOOTSTRAP_ADMIN_EMAIL:}
