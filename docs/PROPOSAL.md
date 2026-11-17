@@ -8,7 +8,7 @@
 
 VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工作台。用户通过自然语言提出需求，主对话模型根据上下文选择工具，完成创意讨论、提示词优化、剧本编辑、素材选择、图片生成和视频生成。
 
-首版面向个人用户，通过第三方网关调用模型。数据结构预留工作空间和成员关系，后续扩展团队协作、自建模型和复杂作品编排。
+首版面向个人用户，通过第三方网关调用模型。首版保留工作空间、成员关系和工作空间存储库：工作空间是租户、权限、计费和存储归属边界，会话只绑定存储条目。多人分工、审核、自建模型和复杂作品编排在后续扩展，首版不实现。
 
 核心目标：
 
@@ -26,14 +26,16 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | --- | --- |
 | 主交互 | 对话式工作台，主模型负责动态规划和工具选择 |
 | 创作能力 | 图片、视频、剧本、素材操作均作为工具暴露 |
+| 创作存储 | 脚本、分镜、提示词、图片和视频进入工作空间存储库；会话只绑定条目，文件不归属于会话 |
 | 工作流 | Agent Loop，不预设必须先写剧本、再生成图片、最后生成视频 |
 | 模型接入 | 第三方 OpenAI 兼容网关，优先采用 OpenAI 官方 Java SDK |
 | 协议假设 | 按讨论约定，假设网关兼容所需 API，不将网关兼容实现作为本提案的前置问题 |
 | 上下文压缩 | 远程 compact 不可用，调用文本模型生成本地管理的摘要 |
 | 持久化执行 | 优先采用 Temporal，实施前通过故障恢复验证 |
 | 消息中间件 | 首版移除 Kafka、Debezium/CDC，也不引入替代 MQ |
+| 流式输出 | HTTP SSE；Worker 通过 Redis pub/sub 发布模型增量；持久化消息是事实来源，断线不重放 |
 | 业务存储 | PostgreSQL |
-| 临时数据 | Redis，用于缓存、限流和实时输出缓存 |
+| 临时数据 | Redis，用于缓存、限流和 SSE 增量分发 |
 | 媒体存储 | RustFS 或其他经过验证的 S3 兼容对象存储 |
 | 数据库演进 | Flyway 管理业务数据库迁移 |
 | 身份与空间 | 用户与工作空间多对多；空间内 OWNER/ADMIN/MEMBER；登录后选择空间，access token 绑定工作空间 |
@@ -59,9 +61,9 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | --- | --- | --- |
 | common | 保留 | 少量跨模块基础类型和错误定义，避免成为通用代码堆积区 |
 | identity | 保留 | 用户、工作空间、成员和权限 |
-| asset | 保留 | 上传、下载、对象存储、媒体元数据、资产引用及生命周期 |
+| asset | 保留 | 工作空间存储库、上传下载、对象存储、媒体元数据、条目版本、资产引用及生命周期 |
 | billing | 保留 | 模型用量、费用、额度预占、结算和流水 |
-| agent | 调整后的核心业务模块 | 会话、上下文、动态工具调用、创作对象与生成任务 |
+| agent | 调整后的核心业务模块 | 会话、上下文、动态工具调用、生成任务；通过 asset 读写工作空间存储条目 |
 | api | 保留 | HTTP/SSE 入口、请求校验、认证接入和服务启动装配 |
 | worker | 保留 | Temporal Worker 启动、Workflow/Activity 注册和执行资源配置 |
 | database | 保留 | 业务数据库迁移脚本 |
@@ -98,6 +100,7 @@ VisionForge/
 - api、worker 负责装配业务模块，不能互相依赖。
 - api 调用 agent 的公开应用服务，worker 注册 agent 提供的执行实现。
 - agent 通过公开服务接口调用 identity、asset、billing。
+- agent 通过 asset 的公开服务读写工作空间存储库；剧本和媒体不保存两份副本。
 - identity、asset、billing 不反向依赖 agent，归属关联可以保存业务 ID。
 - common 不依赖业务模块，不放 Web 启动配置或持久化实体。
 - database 不依赖业务模块，迁移发布也不依赖 API 或 Worker 的启动。
@@ -111,7 +114,7 @@ agent/
 ├── context/         # 上下文构建、快照和摘要
 ├── runtime/         # AgentRun、模型步骤、工具执行记录
 ├── tool/            # 工具定义、校验和分发
-├── creative/        # 提示词、剧本、分镜及其版本
+├── creative/        # 剧本、分镜、提示词工具；读写工作空间存储库，不维护独立文件副本
 ├── generation/      # 图片、视频生成任务
 ├── provider/        # SDK、模型能力、路由和上游调用
 └── temporal/        # Workflow、Activity 及其实现
@@ -130,13 +133,15 @@ agent/
 | AgentRun | 一次用户请求或一次明确续跑的执行过程 |
 | ModelInvocation | 一次实际模型调用及其参数、结果和用量 |
 | ToolInvocation | 一个工具调用及其参数、执行状态和结果 |
-| CreativeDocumentVersion | 提示词、剧本或分镜等创作对象的确定版本 |
+| WorkspaceItem | 工作空间存储库中的脚本、提示词、分镜、图片或视频条目 |
+| WorkspaceItemVersion | 存储条目的不可变版本，包含文本内容或媒体资产引用 |
+| ConversationItem | 会话与存储条目的绑定关系，不改变条目归属 |
 | GenerationTask | 一次图片或视频生成请求，有独立执行和结算状态 |
 | GenerationAttempt | 某个生成任务的一次上游执行尝试 |
 | Asset | 已上传或生成的图片、视频及衍生文件 |
 | ContextSnapshot | 某次模型调用使用的上下文组成与版本 |
 
-一个会话可以包含多次 AgentRun，一个 AgentRun 可以调用多个工具，一个工具也可以创建独立的长时间生成任务。AgentRun 结束不意味着生成任务必须结束。
+一个会话可以包含多次 AgentRun，一个 AgentRun 可以调用多个工具，一个工具也可以创建独立的长时间生成任务。AgentRun 结束不意味着生成任务必须结束。一个存储条目可以被多个会话绑定；会话删除只删除绑定，不删除存储条目。
 
 ## 5. 身份、工作空间与权限
 
@@ -153,6 +158,7 @@ agent/
 - 注册成功后自动创建个人工作空间（personal = true），注册者为 OWNER。新用户登录后不会出现无空间可用。
 - 工作空间只归档，不物理删除：状态为 ACTIVE / ARCHIVED。归档后保留历史数据；恢复和彻底删除不在首版范围。
 - 成员状态字段保留 ACTIVE；邀请未注册用户、INVITED/PENDING 流程不在首版实现。
+- 工作空间同时拥有存储库，保存脚本、分镜、提示词、图片和视频等条目。条目归属工作空间，不归属会话；会话通过 `conversation_item` 绑定条目。首版个人空间只有一个成员，存储库由该用户使用；多人分工和审核在后续阶段扩展。
 
 ### 5.2 两级角色
 
@@ -167,7 +173,8 @@ agent/
 
 | 操作 | OWNER | 空间 ADMIN | MEMBER | 平台 ADMIN |
 | --- | --- | --- | --- | --- |
-| 使用对话、生成和查看本空间内容 | ✓ | ✓ | ✓ | ✓（跨空间） |
+| 使用对话和生成 | ✓ | ✓ | ✓ | ✓（跨空间） |
+| 查看工作空间存储库和空间级资产 | ✓ | ✓ | ✓ | ✓（跨空间） |
 | 查看成员列表 | ✓ | ✓ | ✓ | ✓（跨空间） |
 | 添加或移除成员 | ✓ | 仅 MEMBER | ✗ | ✓（跨空间） |
 | 修改成员角色 | ✓ | 仅 MEMBER，不能授予 ADMIN | ✗ | ✓（跨空间） |
@@ -176,6 +183,8 @@ agent/
 | 转让所有权 | ✓ | ✗ | ✗ | ✓（跨空间） |
 
 平台管理员可以访问任意工作空间并执行任何业务操作，不需要加入该空间。管理员权限来自系统角色 ADMIN，不通过提升空间角色实现。所有跨空间操作必须记录审计（操作者、目标空间、操作类型、traceId、时间）。
+
+权限矩阵中的“查看本空间内容”指工作空间存储库和空间级资产，不自动等于查看其他成员的私人会话。会话可见性单独定义；首版个人空间无差异，多人协作阶段再确定共享和审核策略。
 
 空间内约束：
 
@@ -281,6 +290,13 @@ V1 已创建 workspace、workspace_member；上述调整通过新的 V3 迁移�
 5. 注册时自动创建个人空间。
 6. 端到端验证：多空间选择、切换、跨空间越权、成员增删改、OWNER 保护、管理员跨空间操作、审计 workspace_id。
 
+### 5.9 会话与存储库的边界
+
+- 工作空间拥有存储条目；会话只绑定条目，不拥有文件。
+- 会话默认由创建者使用；多人协作阶段再引入会话共享、条目审核和分工。
+- 不能把“能访问工作空间”解释为“能查看所有会话”。会话可见性与存储条目可见性分别判断。
+- 后续多人分工以存储条目和版本为协作边界，编剧、生成人员和审核人员不必共享同一个聊天上下文。
+
 ## 6. 动态 Agent Loop
 
 主 Workflow 只约束可靠执行规则，不写死业务步骤。
@@ -303,9 +319,11 @@ flowchart TD
 
 - 创意讨论：直接回复，不生成媒体。
 - 已有提示词：直接调用图片或视频工具。
-- 修改剧本：读取指定版本，修改部分内容并保存新版本。
+- 修改剧本：读取存储条目的指定版本，修改部分内容并保存新版本。
 - 图生视频：选择已有素材，直接提交视频任务。
-- 完整短片：模型根据需求选择剧本、参考图、分镜和生成工具。
+- 完整短片：模型根据需求选择存储条目、参考图、分镜和生成工具。
+
+工具操作的对象是工作空间存储条目。会话只维护当前绑定关系；同一剧本可以被多个会话引用，生成任务固定条目版本。
 
 是否继续调用工具由模型输出和执行状态共同决定，不能仅以“本次没有工具调用”判断所有响应均已正常结束。响应不完整、调用超时和用户取消需要独立处理。
 
@@ -319,9 +337,12 @@ flowchart TD
 
 | 工具示例 | 职责 |
 | --- | --- |
-| create_script | 保存模型创作的结构化剧本 |
-| read_script | 读取剧本版本或指定镜头 |
-| update_script | 基于预期版本修改剧本，产生新版本 |
+| list_items | 列出当前会话绑定的存储条目 |
+| search_items | 按标题、类型或路径查询工作空间存储库 |
+| read_item | 读取条目元数据、文本内容或指定版本；媒体返回资产信息 |
+| create_item | 在工作空间存储库创建条目，并绑定当前会话 |
+| update_item | 基于 base_version 修改条目，产生新版本 |
+| bind_item / unbind_item | 管理会话与条目的绑定，不改变条目归属 |
 | search_assets | 查询用户有权访问的素材 |
 | inspect_asset | 获取媒体信息和可供模型使用的内容 |
 | generate_image | 创建并执行图片生成任务 |
@@ -329,22 +350,23 @@ flowchart TD
 | get_generation | 查询任务状态和产物 |
 | cancel_generation | 请求取消生成任务 |
 
-主模型可以直接生成剧本内容，通过 create_script 保存。工具不必再次调用同一个文本模型。以后需要专门的长剧本模型或分镜 Agent 时，可以增加委派型工具。
+主模型可以直接生成剧本内容，通过 create_item 以 `kind = SCRIPT` 保存到工作空间存储库。`create_script`、`read_script`、`update_script` 可以作为基于条目的类型化封装，但底层必须复用同一套存储库和版本模型，不能建立第二套事实来源。工具不必再次调用同一个文本模型。
 
 每个工具定义应包含参数 Schema、返回结构、副作用类型、权限要求、幂等策略、预算要求、超时策略，以及是否支持后台执行。
 
 执行约束：
 
-- 工具参数不直接构成授权；工作空间和用户身份来自服务端执行上下文。
+- 工具参数不直接构成授权；工作空间、会话和用户身份来自服务端执行上下文。
 - 模型不能指定任意类名、SQL、代码或执行器；工具名映射到受控注册表。
+- 条目路径必须在工作空间存储库根目录内，拒绝绝对路径和 `..`；文本大小、媒体类型和总存储量受限。
 - 调用标识由 AgentRun、模型步骤和工具 call_id 等组成，重放同一调用不重复执行副作用。
 - 重复的同一调用与用户明确要求“再生成一次”需要区分，后者创建新任务。
-- 无数据依赖且无写入冲突的工具可以并行；同一作品修改使用版本校验。
+- 无数据依赖且无写入冲突的工具可以并行；同一存储条目修改必须携带 `base_version`，版本冲突作为结构化结果返回模型。
 - 参数不合法、额度不足、权限不足等作为结构化结果处理，不进行无意义的基础设施重试。
 - 技术异常先由执行层恢复；需要修改方案时，将可解释的失败交回模型。
 - 限制调用轮数、总执行时间、并发数量和成本，避免无限循环。
 
-工具返回必要的摘要、对象 ID 和版本。完整剧本、媒体文件及大量结果保存在对应业务存储中。
+工具返回必要的摘要、`item_id`、版本、`asset_id` 和绑定关系。完整剧本、媒体文件及大量结果保存在工作空间存储库或对象存储中，不放入模型上下文或 Temporal 历史。
 
 ## 8. Temporal 执行模型
 
@@ -431,8 +453,8 @@ Workflow 历史只保存必要的状态与引用。对于过长的执行历史�
 
 | 存储 | 职责 |
 | --- | --- |
-| PostgreSQL | 用户消息、业务对象、上下文索引、任务状态、资产元数据和账目 |
-| RustFS / S3 | 媒体、衍生文件，以及确有需要外置的大型不可变快照 |
+| PostgreSQL | 用户消息、业务对象、工作空间存储条目元数据与文本版本、上下文索引、任务状态、资产元数据和账目 |
+| RustFS / S3 | 媒体、衍生文件、大型不可变文本版本，以及确有需要外置的快照 |
 | Temporal | 执行历史、步骤恢复和持久化等待 |
 | Redis | 缓存、限流、短期流式数据与进度通知 |
 
@@ -446,6 +468,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 建议建立 conversation、conversation_branch、message、message_part 等实体。
 
+- conversation 属于工作空间，`created_by` 记录创建者；会话可见性与存储条目可见性分开判断。
 - message 保存作者、顺序、分支、执行标识、状态和时间。
 - message_part 支持文本、图片引用、视频引用和任务卡片。
 - 编辑历史消息或重新生成回复形成新版本或分支，不覆盖原始记录。
@@ -462,12 +485,33 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 ### 11.3 流式输出
 
-- SSE 向前端推送文本片段、任务状态和工具进度。
-- Redis 缓存短期片段，包含 attempt_id 和顺序号。
-- 完整消息及关键状态落 PostgreSQL；必要时按批次保存中间检查点，不逐 token 写业务表。
-- 浏览器断开不自动取消已授权的生成任务。
-- 重新连接先读取业务状态和已保存结果，再恢复实时订阅。
-- 无法恢复的流式尝试标记为中断，新尝试不能直接拼接到旧文本尾部。
+当前最小实现采用 HTTP SSE，入口为 `POST /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/messages/stream`，响应类型为 `text/event-stream`。非流式消息接口保留，供不支持 SSE 或 Redis 暂时不可用的客户端轮询。
+
+事件格式：
+
+```text
+event: accepted   data: {"type":"accepted","runId":"..."}
+event: delta      data: {"type":"delta","content":"..."}
+event: done       data: {"type":"done","assistantMessageId":"..."}
+event: error      data: {"type":"error","message":"..."}
+```
+
+执行链路：
+
+1. API 保存用户消息、AgentRun 和 workflow_start_request，并订阅该 run 的 Redis 频道。
+2. Worker 的模型 Activity 将上游增量发布到 `visionforge:agent-run:{runId}`。
+3. API 将 Redis 事件转换为 SSE 事件转发给客户端；收到 `done` 或 `error` 后关闭订阅。
+4. Worker 持久化完整助手消息；SSE 只负责实时投递，不是业务事实来源。
+
+约束：
+
+- Redis pub/sub 是尽力而为，不缓存、不重放；客户端断线或 API 重启后，应重新读取消息和 AgentRun 状态，不能依赖补发增量。
+- 当前事件只有 runId，没有 attempt_id 和顺序号；同一 run 的增量通过单线程订阅和同步分发保持顺序。需要断线续传时，再增加事件序号、短期缓存和 attempt_id。
+- SSE 超时默认 5 分钟，可配置；超时只关闭推送，不取消 AgentRun 或已授权的生成任务。
+- 浏览器不能使用 `EventSource` 携带 `Authorization` 头，应使用 `fetch` 流式读取。
+- 工具进度、任务卡片和生成状态复用同一 SSE 通道扩展；当前最小实现只推送模型文本增量。
+- 完整消息、工具调用和任务状态落 PostgreSQL；不逐 token 写业务表。
+- 新尝试不能直接拼接到旧文本尾部；失败重试由新的 AgentRun 或明确的续跑产生。
 
 ## 12. 上下文构建与本地 compact
 
@@ -476,7 +520,7 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 ```text
 本轮模型输入
   = 当前系统指令与工具定义
-  + 用户确认的项目事实、剧本版本和选定素材
+  + 用户确认的项目事实、绑定的存储条目版本和选定素材
   + 当前历史摘要
   + 最近完整消息及对应工具记录
   + 当前用户请求
@@ -484,9 +528,9 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 完整消息回答“实际发生过什么”，模型上下文回答“这次调用需要什么”。二者不共用一个会被 compact 覆盖的内容字段。
 
-角色设定、风格要求、剧本、预算和用户确认结果独立保存，不依赖摘要重新推断。资产标识必须在调用前解析为上游实际可使用的输入内容或访问方式。
+角色设定、风格要求、存储条目版本、预算和用户确认结果独立保存，不依赖摘要重新推断。会话通过 `conversation_item` 绑定条目；上下文只引用条目 ID 和版本，不复制文件内容。资产标识必须在调用前解析为上游实际可使用的输入内容或访问方式。
 
-每次调用生成不可变 context_snapshot，记录会话分支、消息范围、摘要版本、创作对象版本、资产版本、系统指令和工具定义版本。可追溯并不意味着再次运行模型会产生相同输出。
+每次调用生成不可变 context_snapshot，记录会话分支、消息范围、摘要版本、存储条目版本、资产版本、系统指令和工具定义版本。可追溯并不意味着再次运行模型会产生相同输出。
 
 ### 12.2 摘要生成流程
 
@@ -515,31 +559,75 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 首版先使用明确引用和数据库查询找回历史事实，不默认引入向量数据库。出现跨大量历史内容的语义检索需求后再评估。
 
-## 13. 创作对象与媒体资产
+## 13. 工作空间存储库与媒体资产
 
-### 13.1 剧本和生成参数版本
+### 13.1 工作空间存储库
 
-提示词、剧本和分镜是独立创作对象，应支持版本号、来源消息和父版本。
+工作空间拥有存储库，脚本、分镜、提示词、图片、视频和衍生文件都是存储库条目。条目归属工作空间，不归属会话。
 
-生成任务保存提交时的冻结快照，包括模型、实际提示词、可选参数、引用素材、价格规则和授权预算。后续修改剧本不改变已经提交的任务。
+- 会话通过 `conversation_item` 绑定条目；同一个条目可以被多个会话引用，不复制文件。
+- 会话删除只删除绑定，不删除存储条目；条目删除前检查绑定、活跃生成任务和审核引用。
+- 条目使用不可变版本；更新产生新版本，当前版本由 `current_version` 指向。
+- `pinned_version` 用于生成任务和审核快照；为空表示跟随最新版本。
+- 条目记录 `created_by`、`origin_conversation_id` 和 `created_at`；版本记录 `source`、`created_by` 和 `tool_invocation_id`，用于追溯来源。`origin_conversation_id` 只表示首次来源，不构成访问控制；来源会话删除时置空，不级联删除条目。
+- 文本内容保存在 `workspace_item_version.content`；图片、视频等二进制通过 `asset_id` 或对象存储键引用，不把 Base64 存入业务表、Redis 或 Temporal 历史。
 
-保存用户原始输入、优化后内容和实际提交参数。重新生成默认可以复用原方案，重新优化由用户意图决定。
+建议实体：
 
-### 13.2 媒体元数据
+```text
+workspace_item：id、workspace_id、kind、title、path、mime_type、storage_kind、
+                current_version、status、visibility、created_by、
+                origin_conversation_id、created_at、updated_at、deleted_at
+workspace_item_version：id、item_id、version、content、asset_id、object_key、
+                        size_bytes、checksum、source、created_by、
+                        tool_invocation_id、created_at
+conversation_item：id、workspace_id、conversation_id、item_id、role、
+                   pinned_version、added_by、added_at
+```
 
-asset 建议记录工作空间、存储后端、bucket、object_key、类型、大小、校验信息、宽高、时长、来源任务和状态。
+`kind` 至少包括 SCRIPT、STORYBOARD、PROMPT、IMAGE、VIDEO、OTHER。`role` 至少包括 WORKING、ATTACHMENT、REFERENCE、OUTPUT。约束至少包括 `UNIQUE (workspace_id, path)`（未删除条目）、`UNIQUE (item_id, version)` 和 `UNIQUE (conversation_id, item_id)`。
 
+接口草案：
+
+```text
+GET    /api/v1/workspaces/{workspaceId}/items
+POST   /api/v1/workspaces/{workspaceId}/items
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}
+PATCH  /api/v1/workspaces/{workspaceId}/items/{itemId}
+GET    /api/v1/workspaces/{workspaceId}/items/{itemId}/versions
+POST   /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items
+DELETE /api/v1/workspaces/{workspaceId}/conversations/{conversationId}/items/{itemId}
+```
+
+所有接口的 `workspaceId` 必须与 access token 的 `wsid` 一致；会话绑定接口还要校验会话可见性和条目可见性。
+
+### 13.2 剧本、提示词和分镜
+
+剧本、提示词和分镜不再单独建立一套文件存储，作为存储条目的类型表达：
+
+- 剧本可以是 Markdown 或结构化 JSON；具体格式由工具和前端决定，不改变条目和版本模型。
+- 每个版本记录来源消息、父版本、创建者和工具调用标识。
+- 生成任务保存提交时冻结的条目版本、实际提示词、参数、引用素材、价格规则和授权预算；后续修改条目不改变已提交任务。
+- 用户原始输入、优化后内容和实际提交参数都要保存。
+- `create_script`、`read_script`、`update_script` 可以作为类型化工具封装，但底层必须复用 `workspace_item` / `workspace_item_version`。
+
+### 13.3 媒体资产与对象存储
+
+`asset` 负责二进制载荷和媒体元数据，`workspace_item` 负责库内条目：
+
+- asset 记录工作空间、存储后端、bucket、object_key、类型、大小、校验信息、宽高、时长、来源任务和状态。
 - 原始素材、生成结果、缩略图和封面分别保存为资产或明确的资产变体。
 - 每次新生成创建新资产，不覆盖旧结果。
-- 记录任务与产物、产物与参考素材之间的关系。
-- 消息与剧本引用 asset_id，不把临时访问 URL 当作永久标识。
+- 条目版本引用 `asset_id`，消息、剧本和生成任务引用条目版本或资产 ID，不把临时访问 URL 当作永久标识。
 - 对象键由后端分配，文件名和存储路径不由模型或客户端直接控制。
 
-### 13.3 上传与结果归档
+### 13.4 上传、写入与结果归档
 
-用户上传：创建上传会话、签发授权、客户端直传、服务端验证对象、确认可用资产。
+用户上传：创建上传会话、签发授权、客户端直传、服务端验证对象、创建 `workspace_item` 并写入初始版本；二进制文件同时创建 `asset`，如适用则绑定当前会话。
 
-生成结果归档：创建待归档记录、获取供应商结果、写入对象存储、校验元数据、将资产标为 READY，再完成交付与结算。
+Agent 写入：`create_item` 在工作空间存储库创建条目并写入版本，同时绑定当前会话；`update_item` 基于 `base_version` 创建新版本，不原地覆盖。
+
+生成结果归档：创建待归档记录、获取供应商结果、写入对象存储、校验元数据、将资产标为 READY、创建或更新条目版本，再完成交付与结算。
 
 对象存储写入与数据库提交不是同一个事务，需要恢复机制：
 
@@ -548,21 +636,33 @@ asset 建议记录工作空间、存储后端、bucket、object_key、类型、�
 - 同一归档尝试重试：识别已保存对象；新的生成尝试使用新的资产标识。
 - 供应商临时产物尽快归档，不作为唯一长期副本。
 
-### 13.4 访问与生命周期
+### 13.5 访问、可见性与生命周期
 
-- 私有对象通过业务鉴权和短期授权访问。
-- 提供给供应商的素材必须可从其网络访问，授权有效期覆盖实际读取时间。
+- 存储条目按工作空间隔离；所有查询必须带 `workspace_id`，该值来自服务端执行上下文。
+- `conversation_item` 只表示会话上下文，不单独授予条目访问权。条目可见性由 `visibility` 和工作空间角色决定；会话可见性单独定义。
+- 首版个人空间只有一个成员，可见性差异不会暴露；建议草稿默认 `PRIVATE`，显式共享或提交审核后改为 `WORKSPACE`。多人协作阶段再落地角色、审核和通知。
+- 私有对象通过业务鉴权和短期授权访问；提供给供应商的素材必须可从其网络访问，授权有效期覆盖实际读取时间。
 - 下载上游产物时限制来源、重定向、响应大小和处理时间，防止归档过程访问内部网络。
 - 图片、视频格式和大小需要真实验证；媒体处理放入受控执行环境。
-- 用户删除消息不直接等同于删除共享素材，删除前检查引用及正在执行的任务。
+- 用户删除消息不直接删除共享条目；删除前检查会话绑定、生成任务和审核引用。
 - 临时上传、孤儿对象和未完成分片有明确清理规则；正式资产按产品保留策略处理。
-- 活跃 Workflow 引用的资产、上下文快照不能被提前清理。
+- 活跃 Workflow 引用的条目版本、资产和上下文快照不能被提前清理。
 - 对象存储生命周期能力、预签名上传、分片和视频 Range 访问需要在目标 RustFS 版本验证。
+
+### 13.6 后续多人分工
+
+多人协作以工作空间存储库中的条目和版本为边界，不以共享聊天为前提：
+
+- 编剧创建剧本条目，生成人员按固定版本制作图片或视频，审核人员对条目版本批准或驳回。
+- 审核人只需要访问条目，不需要读取他人的私人会话。
+- 后续可增加条目/项目级角色、评论、审批、任务分配和通知；首版不实现。
+- 不把“工作空间成员”直接等同于“可以查看所有会话”；会话共享需要单独的产品决定。
 
 ## 14. 额度与成本
 
 billing 独立于 Agent 的自然语言判断。
 
+- 额度归属工作空间；首版个人空间即个人额度，多人协作阶段支持按成员和条目归因。
 - 普通对话、摘要和媒体生成分别记录用量及供应商成本。
 - 创建 AgentRun 时不提前按一次图片或视频任务预占费用。
 - 执行付费工具前，根据实际模型、参数和用户授权预占额度。
@@ -589,16 +689,17 @@ billing 独立于 Agent 的自然语言判断。
 | --- | --- |
 | 身份 | user_account、workspace、workspace_member |
 | 会话 | conversation、conversation_branch、message、message_part |
+| 工作空间存储 | workspace_item、workspace_item_version、conversation_item |
 | Agent | agent_run、model_invocation、tool_invocation、workflow_start_request |
 | 上下文 | context_snapshot、context_summary |
-| 创作 | creative_document、creative_document_version |
+| 创作 | 剧本、分镜和提示词由 workspace_item 的 kind 表达，不单列 creative_document |
 | 生成 | generation_task、generation_attempt、generation_output |
 | 模型配置 | model_definition、provider_config、model_price_rule |
 | 资产 | asset、asset_variant、asset_reference、upload_session |
 | 费用 | credit_account、credit_reservation、credit_ledger、usage_record |
 | 审计 | audit_log |
 
-高频查询字段采用明确列，供应商扩展参数和脱敏快照可使用 JSONB。工作空间隔离、幂等和结算约束必须落实到服务端查询与数据库约束。
+高频查询字段采用明确列，供应商扩展参数和脱敏快照可使用 JSONB。工作空间隔离、幂等和结算约束必须落实到服务端查询与数据库约束。`workspace_item` 是库内条目，`asset` 是二进制载荷；`conversation_item` 只建立绑定，不改变条目归属。
 
 ## 16. 部署、观测与许可
 
@@ -617,7 +718,7 @@ billing 独立于 Agent 的自然语言判断。
 | 阶段 | 主要交付 | 验收重点 |
 | --- | --- | --- |
 | 1. 基础工程 | 八模块边界、数据库迁移、身份和工作空间、Temporal 基础环境 | API/Worker 可启动，迁移可从空库执行 |
-| 2. 对话与工具循环 | 消息持久化、上下文快照、模型调用、剧本工具、动态分发 | 模型能直接回复或多轮调用工具，进程恢复不重复已确认操作 |
+| 2. 对话与工具循环 | 消息持久化、上下文快照、模型调用、工作空间存储库、文件与剧本工具、动态分发 | 模型能直接回复或多轮调用工具，进程恢复不重复创建条目版本 |
 | 3. 图片闭环 | 素材上传、图片工具、费用预占、生成与归档 | 重复请求不重复扣费，产物可以查看和下载 |
 | 4. 上下文压缩 | 摘要、上下文版本、来源追溯和预算控制 | 压缩不丢失关键确认信息，不删除历史消息 |
 | 5. 视频闭环 | 视频工具、长任务等待、取消、封面和后台完成通知 | AgentRun 结束后生成可继续，归档失败单独恢复 |
@@ -628,7 +729,7 @@ billing 独立于 Agent 的自然语言判断。
 1. 保存用户请求后、启动 Workflow 前退出，补偿能够恢复启动。
 2. 同一个启动请求重复执行，最终只有一次有效业务执行。
 3. 供应商接单后、本地保存远端 ID 前退出，进入核对而非盲目重复提交。
-4. Activity 完成业务写入后中断，重试不重复修改剧本或扣费。
+4. Activity 完成业务写入后中断，重试不重复修改存储条目或扣费。
 5. 视频回调重复、乱序或缺失，任务能够正确推进。
 6. 供应商成功但对象存储暂时不可用，仅恢复归档步骤。
 7. 多个任务竞争有限额度，不出现超额消费。
@@ -638,22 +739,37 @@ billing 独立于 Agent 的自然语言判断。
 11. Workflow 代码升级后，已有执行仍可恢复。
 12. 用户尝试访问其他工作空间的消息、任务和素材时被拒绝。
 13. 平台管理员可以跨空间执行任何操作，且所有跨空间操作被记录审计。
+14. 同一工具调用重放不重复创建 `workspace_item_version`。
+15. 并发更新同一存储条目时，`base_version` 冲突被拒绝，不静默覆盖。
+16. 删除会话只删除 `conversation_item` 绑定，不删除工作空间存储条目。
 
 ## 18. 当前实现差距与后续决策
 
-截至本次文档编写，仓库主要仍为 Maven 和前端工程骨架。八模块布局已经落地，根 POM 已统一依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM），并通过 Maven Wrapper 固定 Maven 3.9.16。API 与 Worker 的最小 Spring Boot 启动入口已经建立，Worker 已接入 Temporal，并可通过自检 Workflow 验证注册与执行。Flyway 迁移基座与 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）已经建立，Compose 已提供 PostgreSQL 和 Redis 服务。common 基础层（统一响应、错误码、UUIDv7、自研 @BizLog）已实现；identity 已实现 bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）与审计日志落库。工作空间与成员管理已经实现（见第 5 节）：用户与工作空间多对多、空间级 OWNER/ADMIN/MEMBER、登录后选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新与归档、所有权转让、平台管理员跨空间执行任何操作，审计日志已能记录 workspace_id。agent 已实现最小文本对话闭环：管理员通过 `/api/v1/admin/models` 配置 baseUrl、加密存储的 apiKey、模型 ID、reasoning effort、最大输入输出；conversation、message、agent_run、model_invocation 落库；`AgentRunWorkflow` 调用 OpenAI 兼容的 `/chat/completions` 并持久化回复，失败时记录失败状态。Worker 运行时已补齐并发/缓存/优雅停机配置和 AgentRun 启动补偿。文本对话 SSE 已实现：Worker 通过 Redis pub/sub 发布模型增量，API 以 `text/event-stream` 推送给客户端，助手消息仍以数据库为准。尚未接入工具调用、上下文压缩和真实媒体生成。不能将本提案当作实现完成说明。
+截至 2026-11-17，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已建立 identity 表（user_account、workspace、workspace_member、refresh_token、audit_log）；Compose 提供 PostgreSQL 和 Redis。
 
-已观察到的基础工程待办：
+已实现：
 
-- 邀请未注册用户、工具执行、上下文压缩和真实生成流程尚待实现。
-- Dockerfile 仍为占位配置；Compose 目前包含 PostgreSQL 和 Redis，Temporal 与 RustFS 尚未纳入。
+- common：统一响应、错误码、UUIDv7、自研 `@BizLog`。
+- identity：bcrypt 密码、JWT access/refresh、RBAC（ADMIN/USER）、工作空间与成员管理（见第 5 节）、登录选择空间、access token 绑定空间、refresh 校验成员关系、注册自动创建个人空间、成员增删改、空间更新归档、所有权转让、平台管理员跨空间操作和审计。
+- agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation 落库、`AgentRunWorkflow` 调用 OpenAI 兼容 `/chat/completions` 并持久化回复；Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
+- 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
+
+尚未实现：
+
+- 工作空间存储库（workspace_item、workspace_item_version、conversation_item）、文件工具和剧本工具。
+- 会话创建者/可见性过滤。当前对话列表按 workspace 查询，空间成员可以读取同空间会话；这与第 5 节、第 11 节的边界尚未对齐。
+- 工具调用循环、上下文压缩、真实媒体生成、审核和多人分工。
+- Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
 
 需要通过实现验证或产品决策确定的事项：
 
-- Temporal 的部署方式与资源策略；SDK 与 Spring Boot 的版本组合已在根 POM 确定（Spring Boot 4.1.2、Temporal Java SDK 1.41.1、Java 21）。
+- 工作空间存储条目的默认可见性、草稿与共享/审核边界。
+- 会话默认私有还是空间共享；多人协作阶段是否引入 `conversation_member`。
+- 剧本采用 Markdown、结构化 JSON 或两者兼有。
+- Temporal 的部署方式与资源策略；SDK 与 Spring Boot 的版本组合已在根 POM 确定。
 - 工具后台执行、自动续跑、取消及部分成功的交互与计费语义。
 - 模型的实际能力配置、费用规则和不同错误的恢复策略。
 - 摘要质量标准、上下文预算、历史和媒体的保留规则。
 - 第三方 UI 组件的具体版本与许可范围。
 
-网关兼容性按已约定前提处理，远程 compact 不纳入实现；Kafka 和 CDC 不作为上述待办的前置依赖。
+网关兼容性按已约定前提处理，远程 compact 不纳入实现；Kafka 和 CDC 不作为上述待办的前置依赖。不能将本提案当作实现完成说明。
