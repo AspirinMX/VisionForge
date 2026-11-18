@@ -6,7 +6,6 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpIcon,
@@ -14,7 +13,6 @@ import {
   FileTextIcon,
   FilmIcon,
   Loader2Icon,
-  MessageSquareIcon,
   PanelRightOpenIcon,
   PlusIcon,
   SparklesIcon,
@@ -36,7 +34,6 @@ import { putToPresignedUrl } from "@/lib/api/client";
 import { assetsApi } from "@/lib/api/endpoints";
 import { notifyApiError } from "@/lib/api/feedback";
 import type { UUID } from "@/lib/api/types";
-import { formatShortTime } from "@/lib/format";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -85,7 +82,7 @@ interface QueuedFile {
 export default function ConversationsHomePage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { conversations, createConversation } = useConversations();
+  const { createConversation } = useConversations();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -206,8 +203,6 @@ export default function ConversationsHomePage() {
       void handleStartConversation();
     }
   };
-
-  const recentConversations = conversations.slice(0, 4);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -351,31 +346,6 @@ export default function ConversationsHomePage() {
               );
             })}
           </div>
-
-          {recentConversations.length > 0 ? (
-            <div className="pt-4">
-              <div className="mb-2 text-xs text-muted-foreground">最近继续</div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {recentConversations.map((conv) => (
-                  <Button
-                    key={conv.id}
-                    variant="outline"
-                    nativeButton={false}
-                    render={<Link href={`/conversations/${conv.id}`} />}
-                    className="h-auto justify-between rounded-2xl px-3.5 py-2.5 text-left"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate font-normal">{conv.title}</span>
-                    </span>
-                    <span className="ml-2 shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                      {formatShortTime(conv.lastMessageAt ?? conv.createdAt)}
-                    </span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
