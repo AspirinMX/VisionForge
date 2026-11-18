@@ -33,8 +33,8 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 | 项目 | 选型与约束 |
 | --- | --- |
 | 框架 | Next.js `16.4.6`（App Router、`cacheComponents: true`、`partialPrefetching: true`、Turbopack）、React `19.3.0`、TypeScript `5` |
-| 样式与组件 | Tailwind CSS `4.3.3` + **强制 `shadcn`（固定 `--preset b27GcrRo`，仅通过 `pnpm dlx` 获取）** |
-| 组件禁令（`frontend/AGENTS.md`） | 禁止引入任何其他 UI 组件库（含 Animate UI）；禁止自建通用基础组件库；凡 `shadcn` 能表达的交互必须使用对应组件及组合；Tailwind 仅用于布局、间距、响应式和组件适配 |
+| 样式与组件 | Tailwind CSS `4.3.3` + **Animate UI**（基于 `@base-ui/react` 与 `motion`，兼容 `shadcn` `base-rhea` 主题令牌） |
+| 组件约定（`frontend/AGENTS.md`） | 使用 Animate UI 组件与原语表达交互与克制微动效；禁止自建通用基础组件库；动画须尊重 `reduced-motion`；Tailwind 仅用于布局、间距、响应式和组件适配 |
 | Next.js 16 兼容 | 启用 `cacheComponents: true` 后，动态数据读取与鉴权态必须放在 `<Suspense>` 边界或客户端鉴权层内，避免顶层 `layout.tsx` 读取请求态阻塞静态壳预渲染 |
 | 接口代理与流式 | 通过运行时路由处理器 `frontend/src/app/api/v1/[...path]/route.ts` 按 `VISIONFORGE_API_BASE_URL`（默认 `http://127.0.0.1:8080`）同源代理 `/api/v1/*`，消除浏览器 CORS 并支持 `POST /messages/stream` 流式透传（适配 standalone 镜像迁移）；S3 预签名 PUT/GET 直连对象存储 |
 | 令牌与流式协议 | Access Token 存于内存（辅以受控会话持久化策略），遇到 `401` 自动串行调用 `POST /api/v1/auth/refresh` 轮换刷新并重放请求；SSE 必须使用 `fetch` + `ReadableStream` 携带 `Authorization: Bearer` 读取，禁用 `EventSource` |
