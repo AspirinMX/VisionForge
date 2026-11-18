@@ -197,6 +197,25 @@ Registered media protocols:
 
 The GPT Image, Seedream, Seedance and Wanxiang adapters are implemented but have **not been verified against a live gateway**. `GATEWAY_CUSTOM` has no adapter yet, and ffprobe/cover/transcoding are still pending. `STUB` remains only as a test double and is not a selectable or registered model route. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
 
+### Local media mock
+
+`scripts/mock_media_server.py` implements the OpenAI, Ark and DashScope media endpoints without paid calls. It returns deterministic PNGs and a generated MP4, and supports `[mock:fail]`, `[mock:slow]` and `[mock:empty]` prompt markers for failure-path tests.
+
+```sh
+python scripts/mock_media_server.py --port 8000
+```
+
+Point image/video models at the mock and allow HTTP result downloads in the worker:
+
+```text
+OPENAI_IMAGES                     http://127.0.0.1:8000/v1
+ARK_IMAGES / ARK_VIDEO_TASKS      http://127.0.0.1:8000
+DASHSCOPE_*                       http://127.0.0.1:8000/api/v1
+MEDIA_ALLOW_HTTP=true
+```
+
+Video endpoints need `ffmpeg` on `PATH`; alternatively pass `--video-file <path>` with an existing MP4. The same FFmpeg binary is required by `compose_video`. `MEDIA_ALLOW_HTTP` is for local development only and must stay unset in production.
+
 ## Deployment
 
 Deployment files are located at the repository root. The Dockerfile and Compose file remain placeholders; runnable service definitions will be added separately.

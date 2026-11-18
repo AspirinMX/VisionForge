@@ -197,6 +197,25 @@ POST /api/v1/composition-tasks/{taskId}/retry
 
 GPT Image、Seedream、Seedance 和万相适配器均已实现，但**尚未进行真实网关联调**；`GATEWAY_CUSTOM` 尚无适配器，ffprobe/封面/转码仍未实现。`STUB` 仅保留为测试替身，不再作为可选或已注册的模型路由。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
 
+### 本地媒体 mock
+
+`scripts/mock_media_server.py` 在本地模拟 OpenAI、方舟和百炼的媒体端点，不产生付费调用。它返回确定性的 PNG 和一段生成的 MP4，并支持 `[mock:fail]`、`[mock:slow]`、`[mock:empty]` 提示词标记测试失败路径。
+
+```sh
+python scripts/mock_media_server.py --port 8000
+```
+
+将图片/视频模型的 baseUrl 指向 mock，并在 Worker 中允许 HTTP 产物下载：
+
+```text
+OPENAI_IMAGES                     http://127.0.0.1:8000/v1
+ARK_IMAGES / ARK_VIDEO_TASKS      http://127.0.0.1:8000
+DASHSCOPE_*                       http://127.0.0.1:8000/api/v1
+MEDIA_ALLOW_HTTP=true
+```
+
+视频端点需要 `PATH` 中有 `ffmpeg`；也可以传 `--video-file <path>` 使用已有 MP4。`compose_video` 同样依赖这个 FFmpeg。`MEDIA_ALLOW_HTTP` 仅用于本地开发，生产环境不得开启。
+
 ## 部署
 
 部署文件位于仓库根目录。Dockerfile 和 Compose 文件仍为占位配置，可运行的服务定义将在后续添加。

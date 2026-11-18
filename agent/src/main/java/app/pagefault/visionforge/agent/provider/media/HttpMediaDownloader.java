@@ -13,16 +13,23 @@ import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.common.error.BusinessException;
 
 /**
- * Bounded downloader for provider result URLs. Only HTTPS is accepted, redirects are not followed
- * and the response size is capped before decoding.
+ * Bounded downloader for provider result URLs. HTTPS is required unless the development-only
+ * {@code MEDIA_ALLOW_HTTP=true} switch is set; redirects are not followed and the response size is
+ * capped before decoding.
  */
 public class HttpMediaDownloader implements MediaResultDownloader {
 
     private final long maxBytes;
+    private final boolean allowHttp;
     private final HttpClient client;
 
     public HttpMediaDownloader(long maxBytes) {
+        this(maxBytes, allowHttpFromEnvironment());
+    }
+
+    HttpMediaDownloader(long maxBytes, boolean allowHttp) {
         this.maxBytes = maxBytes;
+        this.allowHttp = allowHttp;
         this.client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -36,8 +43,10 @@ public class HttpMediaDownloader implements MediaResultDownloader {
         } catch (IllegalArgumentException exception) {
             throw failure("产物 URL 不合法");
         }
-        if (!"https".equalsIgnoreCase(uri.getScheme())) {
-            throw failure("产物 URL 必须是 HTTPS");
+        boolean https = "https".equalsIgnoreCase(uri.getScheme());
+        boolean http = "http".equalsIgnoreCase(uri.getScheme());
+        if (!https && !(allowHttp && http)) {
+            throw failure(allowHttp ? "产物 URL 必须是 HTTP 或 HTTPS" : "产物 URL 必须是 HTTPS");
         }
         try {
             HttpRequest request = HttpRequest.newBuilder(uri)
@@ -79,5 +88,9 @@ public class HttpMediaDownloader implements MediaResultDownloader {
         return exception.getMessage() == null
                 ? exception.getClass().getSimpleName()
                 : exception.getMessage();
+    }
+
+    private static boolean allowHttpFromEnvironment() {
+        return "true".equalsIgnoreCase(System.getenv("MEDIA_ALLOW_HTTP"));
     }
 }
