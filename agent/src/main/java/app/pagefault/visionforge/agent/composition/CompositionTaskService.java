@@ -4,8 +4,13 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -195,6 +200,48 @@ public class CompositionTaskService {
                         .orderByAsc(CompositionInput::getOrdinal));
     }
 
+    /**
+     * Newest-first composition tasks owned by the caller. When a conversation is supplied its
+     * ownership is verified first, so a foreign id behaves like a missing conversation.
+     */
+    public List<CompositionTask> list(
+            UUID userId, UUID conversationId, CompositionStatus status, int limit) {
+        if (conversationId != null) {
+            conversationReferenceChecker.requireOwned(userId, conversationId);
+        }
+        return taskMapper.selectList(
+                Wrappers.<CompositionTask>lambdaQuery()
+                        .eq(CompositionTask::getUserId, userId)
+                        .eq(conversationId != null,
+                                CompositionTask::getConversationId, conversationId)
+                        .eq(status != null, CompositionTask::getStatus, status)
+                        .orderByDesc(CompositionTask::getCreatedAt)
+                        .orderByDesc(CompositionTask::getId)
+                        .last("LIMIT " + safeLimit(limit)));
+    }
+
+    /**
+     * Batch equivalent of {@link #inputs(UUID)} for list responses.
+     */
+    public Map<UUID, List<CompositionInput>> inputsByTaskIds(Collection<UUID> taskIds) {
+        List<UUID> ids = taskIds == null
+                ? List.of()
+                : taskIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return inputMapper.selectList(
+                        Wrappers.<CompositionInput>lambdaQuery()
+                                .in(CompositionInput::getTaskId, ids)
+                                .orderByAsc(CompositionInput::getTaskId)
+                                .orderByAsc(CompositionInput::getOrdinal))
+                .stream()
+                .collect(Collectors.groupingBy(
+                        CompositionInput::getTaskId,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+    }
+
     @Transactional
     public CompositionTask cancel(UUID userId, UUID taskId) {
         CompositionTask task = getForUser(userId, taskId);
@@ -332,6 +379,13 @@ public class CompositionTaskService {
             request.setStatus(WorkflowStartStatus.PENDING);
         }
         startRequestMapper.updateById(request);
+    }
+
+    private int safeLimit(int limit) {
+        if (limit <= 0) {
+            return 20;
+        }
+        return Math.min(limit, 50);
     }
 
     public static String workflowId(UUID taskId) {

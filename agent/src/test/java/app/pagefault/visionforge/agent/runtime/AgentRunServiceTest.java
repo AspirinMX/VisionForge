@@ -307,6 +307,18 @@ class AgentRunServiceTest {
         return request;
     }
 
+    @Test
+    void listReturnsUserScopedRuns() {
+        AgentRun run = run(AgentRunStatus.RUNNING);
+        when(agentRunMapper.selectList(any())).thenReturn(List.of(run));
+
+        List<AgentRun> result = service.list(
+                WORKSPACE_ID, CONVERSATION_ID, List.of(AgentRunStatus.RUNNING), 10);
+
+        assertThat(result).containsExactly(run);
+        verify(agentRunMapper).selectList(any());
+    }
+
     private AgentRun run(AgentRunStatus status) {
         AgentRun run = new AgentRun();
         run.setId(RUN_ID);

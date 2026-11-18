@@ -3,9 +3,11 @@ package app.pagefault.visionforge.agent.runtime;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -85,6 +87,28 @@ public class AgentRunService {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_NOT_FOUND);
         }
         return run;
+    }
+
+    /**
+     * Newest-first runs owned by one user, optionally narrowed to a conversation and statuses.
+     * Conversation ownership is validated by the caller so another user's id cannot be probed.
+     */
+    public List<AgentRun> list(
+            UUID userId,
+            UUID conversationId,
+            Collection<AgentRunStatus> statuses,
+            int limit) {
+        List<AgentRunStatus> filtered = statuses == null
+                ? List.of()
+                : statuses.stream().filter(Objects::nonNull).distinct().toList();
+        return agentRunMapper.selectList(
+                Wrappers.<AgentRun>lambdaQuery()
+                        .eq(AgentRun::getUserId, userId)
+                        .eq(conversationId != null, AgentRun::getConversationId, conversationId)
+                        .in(!filtered.isEmpty(), AgentRun::getStatus, filtered)
+                        .orderByDesc(AgentRun::getCreatedAt)
+                        .orderByDesc(AgentRun::getId)
+                        .last("LIMIT " + safeLimit(limit)));
     }
 
     public AgentRun get(UUID runId) {
@@ -547,5 +571,12 @@ public class AgentRunService {
             return null;
         }
         return value.length() <= ERROR_MAX_LENGTH ? value : value.substring(0, ERROR_MAX_LENGTH);
+    }
+
+    private int safeLimit(int limit) {
+        if (limit <= 0) {
+            return 20;
+        }
+        return Math.min(limit, 100);
     }
 }
