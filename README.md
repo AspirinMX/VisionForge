@@ -2,7 +2,7 @@
 
 **An AI-native multimodal film, image, and video creation studio built for durable workflows, verifiable storyboarding, and clean workspace isolation.**
 
-[简体中文](README_zh-CN.md) · [Documentation Hub](docs/README.md) · [Contributing Guide](CONTRIBUTING.md)
+[简体中文](README_zh-CN.md) · [Documentation Index](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 ---
 
@@ -10,67 +10,71 @@
 
 VisionForge is a full-stack multimodal creative workbench combining a multi-turn tool-using AI agent runtime with an interactive studio workspace and an isolated administrative console:
 
-- **Durable AI Agent & Media Orchestration**: Driven by **Temporal workflows** (`AgentRunWorkflow`, `MediaGenerationWorkflow`, `VideoCompositionWorkflow`), separating paid upstream calls, asynchronous polling, media archiving, and credit settlement from web request lifecycles.
-- **Conversation-Scoped Work Areas**: Each conversation owns its own isolated scripts, storyboards, prompts, uploaded reference images, generated candidates, and FFmpeg-composed outputs—without workspace tenancy overhead or cross-user leakage (`404` on foreign resources).
-- **Real-Time Streaming & Persisted Process Timelines**: Live **SSE** (`fetch` reader over Redis pub/sub) delivers reasoning, reasoning summaries, tool call start/waiting/done status transitions, and token deltas, backed by full database persistence for seamless reload recovery.
-- **Storyboard-to-Video Pipeline**: Validated structured JSON storyboards (`schemaVersion: 1`), shot-level first-frame and video candidate binding, and FFmpeg + `ffprobe` range-checked multipart S3 composition.
-- **Restrained Animate UI Studio + Isolated `/admin` Console**: Next.js 16 App Router interface using **Animate UI** (`@animate-ui/react` + Base UI + `motion`) with a floating capsule composer, collapsible canvas tabs (`Storyboard`, `Files`, `Assets`, `Tasks`), and a separated `/admin` interface for model routing and user role administration.
+- **Durable AI Agent & Media Orchestration**: Powered by **Temporal workflows** (`AgentRunWorkflow`, `MediaGenerationWorkflow`, `VideoCompositionWorkflow`) that separate paid upstream calls, async polling, media archiving, FFmpeg composition, and credit settlement from HTTP request lifecycles.
+- **Conversation-Scoped Work Areas**: Each conversation owns its own isolated scripts, storyboards, prompts, uploaded references, generated candidates, and composed outputs, with strict user-level ownership (`404` on unauthorized access).
+- **Real-Time Streaming & Persisted Timelines**: Live **SSE** (over Redis Pub/Sub and `fetch` readers) streams reasoning, tool progress, and token deltas while PostgreSQL persists full execution records for seamless page-reload recovery.
+- **Storyboard-to-Video Pipeline**: Validated structured JSON storyboards, shot-level first-frame/video candidate tracking, `ffprobe` range verification, FFmpeg rendering, and S3 multipart output publishing.
+- **Animate UI Studio & Isolated `/admin` Console**: Next.js 16 App Router interface built with **Animate UI** (`@animate-ui/react`, Base UI primitives, and `motion`), separating creator workspaces under `(studio)` from system administration under `(admin)`.
 
 ---
 
-## Architecture at a Glance
+## Architecture Overview
 
 ```text
 Browser (Next.js 16 + Animate UI)
-   │  /api/v1/* (same-origin runtime proxy via frontend/src/app/api/v1/[...path]/route.ts)
+   │  /api/v1/* (runtime proxy via frontend/src/app/api/v1/[...path]/route.ts)
    ▼
-Spring Boot API (port 8080, module: api)
+Spring Boot API (:8080, module: api)
    ├── Identity / JWT & Admin Guards (identity)
-   ├── Presigned S3 Tickets & Conversation Files (asset)
-   ├── Credit Reservation / Ledger Views (billing)
-   ├── SSE Bridge (Redis Pub/Sub Listener -> SseEmitter)
-   └── Enqueues WorkflowStartRequest + Temporal Start ───► Temporal Server (port 7233)
-                                                               │
-Spring Boot Temporal Worker (module: worker) ◄─────────────────┘
-   ├── AgentRunWorkflow (OpenAI Responses API + 17 Tools + Context Compactor)
-   ├── MediaGenerationWorkflow (OpenAI Images, Ark Seedream/Seedance, DashScope)
-   ├── VideoCompositionWorkflow (FFmpeg + ffprobe + S3 Multipart Upload)
-   └── AgentRunStartCompensator (retries unstarted DB workflow requests)
+   ├── Conversation Files & S3 Presigned Uploads (asset)
+   ├── Credit Accounts & Ledger (billing)
+   ├── SSE Bridge (Redis Pub/Sub -> SseEmitter)
+   └── Workflow Start Outbox + Temporal Client ─────► Temporal Server (:7233)
+                                                            │
+Spring Boot Temporal Worker (module: worker) ◄──────────────┘
+   ├── AgentRunWorkflow (Responses API + Agent Tools + Context Compactor)
+   ├── MediaGenerationWorkflow (OpenAI Images, Ark, DashScope)
+   ├── VideoCompositionWorkflow (FFmpeg + ffprobe + S3 Multipart)
+   └── AgentRunStartCompensator (retries pending DB workflow requests)
          │
-         ├──► PostgreSQL 18 (Flyway V1–V15, UUIDv7 PKs)
-         ├──► Redis 7 (best-effort SSE event fan-out)
-         └──► RustFS / S3-Compatible Storage (binary media, presigned GET/PUT)
+         ├──► PostgreSQL (Flyway-managed schema)
+         ├──► Redis (best-effort SSE event fan-out)
+         └──► RustFS / S3-Compatible Storage (binary assets & outputs)
 ```
 
 ---
 
 ## Repository Structure
 
-| Path | Responsibility |
+| Path | Role |
 | --- | --- |
-| `common/` | Shared contracts (`ApiResponse`, `PageResult`, `ErrorCode`, `BizAssert`), `UuidV7Generator`, `TraceContext`, `LogMasker`, `@BizLog` AOP infrastructure |
-| `identity/` | Users, roles (`ADMIN`, `USER`), bcrypt authentication, JWT & hashed refresh token rotation |
-| `asset/` | Conversation-scoped versioned text files (`conversation_file`) and S3 object assets / presigned upload sessions (`asset`, `upload_session`) |
-| `billing/` | Credit accounts, idempotent reserve/settle/release operations, and keyset-paginated `credit_ledger` |
-| `agent/` | Model registry (AES-GCM encrypted keys), conversation/run domain, context compaction, storyboard validation, AI & media adapters, Temporal workflows/activities |
-| `api/` | Spring Boot HTTP & SSE REST API, security filter chain, exception handling, request DTOs |
-| `worker/` | Non-web Spring Boot Temporal worker host, pollers/concurrency config, `AgentRunStartCompensator` |
-| `database/` | Flyway SQL migrations (`V1`–`V15`) decoupled from runtime app startup |
-| `frontend/` | Next.js 16 App Router UI (`(auth)`, `(studio)`, dedicated `(admin)` route groups) using React 19, Tailwind CSS v4, and Animate UI |
-| `scripts/` | Local development utilities including `mock_media_server.py` (OpenAI / Ark / DashScope media mock) |
-| `docs/` | Enterprise maintenance, architecture, API contract, design, and coding standards documentation |
+| `common/` | Shared contracts, UUIDv7 ID generation, error model, logging & audit infrastructure |
+| `identity/` | User management, bcrypt authentication, JWT access tokens, and refresh token rotation |
+| `asset/` | Conversation-scoped versioned files, upload sessions, and S3 object lifecycle |
+| `billing/` | Credit accounts, reservations, settlement, and ledger |
+| `agent/` | Model registry, conversations, runtime turns, context compaction, storyboard validation, AI/media adapters, and Temporal workflows |
+| `api/` | Spring Boot HTTP & SSE REST API, security configuration, and DTO layer |
+| `worker/` | Non-web Temporal Worker host and workflow start compensator |
+| `database/` | Standalone Flyway SQL migrations |
+| `frontend/` | Next.js App Router studio & isolated admin application |
+| `scripts/` | Local development scripts (including media mock server) |
+| `docs/` | Technical architecture, API contracts, design details, coding standards, and setup documentation (index in [`docs/README.md`](docs/README.md)) |
+| `pom.xml`, `mvnw`, `mvnw.cmd`, `.mvn/`, `lombok.config` | Root Maven configuration, wrapper, and Java compiler tooling |
+| `Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.frontend`, `docker-compose.yaml`, `docker-compose.prod.yaml`, `.dockerignore`, `.env.example` | Container images, Compose stacks, and environment template |
+| `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `LICENSE` | Repository agent instructions, contribution guide, and license |
+| `.gitignore`, `.idea/` | VCS ignore rules and shared IDE metadata |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technologies & Baseline Versions |
+| Layer | Baseline Stack |
 | --- | --- |
-| **Backend Runtime** | Java `21`, Spring Boot `4.1.2`, Maven Wrapper (`pom.xml` dependency management) |
-| **Workflow Engine** | Temporal Java SDK `1.41.1`, Temporal Server `temporalio/auto-setup:1.29.5` |
-| **Persistence & Migration** | PostgreSQL `18`, Flyway `12.4.0`, MyBatis-Plus `3.5.18.1` (`mybatis-plus-spring-boot4-starter`), `hutool-core:5.8.48` |
-| **Messaging & Storage** | Redis `7`, RustFS / AWS SDK S3 `2.59.2`, FFmpeg / `ffprobe` |
-| **AI & Media SDKs** | OpenAI Java SDK `4.99.0` (Responses API streaming + Images), Volcengine Ark Runtime `0.17.0`, DashScope HTTP adapters |
+| **Backend Runtime** | Java `21`, Spring Boot `4.1.2`, Maven Wrapper |
+| **Workflow Engine** | Temporal Java SDK `1.41.1`, Temporal Server (`temporalio/auto-setup:1.29.5`) |
+| **Persistence & Migration** | PostgreSQL `18`, Flyway `12.4.0`, MyBatis-Plus `3.5.18.1`, `hutool-core:5.8.48` |
+| **Messaging & Media** | Redis `7`, RustFS / AWS SDK S3 `2.59.2`, FFmpeg / `ffprobe` |
+| **Model & Media SDKs** | OpenAI Java SDK `4.99.0`, Volcengine Ark Runtime `0.17.0`, DashScope HTTP adapters |
 | **Frontend** | Next.js `16.4.6` (Turbopack, `cacheComponents`), React `19.3.0`, TypeScript `5`, Tailwind CSS `4.3.3`, Animate UI (`@animate-ui/react:2.4.6`), `motion:14.14.0`, `@base-ui/react` |
 
 ---
@@ -79,12 +83,12 @@ Spring Boot Temporal Worker (module: worker) ◄──────────�
 
 ### 1. Prerequisites
 
-- JDK `21` (Maven Wrapper `./mvnw` is bundled)
+- JDK `21` (bundled `./mvnw`)
 - Node.js & `pnpm` (`12.21.0`)
 - Docker & Docker Compose
-- `ffmpeg` and `ffprobe` on `PATH` (for worker video composition or local video mock)
+- `ffmpeg` and `ffprobe` on `PATH` (required for video composition and local video mocking)
 
-### 2. Start Development Infrastructure & Migrate Database
+### 2. Start Infrastructure & Apply Migrations
 
 ```sh
 cp .env.example .env
@@ -95,65 +99,58 @@ docker compose up rustfs-init
 
 - PostgreSQL: `localhost:5432` (`visionforge` / `visionforge`)
 - Redis: `localhost:6379`
-- RustFS S3 & Console: `localhost:9000` / `localhost:9001` (`rustfsadmin` / `rustfsadmin`)
+- RustFS S3 & Console: `localhost:9000` / `localhost:9001`
 - Temporal gRPC & UI: `localhost:7233` / [http://localhost:8233](http://localhost:8233)
 
-### 3. Configure Required Secrets & Run Backend Services
+### 3. Configure Secrets & Run API + Worker
 
 Generate Base64 32-byte secrets (never commit `.env`):
 
 ```sh
 export JWT_SECRET="$(openssl rand -base64 32)"
 export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
-# Optional first administrator bootstrap:
+# Optional bootstrap administrator (password length 12-72):
 export BOOTSTRAP_ADMIN_EMAIL="admin@example.com"
 export BOOTSTRAP_ADMIN_PASSWORD="change-this-strong-password"
 ```
 
-Start the API and Worker from the repository root (two terminals):
+Start the API and Worker from the repository root:
 
 ```sh
 ./mvnw -pl api spring-boot:run
 ./mvnw -pl worker spring-boot:run
 ```
 
-### 4. Start the Frontend
+### 4. Start Frontend
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Browser `/api/v1/*` requests proxy cleanly through `frontend/src/app/api/v1/[...path]/route.ts` (configurable at runtime with `VISIONFORGE_API_BASE_URL`).
+Open [http://localhost:3000](http://localhost:3000). `/api/v1/*` requests proxy cleanly via `frontend/src/app/api/v1/[...path]/route.ts` (target controlled by `VISIONFORGE_API_BASE_URL`).
 
 > [!NOTE]
-> **Local Media Mock**: To test image/video generation without paid upstream calls, run `python scripts/mock_media_server.py --port 8000` with `MEDIA_ALLOW_HTTP=true` in the worker and configure model `baseUrl` values in `/admin/models`. Never enable `MEDIA_ALLOW_HTTP` in production.
+> **Local Media Mock**: Run `python scripts/mock_media_server.py --port 8000` with `MEDIA_ALLOW_HTTP=true` in the worker to test image/video pipelines locally without paid calls. Keep `MEDIA_ALLOW_HTTP` disabled in production.
 
-### 5. Verification & Production Deployment
+### 5. Build, Test & Full Stack Deployment
 
 ```sh
-# Backend unit & module tests
+# Backend tests
 ./mvnw -B test
 
-# Frontend lint, typecheck & production build
+# Frontend lint & build
 pnpm --dir frontend lint
 pnpm --dir frontend build
 
-# Full containerized stack (API + Worker + Frontend + DB migration job)
+# Full containerized stack
 docker compose -f docker-compose.prod.yaml up -d --build
 ```
 
 ---
 
-## Documentation
+## Documentation & Governance
 
-| Document | Description |
-| --- | --- |
-| [docs/README.md](docs/README.md) | Documentation hub and recommended reading order |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Backend module graph, Temporal orchestration, Redis SSE, RustFS S3 & security design |
-| [docs/DESIGN_DETAILS.md](docs/DESIGN_DETAILS.md) | Schema reference (`V1`–`V15`), state machines, storyboard schema, context compaction & UI design |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Full HTTP & SSE API specification, request/response schemas & error codes |
-| [docs/BACKEND_DEV_STANDARDS.md](docs/BACKEND_DEV_STANDARDS.md) | Enterprise Java coding rules (Mandatory / Recommended / Prohibited) |
-| [docs/FRONTEND_DEV_STANDARDS.md](docs/FRONTEND_DEV_STANDARDS.md) | Next.js / React / Animate UI coding rules (Mandatory / Recommended / Prohibited) |
-| [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) | Detailed local setup, environment variables, mock server & troubleshooting |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor onboarding & multi-line commit format requirements |
+- **Technical Documentation Hub**: [`docs/README.md`](docs/README.md)
+- **Contribution Guidelines**: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- **License**: [`LICENSE`](LICENSE)
