@@ -107,6 +107,9 @@ pnpm --dir frontend dev
 | --- | --- | --- |
 | `JWT_SECRET` | **必填** | Base64 密钥（>= 32 字节），用于 HS256 JWT 签验 |
 | `BCRYPT_STRENGTH` | `12` | 密码哈希 cost（测试环境可调低） |
+| `CORS_ENABLED` / `CORS_ALLOWED_ORIGINS` | `true` / `http://localhost:3000,http://127.0.0.1:3000` | API 跨域白名单控制与启用开关 |
+| `RATE_LIMIT_ENABLED` / `RATE_LIMIT_*_PER_MINUTE` | `true` / `auth=20`, `redeem=10`, `generation=30`, `upload=30` | Redis 滑动窗口限流配置（分钟配额） |
+| `RATE_LIMIT_TRUST_FORWARDED_HEADERS` | `false` | 仅在受信任反向代理后启用 `X-Forwarded-For` 解析 |
 | `MODEL_CONFIG_SECRET` | **必填** | Base64 密钥（精确 32 字节），用于 AES-GCM 加解密模型 API Key |
 | `BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` / `_DISPLAY_NAME` | 空 | 首次引导管理员账号（密码长度须在 12–72 字符） |
 | `BILLING_INITIAL_CREDIT_UNITS` | `10000` | 用户额度账户首次读取或任务初始化时授予的初始额度 |

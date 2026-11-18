@@ -37,6 +37,20 @@ visionforge:
       refresh-token-ttl: P30D
     password:
       bcrypt-strength: ${BCRYPT_STRENGTH:12}
+    cors:
+      enabled: ${CORS_ENABLED:true}
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+      allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+      allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:true}
+      fail-open: ${RATE_LIMIT_FAIL_OPEN:true}
+      trust-forwarded-headers: ${RATE_LIMIT_TRUST_FORWARDED_HEADERS:false}
+      window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+      auth-per-minute: ${RATE_LIMIT_AUTH_PER_MINUTE:20}
+      redeem-per-minute: ${RATE_LIMIT_REDEEM_PER_MINUTE:10}
+      generation-per-minute: ${RATE_LIMIT_GENERATION_PER_MINUTE:30}
+      upload-per-minute: ${RATE_LIMIT_UPLOAD_PER_MINUTE:30}
   temporal:
     target: ${TEMPORAL_TARGET:localhost:7233}
     namespace: ${TEMPORAL_NAMESPACE:default}

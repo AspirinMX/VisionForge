@@ -51,12 +51,11 @@
 
 ## 三、企业级安全与工程质量加固
 
-### G7. Redis 限流保护、CORS 与安全响应头及 ArchUnit 门禁
+### G7. Redis 限流保护、CORS 与安全响应头
 - **现状问题**：
   - [`CommonErrorCode`](../common/src/main/java/app/pagefault/visionforge/common/error/CommonErrorCode.java) 已定义 `429 COMMON_RATE_LIMITED`，但登录、注册、兑换码核销与流式发消息尚未接入限流防护；
-  - [`SecurityConfiguration`](../api/src/main/java/app/pagefault/visionforge/api/security/SecurityConfiguration.java) 尚未显式配置可控 CORS 白名单与基础安全响应头；
-  - `common`/`identity`/`asset`/`billing`/`agent`/`api`/`worker` 之间的模块依赖边界尚未固化为可自动执行的 ArchUnit 测试。
-- **目标方案**：新增 Redis 原子滑动窗口限流过滤器/切面（阈值可通过 Nacos 动态调控）、可控 CORS 与 Security Headers 配置，以及在测试中固化 ArchUnit 模块边界守卫。
+  - [`SecurityConfiguration`](../api/src/main/java/app/pagefault/visionforge/api/security/SecurityConfiguration.java) 尚未显式配置可控 CORS 白名单与基础安全响应头。
+- **目标方案**：新增 Redis 原子滑动窗口限流过滤器（阈值可通过 Nacos 动态调控）、可控 CORS 与 Security Headers 配置。
 
 ---
 
@@ -78,7 +77,7 @@
 遵循“单职责修复 + 测试验证 + 独立提交（绝不混杂）”原则推进：
 
 1. **Commit 1（本文档）**：新增 `docs/ENTERPRISE_GAP_ANALYSIS.md` 并更新 [`docs/README.md`](README.md)。
-2. **Commit 2**：ArchUnit 模块边界测试 + Security 安全增强（Redis 限流、CORS 配置与安全响应头）。
+2. **Commit 2**：Security 安全增强（Redis 限流、CORS 配置与安全响应头）。
 3. **Commit 3**：身份认证与用户管理全生命周期完善（后端用户禁用/启用、代建用户、管理员重设密码、Token 按用户吊销、筛选列表、用户改昵称与改密码 + 单测）。
 4. **Commit 4**：审计日志查询与 CSV 导出 API（后端筛选分页/导出 + 单测）。
 5. **Commit 5**：对话与运行生命周期完善（会话重命名/删除、`AgentRun` 真实取消与 Temporal Cancel、模型连通性测试与后台运维概览接口 + 单测）。
