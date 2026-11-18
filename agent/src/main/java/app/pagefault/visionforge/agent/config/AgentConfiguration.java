@@ -79,8 +79,9 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public ResponsesModelClient responsesModelClient() {
-        return new OpenAiResponsesModelClient();
+    public ResponsesModelClient responsesModelClient(
+            @Value("${visionforge.upstream.user-agent:}") String userAgent) {
+        return new OpenAiResponsesModelClient(userAgent);
     }
 
     @Bean
@@ -207,17 +208,21 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public MediaProviderRegistry mediaProviderRegistry(ObjectMapper objectMapper) {
-        ArkClientFactory arkClients = new ArkClientFactory();
-        HttpMediaDownloader imageDownloader = new HttpMediaDownloader(64L * 1024 * 1024);
-        HttpMediaDownloader videoDownloader = new HttpMediaDownloader(1024L * 1024 * 1024);
+    public MediaProviderRegistry mediaProviderRegistry(
+            ObjectMapper objectMapper,
+            @Value("${visionforge.upstream.user-agent:}") String userAgent) {
+        ArkClientFactory arkClients = new ArkClientFactory(userAgent);
+        HttpMediaDownloader imageDownloader =
+                new HttpMediaDownloader(64L * 1024 * 1024, userAgent);
+        HttpMediaDownloader videoDownloader =
+                new HttpMediaDownloader(1024L * 1024 * 1024, userAgent);
         return new MediaProviderRegistry(List.of(
-                new OpenAiImagesProvider(objectMapper),
-                new ArkImagesProvider(objectMapper, arkClients),
-                new ArkVideoProvider(objectMapper, arkClients),
-                new DashScopeImageMessagesProvider(objectMapper, imageDownloader),
-                new DashScopeT2iProvider(objectMapper, imageDownloader),
-                new DashScopeVideoProvider(objectMapper, videoDownloader)));
+                new OpenAiImagesProvider(objectMapper, userAgent),
+                new ArkImagesProvider(objectMapper, arkClients, userAgent),
+                new ArkVideoProvider(objectMapper, arkClients, userAgent),
+                new DashScopeImageMessagesProvider(objectMapper, imageDownloader, userAgent),
+                new DashScopeT2iProvider(objectMapper, imageDownloader, userAgent),
+                new DashScopeVideoProvider(objectMapper, videoDownloader, userAgent)));
     }
 
     @Bean

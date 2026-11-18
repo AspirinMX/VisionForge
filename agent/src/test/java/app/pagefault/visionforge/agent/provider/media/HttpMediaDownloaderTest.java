@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -38,8 +39,10 @@ class HttpMediaDownloaderTest {
 
     @Test
     void downloadsHttpWhenDevelopmentSwitchIsEnabled() throws Exception {
+        AtomicReference<String> capturedUserAgent = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/media", exchange -> {
+            capturedUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
             byte[] payload = "mock-video".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, payload.length);
             try (OutputStream output = exchange.getResponseBody()) {
@@ -48,9 +51,11 @@ class HttpMediaDownloaderTest {
         });
         server.start();
         try {
-            HttpMediaDownloader downloader = new HttpMediaDownloader(1024, true);
+            HttpMediaDownloader downloader =
+                    new HttpMediaDownloader(1024, true, "VisionForge-Test/1.0");
             assertThat(downloader.download(url(server)))
                     .isEqualTo("mock-video".getBytes(StandardCharsets.UTF_8));
+            assertThat(capturedUserAgent.get()).isEqualTo("VisionForge-Test/1.0");
         } finally {
             server.stop(0);
         }

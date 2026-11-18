@@ -65,6 +65,8 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 ### 文本模型配置与对话
 
+可通过 `UPSTREAM_USER_AGENT` 覆盖发往 Responses API、OpenAI Images、方舟和百炼的 `User-Agent`，包括产物下载请求；留空则保留各 SDK 默认值。
+
 API 和 Worker 都必须设置 `MODEL_CONFIG_SECRET`（Base64，恰好 32 字节），用于加密存储模型 API Key：
 
 ```sh

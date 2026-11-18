@@ -19,23 +19,31 @@ import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 
-import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * OpenAI Images protocol adapter for GPT Image generation. Reference-image editing is rejected
- * until the gateway-specific edit transport has been verified.
+ * OpenAI Images protocol adapter for GPT Image generation and reference-image editing.
  */
-@RequiredArgsConstructor
 public class OpenAiImagesProvider implements MediaProvider {
 
     private static final int MAX_CACHED_CLIENTS = 32;
     private static final long MAX_RESULT_BYTES = 64L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
-    private final HttpMediaDownloader downloader = new HttpMediaDownloader(MAX_RESULT_BYTES);
+    private final String userAgent;
+    private final HttpMediaDownloader downloader;
     private final Map<String, OpenAIClient> clients = new ConcurrentHashMap<>();
+
+    public OpenAiImagesProvider(ObjectMapper objectMapper) {
+        this(objectMapper, "");
+    }
+
+    public OpenAiImagesProvider(ObjectMapper objectMapper, String userAgent) {
+        this.objectMapper = objectMapper;
+        this.userAgent = userAgent == null ? "" : userAgent.trim();
+        this.downloader = new HttpMediaDownloader(MAX_RESULT_BYTES, this.userAgent);
+    }
 
     @Override
     public MediaProtocol protocol() {
@@ -135,12 +143,15 @@ public class OpenAiImagesProvider implements MediaProvider {
         if (cached != null) {
             return cached;
         }
-        OpenAIClient created = OpenAIOkHttpClient.builder()
+        var builder = OpenAIOkHttpClient.builder()
                 .baseUrl(request.baseUrl())
                 .apiKey(request.apiKey())
                 .maxRetries(0)
-                .timeout(Duration.ofMinutes(15))
-                .build();
+                .timeout(Duration.ofMinutes(15));
+        if (!userAgent.isBlank()) {
+            builder.putHeader("User-Agent", userAgent);
+        }
+        OpenAIClient created = builder.build();
         if (clients.size() >= MAX_CACHED_CLIENTS) {
             clients.clear();
         }

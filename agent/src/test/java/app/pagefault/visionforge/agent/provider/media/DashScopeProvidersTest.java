@@ -30,6 +30,7 @@ class DashScopeProvidersTest {
     void t2iSubmitsAsyncTaskAndArchivesResult() throws Exception {
         AtomicReference<String> submitBody = new AtomicReference<>();
         AtomicReference<String> asyncHeader = new AtomicReference<>();
+        AtomicReference<String> capturedUserAgent = new AtomicReference<>();
         AtomicReference<String> capturedUrl = new AtomicReference<>();
         byte[] image = new byte[]{1, 2, 3};
 
@@ -38,6 +39,7 @@ class DashScopeProvidersTest {
             submitBody.set(new String(
                     exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             asyncHeader.set(exchange.getRequestHeaders().getFirst("X-DashScope-Async"));
+            capturedUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
             respond(exchange, 200, """
                     {"request_id":"req-submit","output":{"task_id":"task-t2i","task_status":"PENDING"}}
                     """);
@@ -51,7 +53,7 @@ class DashScopeProvidersTest {
             DashScopeT2iProvider provider = new DashScopeT2iProvider(objectMapper, url -> {
                 capturedUrl.set(url);
                 return image;
-            });
+            }, "VisionForge-Test/1.0");
             MediaProviderRequest request = request(
                     GenerationType.IMAGE,
                     baseUrl(server),
@@ -63,6 +65,7 @@ class DashScopeProvidersTest {
             assertThat(((MediaProviderOutcome.Pending) started).remoteTaskId())
                     .isEqualTo("task-t2i");
             assertThat(asyncHeader.get()).isEqualTo("enable");
+            assertThat(capturedUserAgent.get()).isEqualTo("VisionForge-Test/1.0");
 
             JsonNode submitted = objectMapper.readTree(submitBody.get());
             assertThat(submitted.path("model").asText()).isEqualTo("wan2.7-image");

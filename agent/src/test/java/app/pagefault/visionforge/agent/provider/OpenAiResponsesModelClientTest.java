@@ -31,9 +31,11 @@ class OpenAiResponsesModelClientTest {
     void sendsExplicitResponsesInputAndFunctionTools() throws Exception {
         AtomicReference<String> capturedBody = new AtomicReference<>();
         AtomicReference<String> capturedPath = new AtomicReference<>();
+        AtomicReference<String> capturedUserAgent = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/responses", exchange -> {
             capturedPath.set(exchange.getRequestURI().getPath());
+            capturedUserAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
             capturedBody.set(new String(
                     exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] payload = "{\"error\":{\"message\":\"stub\"}}"
@@ -46,7 +48,8 @@ class OpenAiResponsesModelClientTest {
         });
         server.start();
         try {
-            OpenAiResponsesModelClient client = new OpenAiResponsesModelClient();
+            OpenAiResponsesModelClient client =
+                    new OpenAiResponsesModelClient("VisionForge-Test/1.0");
             ModelRequest request = new ModelRequest(
                     baseUrl(server),
                     "test-key",
@@ -67,6 +70,7 @@ class OpenAiResponsesModelClientTest {
                     .isInstanceOf(ModelProviderException.class);
 
             assertThat(capturedPath.get()).isEqualTo("/v1/responses");
+            assertThat(capturedUserAgent.get()).isEqualTo("VisionForge-Test/1.0");
             JsonNode body = objectMapper.readTree(capturedBody.get());
             assertThat(body.path("model").asText()).isEqualTo("test-model");
             assertThat(body.path("store").asBoolean()).isFalse();

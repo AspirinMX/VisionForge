@@ -11,7 +11,6 @@ import java.time.Duration;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.common.error.BusinessException;
 
-import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -20,17 +19,26 @@ import tools.jackson.databind.ObjectMapper;
  * process-wide static field, which would prevent per-model routing, so adapters speak the
  * documented JSON contract directly. The client is stateless and safe to share.
  */
-@RequiredArgsConstructor
 class DashScopeHttpClient {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(10);
 
     private final ObjectMapper objectMapper;
+    private final String userAgent;
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
+
+    DashScopeHttpClient(ObjectMapper objectMapper) {
+        this(objectMapper, "");
+    }
+
+    DashScopeHttpClient(ObjectMapper objectMapper, String userAgent) {
+        this.objectMapper = objectMapper;
+        this.userAgent = userAgent == null ? "" : userAgent.trim();
+    }
 
     JsonNode post(MediaProviderRequest request, String path, JsonNode body, boolean async) {
         HttpRequest.Builder builder = requestBuilder(request, path)
@@ -62,10 +70,14 @@ class DashScopeHttpClient {
                 && !"http".equalsIgnoreCase(uri.getScheme())) {
             throw failure("百炼请求地址必须是 HTTP 或 HTTPS");
         }
-        return HttpRequest.newBuilder(uri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Accept", "application/json");
+        if (!userAgent.isBlank()) {
+            builder.header("User-Agent", userAgent);
+        }
+        return builder;
     }
 
     private JsonNode execute(HttpRequest request) {

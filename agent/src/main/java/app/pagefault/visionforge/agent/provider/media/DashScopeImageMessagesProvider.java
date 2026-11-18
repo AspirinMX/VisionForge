@@ -28,8 +28,15 @@ public class DashScopeImageMessagesProvider implements MediaProvider {
 
     public DashScopeImageMessagesProvider(
             ObjectMapper objectMapper, MediaResultDownloader downloader) {
+        this(objectMapper, downloader, "");
+    }
+
+    public DashScopeImageMessagesProvider(
+            ObjectMapper objectMapper,
+            MediaResultDownloader downloader,
+            String userAgent) {
         this.objectMapper = objectMapper;
-        this.http = new DashScopeHttpClient(objectMapper);
+        this.http = new DashScopeHttpClient(objectMapper, userAgent);
         this.downloader = downloader;
     }
 

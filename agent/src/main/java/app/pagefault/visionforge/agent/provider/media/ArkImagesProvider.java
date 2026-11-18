@@ -21,7 +21,6 @@ import app.pagefault.visionforge.agent.generation.GenerationType;
 import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.common.error.BusinessException;
 
-import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,14 +28,24 @@ import tools.jackson.databind.ObjectMapper;
  * Ark Seedream image adapter. Reference images are submitted as URLs in the {@code image} field,
  * which is the native Ark Images contract rather than the OpenAI edits endpoint.
  */
-@RequiredArgsConstructor
 public class ArkImagesProvider implements MediaProvider {
 
     private static final long MAX_RESULT_BYTES = 64L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
     private final ArkClientFactory clients;
-    private final HttpMediaDownloader downloader = new HttpMediaDownloader(MAX_RESULT_BYTES);
+    private final HttpMediaDownloader downloader;
+
+    public ArkImagesProvider(ObjectMapper objectMapper, ArkClientFactory clients) {
+        this(objectMapper, clients, "");
+    }
+
+    public ArkImagesProvider(
+            ObjectMapper objectMapper, ArkClientFactory clients, String userAgent) {
+        this.objectMapper = objectMapper;
+        this.clients = clients;
+        this.downloader = new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent);
+    }
 
     @Override
     public MediaProtocol protocol() {
@@ -51,7 +60,8 @@ public class ArkImagesProvider implements MediaProvider {
         try {
             CreateImageGenerationRequest imageRequest = createRequest(request);
             ArkService service = clients.get(request);
-            ImageGenerationResponse response = service.generateImages(imageRequest);
+            ImageGenerationResponse response =
+                    service.generateImages(imageRequest, clients.customHeaders());
             if (response == null) {
                 throw failure("Ark 图片接口没有返回响应");
             }

@@ -21,15 +21,25 @@ public class HttpMediaDownloader implements MediaResultDownloader {
 
     private final long maxBytes;
     private final boolean allowHttp;
+    private final String userAgent;
     private final HttpClient client;
 
     public HttpMediaDownloader(long maxBytes) {
-        this(maxBytes, allowHttpFromEnvironment());
+        this(maxBytes, allowHttpFromEnvironment(), userAgentFromEnvironment());
+    }
+
+    public HttpMediaDownloader(long maxBytes, String userAgent) {
+        this(maxBytes, allowHttpFromEnvironment(), userAgent);
     }
 
     HttpMediaDownloader(long maxBytes, boolean allowHttp) {
+        this(maxBytes, allowHttp, userAgentFromEnvironment());
+    }
+
+    HttpMediaDownloader(long maxBytes, boolean allowHttp, String userAgent) {
         this.maxBytes = maxBytes;
         this.allowHttp = allowHttp;
+        this.userAgent = userAgent == null ? "" : userAgent.trim();
         this.client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -49,10 +59,13 @@ public class HttpMediaDownloader implements MediaResultDownloader {
             throw failure(allowHttp ? "产物 URL 必须是 HTTP 或 HTTPS" : "产物 URL 必须是 HTTPS");
         }
         try {
-            HttpRequest request = HttpRequest.newBuilder(uri)
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMinutes(10))
-                    .GET()
-                    .build();
+                    .GET();
+            if (!userAgent.isBlank()) {
+                requestBuilder.header("User-Agent", userAgent);
+            }
+            HttpRequest request = requestBuilder.build();
             HttpResponse<InputStream> response =
                     client.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -92,5 +105,13 @@ public class HttpMediaDownloader implements MediaResultDownloader {
 
     private static boolean allowHttpFromEnvironment() {
         return "true".equalsIgnoreCase(System.getenv("MEDIA_ALLOW_HTTP"));
+    }
+
+    private static String userAgentFromEnvironment() {
+        String value = System.getenv("UPSTREAM_USER_AGENT");
+        if (value == null || value.isBlank()) {
+            value = System.getenv("MEDIA_USER_AGENT");
+        }
+        return value == null ? "" : value.trim();
     }
 }

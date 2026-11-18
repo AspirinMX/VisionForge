@@ -18,6 +18,19 @@ public class ArkClientFactory {
     private static final int MAX_CACHED_CLIENTS = 16;
 
     private final Map<String, ArkService> clients = new ConcurrentHashMap<>();
+    private final String userAgent;
+
+    public ArkClientFactory() {
+        this("");
+    }
+
+    public ArkClientFactory(String userAgent) {
+        this.userAgent = userAgent == null ? "" : userAgent.trim();
+    }
+
+    public Map<String, String> customHeaders() {
+        return userAgent.isBlank() ? Map.of() : Map.of("User-Agent", userAgent);
+    }
 
     public ArkService get(MediaProviderRequest request) {
         String baseUrl = requireText(request.baseUrl(), "Ark baseUrl 未配置");

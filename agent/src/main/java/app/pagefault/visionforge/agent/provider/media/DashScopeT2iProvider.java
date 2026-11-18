@@ -26,8 +26,15 @@ public class DashScopeT2iProvider implements RemoteMediaProvider {
     private final MediaResultDownloader downloader;
 
     public DashScopeT2iProvider(ObjectMapper objectMapper, MediaResultDownloader downloader) {
+        this(objectMapper, downloader, "");
+    }
+
+    public DashScopeT2iProvider(
+            ObjectMapper objectMapper,
+            MediaResultDownloader downloader,
+            String userAgent) {
         this.objectMapper = objectMapper;
-        this.http = new DashScopeHttpClient(objectMapper);
+        this.http = new DashScopeHttpClient(objectMapper, userAgent);
         this.downloader = downloader;
     }
 

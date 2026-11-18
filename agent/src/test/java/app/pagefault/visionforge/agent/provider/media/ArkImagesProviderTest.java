@@ -24,6 +24,13 @@ class ArkImagesProviderTest {
             new ArkImagesProvider(objectMapper, new ArkClientFactory());
 
     @Test
+    void exposesConfiguredUserAgentAsCustomHeader() {
+        assertThat(new ArkClientFactory("VisionForge-Test/1.0").customHeaders())
+                .containsEntry("User-Agent", "VisionForge-Test/1.0");
+        assertThat(new ArkClientFactory().customHeaders()).isEmpty();
+    }
+
+    @Test
     void mapsSeedreamRequestWithReferenceImages() {
         MediaProviderRequest request = new MediaProviderRequest(
                 UUID.randomUUID(),

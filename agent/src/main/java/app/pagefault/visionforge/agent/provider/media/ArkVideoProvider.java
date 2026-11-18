@@ -18,7 +18,6 @@ import app.pagefault.visionforge.agent.generation.GenerationType;
 import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.common.error.BusinessException;
 
-import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -26,14 +25,24 @@ import tools.jackson.databind.ObjectMapper;
  * Ark video task adapter (Seedance). The SDK owns the HTTP protocol; this class only maps the
  * domain request, persists the remote task id and maps status. Auto-retry is disabled.
  */
-@RequiredArgsConstructor
 public class ArkVideoProvider implements RemoteMediaProvider {
 
     private static final long MAX_RESULT_BYTES = 1024L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
     private final ArkClientFactory clients;
-    private final HttpMediaDownloader downloader = new HttpMediaDownloader(MAX_RESULT_BYTES);
+    private final HttpMediaDownloader downloader;
+
+    public ArkVideoProvider(ObjectMapper objectMapper, ArkClientFactory clients) {
+        this(objectMapper, clients, "");
+    }
+
+    public ArkVideoProvider(
+            ObjectMapper objectMapper, ArkClientFactory clients, String userAgent) {
+        this.objectMapper = objectMapper;
+        this.clients = clients;
+        this.downloader = new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent);
+    }
 
     @Override
     public MediaProtocol protocol() {
@@ -93,8 +102,8 @@ public class ArkVideoProvider implements RemoteMediaProvider {
                 builder.seed(seed);
             }
 
-            CreateContentGenerationTaskResponse response =
-                    client(request).createContentGenerationTask(builder.build());
+            CreateContentGenerationTaskResponse response = client(request)
+                    .createContentGenerationTask(builder.build(), clients.customHeaders());
             if (response == null || response.getId() == null || response.getId().isBlank()) {
                 throw failure("Ark 视频任务没有返回远端任务 ID");
             }
@@ -115,7 +124,8 @@ public class ArkVideoProvider implements RemoteMediaProvider {
     @Override
     public MediaProviderOutcome query(MediaProviderRequest request, String remoteTaskId) {
         try {
-            ContentGenerationTask task = client(request).getContentGenerationTask(remoteTaskId);
+            ContentGenerationTask task = client(request)
+                    .getContentGenerationTask(remoteTaskId, clients.customHeaders());
             if (task == null || task.getStatus() == null) {
                 return new MediaProviderOutcome.Pending(
                         receipt(request, remoteTaskId, "unknown"), remoteTaskId);

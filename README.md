@@ -65,6 +65,8 @@ To bootstrap the first administrator, also set `BOOTSTRAP_ADMIN_EMAIL` and `BOOT
 
 ### Text model configuration and conversations
 
+Set `UPSTREAM_USER_AGENT` to override the `User-Agent` sent to the Responses API, OpenAI Images, Ark and DashScope, including provider result downloads. Leave it blank to keep each SDK's default.
+
 The API and worker both require `MODEL_CONFIG_SECRET` (Base64, exactly 32 bytes) to encrypt provider API keys at rest:
 
 ```sh

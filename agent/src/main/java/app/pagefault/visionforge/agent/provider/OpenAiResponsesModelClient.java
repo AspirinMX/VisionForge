@@ -48,6 +48,15 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
     private static final int MAX_CACHED_CLIENTS = 32;
 
     private final Map<String, OpenAIClient> clients = new ConcurrentHashMap<>();
+    private final String userAgent;
+
+    public OpenAiResponsesModelClient() {
+        this("");
+    }
+
+    public OpenAiResponsesModelClient(String userAgent) {
+        this.userAgent = userAgent == null ? "" : userAgent.trim();
+    }
 
     @Override
     public ModelResponse stream(ModelRequest request, ModelStreamListener listener) {
@@ -82,13 +91,16 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         if (cached != null) {
             return cached;
         }
-        OpenAIClient created = OpenAIOkHttpClient.builder()
+        var builder = OpenAIOkHttpClient.builder()
                 .baseUrl(baseUrl)
                 .apiKey(request.apiKey())
                 // The workflow never retries a paid model call; retrying here would double billing.
                 .maxRetries(0)
-                .timeout(REQUEST_TIMEOUT)
-                .build();
+                .timeout(REQUEST_TIMEOUT);
+        if (!userAgent.isBlank()) {
+            builder.putHeader("User-Agent", userAgent);
+        }
+        OpenAIClient created = builder.build();
         if (clients.size() >= MAX_CACHED_CLIENTS) {
             clients.clear();
         }
