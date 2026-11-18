@@ -104,6 +104,75 @@ class IdentityServiceTest {
                         .isEqualTo(IdentityErrorCode.TOKEN_INVALID));
     }
 
+    @Test
+    void createUserByAdminCreatesSpecifiedRole() {
+        when(userMapper.selectOne(any())).thenReturn(null);
+        when(passwordEncoder.encode("AdminPassword123!")).thenReturn("encoded-admin");
+
+        UserAccount admin = identityService.createUserByAdmin(
+                "Ops@Example.com", "AdminPassword123!", "Ops Admin", UserRole.ADMIN);
+
+        assertThat(admin.getEmail()).isEqualTo("ops@example.com");
+        assertThat(admin.getRole()).isEqualTo(UserRole.ADMIN);
+        assertThat(admin.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        verify(userMapper).insert(admin);
+    }
+
+    @Test
+    void updateStatusRejectsSelfDisableAndAllowsEnablingOtherUser() {
+        assertThatThrownBy(() -> identityService.updateStatus(USER_ID, USER_ID, UserStatus.DISABLED))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode())
+                        .isEqualTo(IdentityErrorCode.SELF_STATUS_CHANGE_FORBIDDEN));
+
+        UUID actorId = UUID.randomUUID();
+        UserAccount target = activeUser();
+        target.setStatus(UserStatus.DISABLED);
+        when(userMapper.selectById(USER_ID)).thenReturn(target);
+
+        UserAccount updated = identityService.updateStatus(actorId, USER_ID, UserStatus.ACTIVE);
+        assertThat(updated.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        verify(userMapper).updateById(target);
+    }
+
+    @Test
+    void updateProfileAndChangePasswordValidateInputsAndEncodePassword() {
+        UserAccount existing = activeUser();
+        existing.setPasswordHash("old-hash");
+        when(userMapper.selectById(USER_ID)).thenReturn(existing);
+        when(passwordEncoder.matches("OldPassword123!", "old-hash")).thenReturn(true);
+        when(passwordEncoder.matches("WrongPassword1!", "old-hash")).thenReturn(false);
+        when(passwordEncoder.encode("NewPassword123!")).thenReturn("new-hash");
+
+        UserAccount renamed = identityService.updateProfile(USER_ID, "  Alice Ren  ");
+        assertThat(renamed.getDisplayName()).isEqualTo("Alice Ren");
+
+        assertThatThrownBy(() -> identityService.changePassword(USER_ID, "WrongPassword1!", "NewPassword123!"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode())
+                        .isEqualTo(IdentityErrorCode.INVALID_CREDENTIALS));
+
+        UserAccount changed = identityService.changePassword(USER_ID, "OldPassword123!", "NewPassword123!");
+        assertThat(changed.getPasswordHash()).isEqualTo("new-hash");
+    }
+
+    @Test
+    void adminResetPasswordValidatesStrengthAndEncodes() {
+        UUID actorId = UUID.randomUUID();
+        UserAccount existing = activeUser();
+        when(userMapper.selectById(USER_ID)).thenReturn(existing);
+        when(passwordEncoder.encode("ResetPassword123!")).thenReturn("reset-hash");
+
+        assertThatThrownBy(() -> identityService.adminResetPassword(actorId, USER_ID, "short"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode())
+                        .isEqualTo(IdentityErrorCode.WEAK_PASSWORD));
+
+        UserAccount reset = identityService.adminResetPassword(actorId, USER_ID, "ResetPassword123!");
+        assertThat(reset.getPasswordHash()).isEqualTo("reset-hash");
+        verify(userMapper).updateById(existing);
+    }
+
     private UserAccount activeUser() {
         UserAccount user = new UserAccount();
         user.setId(USER_ID);

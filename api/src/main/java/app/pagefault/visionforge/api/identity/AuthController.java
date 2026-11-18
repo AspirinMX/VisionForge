@@ -4,17 +4,20 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.pagefault.visionforge.api.identity.dto.ChangePasswordRequest;
 import app.pagefault.visionforge.api.identity.dto.LoginRequest;
 import app.pagefault.visionforge.api.identity.dto.LoginResponse;
 import app.pagefault.visionforge.api.identity.dto.RefreshRequest;
 import app.pagefault.visionforge.api.identity.dto.RegisterRequest;
 import app.pagefault.visionforge.api.identity.dto.TokenResponse;
+import app.pagefault.visionforge.api.identity.dto.UpdateProfileRequest;
 import app.pagefault.visionforge.api.identity.dto.UserResponse;
 import app.pagefault.visionforge.common.api.ApiResponse;
 import app.pagefault.visionforge.identity.auth.AuthService;
@@ -65,5 +68,23 @@ public class AuthController {
     public ApiResponse<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {
         UserAccount user = identityService.getActiveUser(AuthenticatedUser.id(jwt));
         return ApiResponse.success(UserResponse.from(user));
+    }
+
+    @PatchMapping("/me")
+    public ApiResponse<UserResponse> updateProfile(
+            @Valid @RequestBody UpdateProfileRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        UserAccount updated = identityService.updateProfile(
+                AuthenticatedUser.id(jwt), request.displayName());
+        return ApiResponse.success(UserResponse.from(updated));
+    }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        authService.changePassword(
+                AuthenticatedUser.id(jwt), request.currentPassword(), request.newPassword());
+        return ApiResponse.success();
     }
 }

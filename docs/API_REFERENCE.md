@@ -42,13 +42,19 @@
 | `POST /api/v1/auth/refresh` | `200` | 公开 | `{ refreshToken }`（**单次轮换**，旧令牌失效） | `TokenResponse` |
 | `POST /api/v1/auth/logout` | `200` | 公开 | `{ refreshToken }` | `null` |
 | `GET /api/v1/auth/me` | `200` | JWT | — | `UserResponse` |
+| `PATCH /api/v1/auth/me` | `200` | JWT | `{ displayName (1-100) }` | `UserResponse` |
+| `POST /api/v1/auth/change-password` | `200` | JWT | `{ currentPassword, newPassword (12-72) }`（校验原密码并吊销全部旧 Refresh Token） | `null` |
 
 ### 2.2 管理员用户接口 (`AdminUserController`, `/api/v1/admin/users`)
 
 | 方法与路径 | 状态码 | 权限 | 参数 | 响应 `data` |
 | --- | --- | --- | --- | --- |
-| `GET /api/v1/admin/users` | `200` | `ADMIN` | `?page=1&size=20` | `PageResult<UserResponse> { items, page, size, total }` |
+| `GET /api/v1/admin/users` | `200` | `ADMIN` | `?page=1&size=20&q=...&role=ADMIN\|USER&status=ACTIVE\|DISABLED` | `PageResult<UserResponse> { items, page, size, total }` |
+| `POST /api/v1/admin/users` | `201` | `ADMIN` | `{ email, password (12-72), displayName, role }` | `UserResponse` |
 | `PUT /api/v1/admin/users/{id}/role` | `200` | `ADMIN` | `{ role: "ADMIN" \| "USER" }`（禁止修改本人角色） | `UserResponse` |
+| `PUT /api/v1/admin/users/{id}/status` | `200` | `ADMIN` | `{ status: "ACTIVE" \| "DISABLED" }`（禁用本人返回 409；禁用即吊销 Refresh Token） | `UserResponse` |
+| `POST /api/v1/admin/users/{id}/reset-password` | `200` | `ADMIN` | `{ newPassword (12-72) }`（同步吊销该用户全部 Refresh Token） | `null` |
+| `POST /api/v1/admin/users/{id}/revoke-sessions` | `200` | `ADMIN` | 路径参数 `{id}` | `{ revokedCount }` |
 
 ---
 
@@ -194,6 +200,7 @@
 | `IDENTITY_TOKEN_INVALID` | 401 | 登录状态已失效 |
 | `IDENTITY_USER_NOT_FOUND` | 404 | 用户不存在 |
 | `IDENTITY_SELF_ROLE_CHANGE_FORBIDDEN` | 409 | 不能修改自己的系统角色 |
+| `IDENTITY_SELF_STATUS_CHANGE_FORBIDDEN` | 409 | 不能禁用当前登录账号 |
 | `IDENTITY_WEAK_PASSWORD` | 400 | 密码长度不在 12–72 字符范围内 |
 | `IDENTITY_INVALID_EMAIL` | 400 | 邮箱格式不正确 |
 | `IDENTITY_ACCOUNT_DISABLED` | 403 | 账号已被禁用 |

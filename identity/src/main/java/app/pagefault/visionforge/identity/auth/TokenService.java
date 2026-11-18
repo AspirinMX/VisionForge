@@ -103,6 +103,13 @@ public class TokenService {
         refreshTokenMapper.updateById(token);
     }
 
+    public int revokeAllForUser(UUID userId) {
+        if (userId == null) {
+            return 0;
+        }
+        return refreshTokenMapper.revokeAllActiveByUserId(userId, clock.instant());
+    }
+
     private RefreshToken createRefreshToken(UUID userId, String rawToken, Instant now) {
         RefreshToken token = new RefreshToken();
         token.setId(idGenerator.nextId());
