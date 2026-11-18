@@ -4,10 +4,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +19,7 @@ import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
+import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.api.agent.dto.AgentRunResponse;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
@@ -32,6 +35,8 @@ public class AgentRunController {
     private final AgentRunService agentRunService;
     private final AgentProcessReader agentProcessReader;
     private final ConversationReferenceChecker conversationReferenceChecker;
+    private final AgentRunStarter agentRunStarter;
+    private final ObjectProvider<AgentRunStreamPublisher> streamPublisherProvider;
 
     /**
      * Newest-first runs, optionally filtered by conversation and status. Combined with the status
@@ -60,6 +65,19 @@ public class AgentRunController {
             @PathVariable UUID runId,
             @AuthenticationPrincipal Jwt jwt) {
         AgentRun run = agentRunService.getForUser(AuthenticatedUser.id(jwt), runId);
+        return ApiResponse.success(AgentRunResponse.from(run, agentProcessReader.forRun(run)));
+    }
+
+    @PostMapping("/{runId}/cancel")
+    public ApiResponse<AgentRunResponse> cancel(
+            @PathVariable UUID runId,
+            @AuthenticationPrincipal Jwt jwt) {
+        AgentRun run = agentRunService.cancel(AuthenticatedUser.id(jwt), runId);
+        agentRunStarter.cancel(run.getWorkflowId());
+        AgentRunStreamPublisher publisher = streamPublisherProvider.getIfAvailable();
+        if (publisher != null) {
+            publisher.publishError(runId, "用户已取消生成");
+        }
         return ApiResponse.success(AgentRunResponse.from(run, agentProcessReader.forRun(run)));
     }
 }

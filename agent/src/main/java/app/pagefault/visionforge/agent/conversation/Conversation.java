@@ -29,4 +29,6 @@ public class Conversation {
     private Instant updatedAt;
 
     private Instant lastMessageAt;
+
+    private Instant deletedAt;
 }

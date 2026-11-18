@@ -7,6 +7,7 @@ import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.failure.ActivityFailure;
 import io.temporal.failure.ApplicationFailure;
+import io.temporal.failure.CanceledFailure;
 import io.temporal.workflow.Workflow;
 
 /**
@@ -66,7 +67,12 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
                 }
                 turnNo++;
             }
+        } catch (CanceledFailure cancellation) {
+            throw cancellation;
         } catch (ActivityFailure failure) {
+            if (failure.getCause() instanceof CanceledFailure) {
+                throw failure;
+            }
             finalizeActivities.failRun(runId, failureMessage(failure));
             throw failure;
         }

@@ -9,7 +9,9 @@ import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflow;
 
 import io.temporal.client.WorkflowClient;
+import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
+import io.temporal.client.WorkflowStub;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -50,6 +52,20 @@ public class AgentRunStarter {
                     workflowId,
                     exception);
             agentRunService.markWorkflowStartRetryable(workflowId, exception.getMessage());
+        }
+    }
+
+    public void cancel(String workflowId) {
+        if (workflowId == null || workflowId.isBlank()) {
+            return;
+        }
+        try {
+            WorkflowStub stub = workflowClient.newUntypedWorkflowStub(workflowId);
+            stub.cancel();
+        } catch (WorkflowNotFoundException ignored) {
+            // The workflow never started or already completed.
+        } catch (RuntimeException exception) {
+            log.warn("Could not cancel AgentRun workflow {}: {}", workflowId, exception.getMessage());
         }
     }
 }

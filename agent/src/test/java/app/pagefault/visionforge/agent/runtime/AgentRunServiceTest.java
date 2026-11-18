@@ -319,6 +319,25 @@ class AgentRunServiceTest {
         verify(agentRunMapper).selectList(any());
     }
 
+    @Test
+    void cancelMarksPendingOrRunningAsCancelledAndClosesStartRequest() {
+        AgentRun run = run(AgentRunStatus.PENDING);
+        WorkflowStartRequest pendingStart = startRequest(0);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(workflowStartRequestMapper.selectOne(any())).thenReturn(pendingStart);
+
+        AgentRun cancelled = service.cancel(WORKSPACE_ID, RUN_ID);
+
+        assertThat(cancelled.getStatus()).isEqualTo(AgentRunStatus.CANCELLED);
+        assertThat(cancelled.getCompletedAt()).isEqualTo(NOW);
+        assertThat(pendingStart.getStatus()).isEqualTo(WorkflowStartStatus.FAILED);
+        verify(workflowStartRequestMapper).updateById(pendingStart);
+
+        // Late failure callback must not overwrite CANCELLED.
+        assertThat(service.fail(RUN_ID, "late error")).isFalse();
+        assertThat(run.getStatus()).isEqualTo(AgentRunStatus.CANCELLED);
+    }
+
     private AgentRun run(AgentRunStatus status) {
         AgentRun run = new AgentRun();
         run.setId(RUN_ID);

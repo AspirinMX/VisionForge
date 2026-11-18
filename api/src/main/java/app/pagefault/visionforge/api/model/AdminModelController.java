@@ -13,11 +13,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.pagefault.visionforge.agent.model.ModelConnectivityService;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionInput;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.api.model.dto.CreateModelRequest;
 import app.pagefault.visionforge.api.model.dto.ModelResponse;
+import app.pagefault.visionforge.api.model.dto.ModelTestResponse;
 import app.pagefault.visionforge.api.model.dto.UpdateModelRequest;
 import app.pagefault.visionforge.common.api.ApiResponse;
 
@@ -30,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminModelController {
 
     private final ModelDefinitionService modelDefinitionService;
+    private final ModelConnectivityService modelConnectivityService;
 
     @GetMapping
     public ApiResponse<List<ModelResponse>> list() {
@@ -91,5 +94,10 @@ public class AdminModelController {
     @PostMapping("/{id}/default")
     public ApiResponse<ModelResponse> setDefault(@PathVariable UUID id) {
         return ApiResponse.success(ModelResponse.from(modelDefinitionService.setDefault(id)));
+    }
+
+    @PostMapping("/{id}/test")
+    public ApiResponse<ModelTestResponse> testConnection(@PathVariable UUID id) {
+        return ApiResponse.success(ModelTestResponse.from(modelConnectivityService.testConnection(id)));
     }
 }

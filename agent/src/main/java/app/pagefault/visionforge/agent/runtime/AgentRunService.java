@@ -122,7 +122,7 @@ public class AgentRunService {
     @Transactional
     public AgentPrompt loadPrompt(UUID runId) {
         AgentRun run = get(runId);
-        if (run.getStatus() == AgentRunStatus.COMPLETED || run.getStatus() == AgentRunStatus.FAILED) {
+        if (run.getStatus().terminal()) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
         }
         Conversation conversation = conversationMapper.selectById(run.getConversationId());
@@ -404,7 +404,7 @@ public class AgentRunService {
         if (run.getStatus() == AgentRunStatus.COMPLETED || run.getAssistantMessageId() != null) {
             return run.getAssistantMessageId();
         }
-        if (run.getStatus() == AgentRunStatus.FAILED) {
+        if (run.getStatus().terminal()) {
             throw new BusinessException(AgentErrorCode.AGENT_RUN_INVALID_STATE);
         }
         AgentRunTurn turn = findTurn(runId, finalTurnNo);
@@ -446,6 +446,7 @@ public class AgentRunService {
     public boolean fail(UUID runId, String errorMessage) {
         AgentRun run = get(runId);
         if (run.getStatus() == AgentRunStatus.COMPLETED
+                || run.getStatus() == AgentRunStatus.CANCELLED
                 || (run.getStatus() == AgentRunStatus.FAILED && run.getErrorMessage() != null)) {
             return false;
         }
@@ -454,6 +455,28 @@ public class AgentRunService {
         run.setCompletedAt(clock.instant());
         agentRunMapper.updateById(run);
         return true;
+    }
+
+    @Transactional
+    public AgentRun cancel(UUID userId, UUID runId) {
+        AgentRun run = getForUser(userId, runId);
+        if (run.getStatus().terminal()) {
+            return run;
+        }
+        Instant now = clock.instant();
+        run.setStatus(AgentRunStatus.CANCELLED);
+        run.setErrorMessage("用户已取消生成");
+        run.setCompletedAt(now);
+        agentRunMapper.updateById(run);
+
+        WorkflowStartRequest startRequest = findStartRequest(run.getWorkflowId());
+        if (startRequest != null && startRequest.getStatus() == WorkflowStartStatus.PENDING) {
+            startRequest.setStatus(WorkflowStartStatus.FAILED);
+            startRequest.setLastError("用户已取消生成");
+            startRequest.setUpdatedAt(now);
+            workflowStartRequestMapper.updateById(startRequest);
+        }
+        return run;
     }
 
     public List<WorkflowStartRequest> pendingStartRequests(int limit) {

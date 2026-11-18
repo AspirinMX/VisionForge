@@ -7,7 +7,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,6 +25,7 @@ import app.pagefault.visionforge.api.agent.dto.AgentTurnResponse;
 import app.pagefault.visionforge.api.agent.dto.ConversationResponse;
 import app.pagefault.visionforge.api.agent.dto.CreateConversationRequest;
 import app.pagefault.visionforge.api.agent.dto.MessageResponse;
+import app.pagefault.visionforge.api.agent.dto.RenameConversationRequest;
 import app.pagefault.visionforge.api.agent.dto.SendMessageRequest;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.api.stream.AgentRunStreamService;
@@ -65,6 +68,24 @@ public class ConversationController {
             @AuthenticationPrincipal Jwt jwt) {
         return ApiResponse.success(ConversationResponse.from(
                 conversationService.get(AuthenticatedUser.id(jwt), conversationId)));
+    }
+
+    @PatchMapping("/{conversationId}")
+    public ApiResponse<ConversationResponse> rename(
+            @PathVariable UUID conversationId,
+            @Valid @RequestBody RenameConversationRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        Conversation renamed = conversationService.rename(
+                AuthenticatedUser.id(jwt), conversationId, request.title());
+        return ApiResponse.success(ConversationResponse.from(renamed));
+    }
+
+    @DeleteMapping("/{conversationId}")
+    public ApiResponse<Void> delete(
+            @PathVariable UUID conversationId,
+            @AuthenticationPrincipal Jwt jwt) {
+        conversationService.delete(AuthenticatedUser.id(jwt), conversationId);
+        return ApiResponse.success();
     }
 
     @GetMapping("/{conversationId}/messages")

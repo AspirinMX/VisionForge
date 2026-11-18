@@ -1,0 +1,178 @@
+package app.pagefault.visionforge.api.admin;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import app.pagefault.visionforge.agent.conversation.Conversation;
+import app.pagefault.visionforge.agent.conversation.ConversationService;
+import app.pagefault.visionforge.agent.model.ModelConnectivityService;
+import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
+import app.pagefault.visionforge.agent.runtime.AgentRun;
+import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
+import app.pagefault.visionforge.agent.runtime.AgentRunService;
+import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
+import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
+import app.pagefault.visionforge.api.admin.dto.AdminOverviewResponse;
+import app.pagefault.visionforge.api.agent.AgentRunController;
+import app.pagefault.visionforge.api.agent.AgentRunStarter;
+import app.pagefault.visionforge.api.agent.ConversationController;
+import app.pagefault.visionforge.api.model.AdminModelController;
+import app.pagefault.visionforge.api.security.SecurityConfiguration;
+import app.pagefault.visionforge.api.stream.AgentRunStreamService;
+import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(controllers = {
+        ConversationController.class,
+        AgentRunController.class,
+        AdminModelController.class,
+        AdminOverviewController.class
+})
+@Import(SecurityConfiguration.class)
+class LifecycleAndOverviewControllersTest {
+
+    private static final UUID ADMIN_ID = UUID.fromString("0193b2c4-7f2a-7c3e-9d10-000000000001");
+    private static final UUID USER_ID = UUID.fromString("0193b2c4-7f2a-7c3e-9d10-000000000002");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
+    @MockitoBean
+    private ConversationService conversationService;
+
+    @MockitoBean
+    private AgentRunStarter agentRunStarter;
+
+    @MockitoBean
+    private AgentRunStreamService agentRunStreamService;
+
+    @MockitoBean
+    private AgentRunService agentRunService;
+
+    @MockitoBean
+    private AgentProcessReader agentProcessReader;
+
+    @MockitoBean
+    private ConversationReferenceChecker conversationReferenceChecker;
+
+    @MockitoBean
+    private AgentRunStreamPublisher streamPublisher;
+
+    @MockitoBean
+    private ModelDefinitionService modelDefinitionService;
+
+    @MockitoBean
+    private ModelConnectivityService modelConnectivityService;
+
+    @MockitoBean
+    private AdminOverviewService adminOverviewService;
+
+    @BeforeEach
+    void stubJwt() {
+        Instant now = Instant.parse("2026-11-19T00:00:00Z");
+        when(jwtDecoder.decode("admin-jwt")).thenReturn(Jwt.withTokenValue("admin-jwt")
+                .header("alg", "HS256")
+                .subject(ADMIN_ID.toString())
+                .claim("role", "ADMIN")
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(900))
+                .build());
+        when(jwtDecoder.decode("user-jwt")).thenReturn(Jwt.withTokenValue("user-jwt")
+                .header("alg", "HS256")
+                .subject(USER_ID.toString())
+                .claim("role", "USER")
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(900))
+                .build());
+    }
+
+    @Test
+    void userCanRenameDeleteConversationAndCancelRun() throws Exception {
+        UUID convId = UUID.randomUUID();
+        Conversation conv = new Conversation();
+        conv.setId(convId);
+        conv.setTitle("Renamed Title");
+        conv.setCreatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+        conv.setUpdatedAt(Instant.parse("2026-11-19T00:01:00Z"));
+        when(conversationService.rename(USER_ID, convId, "Renamed Title")).thenReturn(conv);
+
+        mockMvc.perform(patch("/api/v1/conversations/" + convId)
+                        .header("Authorization", "Bearer user-jwt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Renamed Title\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("Renamed Title"));
+
+        mockMvc.perform(delete("/api/v1/conversations/" + convId)
+                        .header("Authorization", "Bearer user-jwt"))
+                .andExpect(status().isOk());
+        verify(conversationService).delete(USER_ID, convId);
+
+        UUID runId = UUID.randomUUID();
+        AgentRun run = new AgentRun();
+        run.setId(runId);
+        run.setConversationId(convId);
+        run.setStatus(AgentRunStatus.CANCELLED);
+        run.setWorkflowId("agent-run-" + runId);
+        run.setErrorMessage("用户已取消生成");
+        run.setCreatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+        run.setCompletedAt(Instant.parse("2026-11-19T00:01:00Z"));
+        when(agentRunService.cancel(USER_ID, runId)).thenReturn(run);
+        when(agentProcessReader.forRun(run)).thenReturn(new AgentRunProcessView(runId, 0L, java.util.List.of()));
+
+        mockMvc.perform(post("/api/v1/agent-runs/" + runId + "/cancel")
+                        .header("Authorization", "Bearer user-jwt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+        verify(agentRunStarter).cancel("agent-run-" + runId);
+        verify(streamPublisher).publishError(runId, "用户已取消生成");
+    }
+
+    @Test
+    void adminCanProbeModelConnectivityAndReadOverview() throws Exception {
+        UUID modelId = UUID.randomUUID();
+        when(modelConnectivityService.testConnection(modelId))
+                .thenReturn(new ModelConnectivityService.ProbeResult(true, true, 200, 42L, "OPENAI_RESPONSES", "ok"));
+        when(adminOverviewService.snapshot())
+                .thenReturn(new AdminOverviewResponse(12, 10, 2, 34, 5, 1, 0, 2, 1, 0, 1, 0, 0));
+
+        mockMvc.perform(post("/api/v1/admin/models/" + modelId + "/test")
+                        .header("Authorization", "Bearer admin-jwt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ok").value(true))
+                .andExpect(jsonPath("$.data.latencyMs").value(42));
+
+        mockMvc.perform(get("/api/v1/admin/overview")
+                        .header("Authorization", "Bearer admin-jwt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalUsers").value(12))
+                .andExpect(jsonPath("$.data.archiveFailedGenerationTasks").value(1));
+
+        mockMvc.perform(get("/api/v1/admin/overview")
+                        .header("Authorization", "Bearer user-jwt"))
+                .andExpect(status().isForbidden());
+    }
+}

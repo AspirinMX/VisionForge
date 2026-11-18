@@ -4,5 +4,10 @@ public enum AgentRunStatus {
     PENDING,
     RUNNING,
     COMPLETED,
-    FAILED
+    FAILED,
+    CANCELLED;
+
+    public boolean terminal() {
+        return this == COMPLETED || this == FAILED || this == CANCELLED;
+    }
 }

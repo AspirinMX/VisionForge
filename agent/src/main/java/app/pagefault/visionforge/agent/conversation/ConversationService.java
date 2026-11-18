@@ -117,6 +117,7 @@ public class ConversationService {
         return conversationMapper.selectList(
                 Wrappers.<Conversation>lambdaQuery()
                         .eq(Conversation::getCreatedBy, userId)
+                        .isNull(Conversation::getDeletedAt)
                         .orderByDesc(Conversation::getLastMessageAt)
                         .orderByDesc(Conversation::getCreatedAt));
     }
@@ -125,10 +126,42 @@ public class ConversationService {
         Conversation conversation = conversationId == null
                 ? null
                 : conversationMapper.selectById(conversationId);
-        if (conversation == null || !userId.equals(conversation.getCreatedBy())) {
+        if (conversation == null
+                || conversation.getDeletedAt() != null
+                || !userId.equals(conversation.getCreatedBy())) {
             throw new BusinessException(AgentErrorCode.CONVERSATION_NOT_FOUND);
         }
         return conversation;
+    }
+
+    @Transactional
+    public Conversation rename(UUID userId, UUID conversationId, String title) {
+        Conversation conversation = get(userId, conversationId);
+        String trimmed = title == null ? "" : title.trim();
+        if (trimmed.isEmpty()) {
+            throw new BusinessException(CommonErrorCode.INVALID_ARGUMENT, "会话标题不能为空");
+        }
+        if (trimmed.length() > TITLE_MAX_LENGTH) {
+            throw new BusinessException(CommonErrorCode.INVALID_ARGUMENT, "会话标题不能超过 200 个字符");
+        }
+        Instant now = clock.instant();
+        conversation.setTitle(trimmed);
+        conversation.setUpdatedAt(now);
+        conversationMapper.updateById(conversation);
+        return conversation;
+    }
+
+    @Transactional
+    public void delete(UUID userId, UUID conversationId) {
+        Conversation conversation = get(userId, conversationId);
+        conversationMapper.selectForUpdate(conversationId);
+        if (hasActiveRun(conversationId)) {
+            throw new BusinessException(AgentErrorCode.CONVERSATION_BUSY);
+        }
+        Instant now = clock.instant();
+        conversation.setDeletedAt(now);
+        conversation.setUpdatedAt(now);
+        conversationMapper.updateById(conversation);
     }
 
     public List<Message> messages(UUID userId, UUID conversationId) {

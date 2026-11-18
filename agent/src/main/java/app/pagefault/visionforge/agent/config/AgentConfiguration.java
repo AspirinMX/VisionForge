@@ -45,6 +45,7 @@ import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.billing.credit.CreditService;
 import app.pagefault.visionforge.agent.model.ApiKeyCipher;
+import app.pagefault.visionforge.agent.model.ModelConnectivityService;
 import app.pagefault.visionforge.agent.model.ModelDefinitionMapper;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.persistence.AgentUuidTypeHandler;
@@ -102,6 +103,15 @@ public class AgentConfiguration {
             Clock clock) {
         return new ModelDefinitionService(
                 modelDefinitionMapper, apiKeyCipher, idGenerator, clock);
+    }
+
+    @Bean
+    public ModelConnectivityService modelConnectivityService(
+            ModelDefinitionService modelDefinitionService,
+            ResponsesModelClient responsesModelClient,
+            @Value("${visionforge.upstream.user-agent:}") String userAgent) {
+        return new ModelConnectivityService(
+                modelDefinitionService, responsesModelClient, userAgent);
     }
 
     @Bean

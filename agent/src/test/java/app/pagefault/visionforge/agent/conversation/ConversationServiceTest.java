@@ -179,6 +179,35 @@ class ConversationServiceTest {
         assertThat(result.get(0).process()).isEqualTo(expectedProcess);
     }
 
+    @Test
+    void renameUpdatesTitleAndDeleteSoftDeletesWhenIdle() {
+        Conversation conv = conversation();
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conv);
+        when(agentRunMapper.selectCount(any())).thenReturn(0L);
+
+        Conversation renamed = service.rename(USER_ID, CONVERSATION_ID, "  Short Film Cut  ");
+        assertThat(renamed.getTitle()).isEqualTo("Short Film Cut");
+        verify(conversationMapper).updateById(conv);
+
+        service.delete(USER_ID, CONVERSATION_ID);
+        assertThat(conv.getDeletedAt()).isEqualTo(NOW);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.get(USER_ID, CONVERSATION_ID))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void deleteRejectsActiveRun() {
+        Conversation conv = conversation();
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conv);
+        when(agentRunMapper.selectCount(any())).thenReturn(1L);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.delete(USER_ID, CONVERSATION_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(AgentErrorCode.CONVERSATION_BUSY));
+    }
+
     private Message message(UUID messageId) {
         Message message = new Message();
         message.setId(messageId);

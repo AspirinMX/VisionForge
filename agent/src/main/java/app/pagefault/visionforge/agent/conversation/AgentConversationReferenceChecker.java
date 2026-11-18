@@ -18,7 +18,9 @@ public class AgentConversationReferenceChecker implements ConversationReferenceC
         Conversation conversation = conversationId == null
                 ? null
                 : conversationMapper.selectById(conversationId);
-        if (conversation == null || !userId.equals(conversation.getCreatedBy())) {
+        if (conversation == null
+                || conversation.getDeletedAt() != null
+                || !userId.equals(conversation.getCreatedBy())) {
             throw new BusinessException(AgentErrorCode.CONVERSATION_NOT_FOUND);
         }
     }

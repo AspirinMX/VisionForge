@@ -75,6 +75,13 @@
 | `POST /api/v1/admin/models` | `201` | `ADMIN` | `displayName(<=100)`, `baseUrl(<=500)`, `apiKey(<=1000)`, `modelId(<=200)`, `reasoningEffort`, `reasoningReplay`, `capabilityType`, `protocol`, `executionMode`, `priceUnits(>=0)`, `supportsImageInput`, `maxInputTokens(1..2000000)`, `maxOutputTokens(1..1000000)`, `enabled`, `defaultModel` | `ModelResponse` |
 | `PATCH /api/v1/admin/models/{id}` | `200` | `ADMIN` | 同上字段全可选 | `ModelResponse` |
 | `POST /api/v1/admin/models/{id}/default` | `200` | `ADMIN` | —（按 `capabilityType` 设置唯一默认） | `ModelResponse` |
+| `POST /api/v1/admin/models/{id}/test` | `200` | `ADMIN` | —（脱敏探测模型网关连通性与鉴权） | `ModelTestResponse { ok, reachable, statusCode, latencyMs, protocol, detail }` |
+
+### 3.3 管理端运维概览 (`AdminOverviewController`, `/api/v1/admin/overview`)
+
+| 方法与路径 | 状态码 | 权限 | 说明 | 响应 `data` |
+| --- | --- | --- | --- | --- |
+| `GET /api/v1/admin/overview` | `200` | `ADMIN` | 汇总用户、活跃会话、运行中/异常任务及 `ARCHIVE_FAILED` / `PENDING_RECONCILIATION` / 补偿失败指标 | `AdminOverviewResponse` |
 
 ---
 
@@ -87,11 +94,14 @@
 | `GET /api/v1/conversations` | `200` | — | `ConversationResponse[]` |
 | `POST /api/v1/conversations` | `201` | `{ title? (<=200) }` | `ConversationResponse` |
 | `GET /api/v1/conversations/{conversationId}` | `200` | — | `ConversationResponse` |
+| `PATCH /api/v1/conversations/{conversationId}` | `200` | `{ title (1..200) }` | `ConversationResponse` |
+| `DELETE /api/v1/conversations/{conversationId}` | `200` | —（存在 `PENDING`/`RUNNING` 的 `AgentRun` 时返回 `409 CONVERSATION_BUSY`） | `null` |
 | `GET /api/v1/conversations/{conversationId}/messages` | `200` | — | `MessageResponse[]`（附带 `assetIds`, `generationTaskIds`, `process`） |
 | `POST /api/v1/conversations/{conversationId}/messages` | `202` | `{ content (1..32000), assetIds? (<=8) }` | `AgentTurnResponse { runId, workflowId, userMessageId }` |
 | `POST /api/v1/conversations/{conversationId}/messages/stream` | `200` | 同上 | `text/event-stream` SSE 事件流 |
 | `GET /api/v1/agent-runs` | `200` | `?conversationId=&status=&limit=20` | `AgentRunResponse[]`（含 `process` 过程视图） |
 | `GET /api/v1/agent-runs/{runId}` | `200` | — | `AgentRunResponse`（含 `process`） |
+| `POST /api/v1/agent-runs/{runId}/cancel` | `200` | —（将 `AgentRun` 标记为 `CANCELLED` 并向 Temporal Workflow 发送 cancel） | `AgentRunResponse` |
 
 ### 4.2 SSE 事件流协议 (`POST .../messages/stream`)
 
