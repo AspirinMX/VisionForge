@@ -6,11 +6,15 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -232,6 +236,35 @@ public class GenerationTaskService {
                         .eq(conversationId != null, GenerationTask::getConversationId, conversationId)
                         .orderByDesc(GenerationTask::getCreatedAt)
                         .last("LIMIT " + safeLimit(limit)));
+    }
+
+    /**
+     * Smallest-unit usage summary over the newest {@code window} tasks of one user.
+     */
+    public GenerationUsageSummary usageSummary(UUID userId, int window) {
+        int safeWindow = Math.min(Math.max(window, 1), 500);
+        List<GenerationUsageBucket> buckets = taskMapper.summarizeUsage(userId, safeWindow);
+        long total = buckets.stream().mapToLong(GenerationUsageBucket::getPriceUnits).sum();
+        return new GenerationUsageSummary(safeWindow, total, buckets);
+    }
+
+    /**
+     * Batch lookup limited to tasks owned by the caller, used to annotate credit ledger entries.
+     */
+    public Map<UUID, GenerationTask> findByIds(UUID userId, Collection<UUID> taskIds) {
+        List<UUID> ids = taskIds == null
+                ? List.of()
+                : taskIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return taskMapper.selectList(
+                        Wrappers.<GenerationTask>lambdaQuery()
+                                .eq(GenerationTask::getUserId, userId)
+                                .in(GenerationTask::getId, ids))
+                .stream()
+                .collect(Collectors.toMap(
+                        GenerationTask::getId, Function.identity(), (left, right) -> left));
     }
 
     public List<GenerationInput> inputs(UUID taskId) {

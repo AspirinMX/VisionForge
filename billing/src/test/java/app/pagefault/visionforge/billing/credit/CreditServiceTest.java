@@ -3,6 +3,7 @@ package app.pagefault.visionforge.billing.credit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -99,6 +101,28 @@ class CreditServiceTest {
         assertThat(settled.getStatus()).isEqualTo(CreditReservationStatus.SETTLED);
         assertThat(settled.getSettledAt()).isEqualTo(NOW);
         verify(ledgerMapper).insertIfAbsent(any(CreditLedger.class));
+    }
+
+    @Test
+    void accountReturnsThePersistedBalance() {
+        CreditAccount result = service.account(USER_ID);
+
+        assertThat(result.getBalanceUnits()).isEqualTo(100);
+        assertThat(result.getReservedUnits()).isZero();
+        verify(accountMapper, never()).insertIfAbsent(any(), anyLong(), any());
+    }
+
+    @Test
+    void reservationsSkipsTheQueryForAnEmptyIdList() {
+        assertThat(service.reservations(USER_ID, List.of())).isEmpty();
+        assertThat(service.reservations(USER_ID, null)).isEmpty();
+        verify(reservationMapper, never()).selectList(any());
+    }
+
+    @Test
+    void recentEntriesRequiresAUser() {
+        assertThatThrownBy(() -> service.recentEntries(null, 10, null))
+                .isInstanceOf(BusinessException.class);
     }
 
     private CreditAccount account(long balance, long reserved) {

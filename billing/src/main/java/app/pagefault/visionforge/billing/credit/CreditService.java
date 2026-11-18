@@ -2,7 +2,13 @@ package app.pagefault.visionforge.billing.credit;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +40,49 @@ public class CreditService {
         CreditAccount account = ensureAccount(userId);
         return new CreditBalance(
                 account.getBalanceUnits(), account.getReservedUnits());
+    }
+
+    /**
+     * Returns the persisted account, creating it with the initial grant on first access.
+     */
+    public CreditAccount account(UUID userId) {
+        return ensureAccount(userId);
+    }
+
+    /**
+     * Recent ledger entries for one user, newest first. Ids are UUIDv7, so a strictly smaller id is
+     * a stable keyset cursor even when several entries share the same timestamp.
+     */
+    public List<CreditLedger> recentEntries(UUID userId, int limit, UUID beforeId) {
+        requireUser(userId);
+        return ledgerMapper.selectList(
+                Wrappers.<CreditLedger>lambdaQuery()
+                        .eq(CreditLedger::getUserId, userId)
+                        .lt(beforeId != null, CreditLedger::getId, beforeId)
+                        .orderByDesc(CreditLedger::getId)
+                        .last("LIMIT " + safeLimit(limit)));
+    }
+
+    /**
+     * Batch lookup used to attach the originating task to ledger entries. Only reservations owned
+     * by the caller are returned.
+     */
+    public Map<UUID, CreditReservation> reservations(
+            UUID userId, Collection<UUID> reservationIds) {
+        requireUser(userId);
+        List<UUID> ids = reservationIds == null
+                ? List.of()
+                : reservationIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return reservationMapper.selectList(
+                        Wrappers.<CreditReservation>lambdaQuery()
+                                .eq(CreditReservation::getUserId, userId)
+                                .in(CreditReservation::getId, ids))
+                .stream()
+                .collect(Collectors.toMap(
+                        CreditReservation::getId, Function.identity(), (left, right) -> left));
     }
 
     @Transactional
@@ -203,6 +252,13 @@ public class CreditService {
         if (businessKey == null || businessKey.isBlank()) {
             throw new BusinessException(BillingErrorCode.AMOUNT_INVALID, "额度业务标识不能为空");
         }
+    }
+
+    private int safeLimit(int limit) {
+        if (limit <= 0) {
+            return 50;
+        }
+        return Math.min(limit, 200);
     }
 
     public record CreditBalance(long balanceUnits, long reservedUnits) {
