@@ -104,8 +104,7 @@ function ModelsAdminContent() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        title="模型与协议配置"
-        subtitle="管理 CHAT / IMAGE / VIDEO 路由、协议与单任务计费"
+        title="模型配置"
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -134,19 +133,10 @@ function ModelsAdminContent() {
               onValueChange={(value) => setFilter(value as CapabilityFilter)}
             >
               <TabsList>
-                <TabsTrigger value="ALL">全部 ({models.length})</TabsTrigger>
-                <TabsTrigger value="CHAT">
-                  主对话 (
-                  {models.filter((m) => m.capabilityType === "CHAT").length})
-                </TabsTrigger>
-                <TabsTrigger value="IMAGE">
-                  图片 (
-                  {models.filter((m) => m.capabilityType === "IMAGE").length})
-                </TabsTrigger>
-                <TabsTrigger value="VIDEO">
-                  视频 (
-                  {models.filter((m) => m.capabilityType === "VIDEO").length})
-                </TabsTrigger>
+                <TabsTrigger value="ALL">全部</TabsTrigger>
+                <TabsTrigger value="CHAT">主对话</TabsTrigger>
+                <TabsTrigger value="IMAGE">图片</TabsTrigger>
+                <TabsTrigger value="VIDEO">视频</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>

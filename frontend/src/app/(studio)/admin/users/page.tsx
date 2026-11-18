@@ -95,8 +95,7 @@ function UsersAdminContent() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        title="用户与角色管理"
-        subtitle="管理系统账号与运维角色（ADMIN 不具备跨用户内容访问权限）"
+        title="用户管理"
         actions={
           <Button
             type="button"
@@ -148,9 +147,6 @@ function UsersAdminContent() {
                                 <Badge variant="secondary">当前登录</Badge>
                               ) : null}
                             </div>
-                            <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                              {item.id}
-                            </p>
                           </TableCell>
                           <TableCell>{item.email}</TableCell>
                           <TableCell>

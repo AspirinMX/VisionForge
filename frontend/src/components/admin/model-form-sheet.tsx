@@ -320,8 +320,7 @@ function ModelFormContent({
           {isEdit ? `编辑模型 · ${editingModel?.displayName}` : "新增模型配置"}
         </SheetTitle>
         <SheetDescription>
-          按能力类型区分主对话（Responses SSE）、图片与视频模型；API Key
-          仅加密入库，不会在接口响应中回显。
+          按能力类型配置模型接口、单次计费与默认路由。
         </SheetDescription>
       </SheetHeader>
 

@@ -168,7 +168,7 @@ export function AssetMediaPreview({
     >
       <span className="flex items-center gap-2 truncate">
         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono">{assetId.slice(0, 8)}</span>
+        <span className="truncate">{alt ?? "媒体文件"}</span>
       </span>
       <Button
         type="button"

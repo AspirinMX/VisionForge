@@ -11,17 +11,12 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  ArrowDownIcon,
   ArrowUpIcon,
-  BrainCircuitIcon,
   CheckIcon,
-  ChevronDownIcon,
   CopyIcon,
-  FileTextIcon,
-  FilmIcon,
-  ImagePlusIcon,
-  LayersIcon,
-  ListChecksIcon,
   PaperclipIcon,
+  PlusIcon,
   SparklesIcon,
   SquareIcon,
   UploadIcon,
@@ -32,15 +27,10 @@ import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { MarkdownView } from "@/components/common/markdown-view";
 import { AssetMediaPreview } from "@/components/common/media-preview";
 import { useConversations } from "@/components/providers/conversations-provider";
+import { AgentProcessTimeline } from "@/components/studio/agent-process-timeline";
 import { useStudio } from "@/components/studio/studio-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -58,15 +48,21 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { conversationsApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError, type ApiError } from "@/lib/api/errors";
 import { copyToClipboard, notifyError, notifyInfo } from "@/lib/api/feedback";
-import type { AgentStreamEvent, UUID } from "@/lib/api/types";
-import {
-  AGENT_RUN_STATUS_LABEL,
-  formatShortTime,
-  GENERATION_STATUS_LABEL,
-} from "@/lib/format";
+import type {
+  AgentRunProcessResponse,
+  AgentStreamEvent,
+  AgentTurnProcessResponse,
+  ToolCallProcessResponse,
+  UUID,
+} from "@/lib/api/types";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
 import { cn } from "@/lib/utils";
@@ -76,17 +72,153 @@ const MAX_CHAT_IMAGES = 8;
 const STARTER_PROMPTS = [
   "我想做一个 15 秒的产品宣传短片，请先帮我梳理创作 Brief 和分场脚本。",
   "请为一段深夜咖啡馆偶遇的 20 秒故事生成 Markdown 分场剧本，并拆分为 4 个可执行分镜。",
-  "根据我刚上传的参考图设定主角视觉风格，给出完整分镜 JSON 草案。",
+  "根据我刚上传的参考图设定主角视觉风格，给出完整分镜草案。",
 ];
+
+interface LiveTurnState {
+  turnNo: number;
+  reasoning: string;
+  text: string;
+  tools: ToolCallProcessResponse[];
+}
 
 interface LiveStreamState {
   prompt: string;
   assetIds: UUID[];
   runId: UUID | null;
-  reasoning: string;
-  reasoningSummary: string;
-  delta: string;
-  mode: "sse" | "poll";
+  turns: LiveTurnState[];
+  activeTurnNo: number;
+}
+
+function upsertLiveTurn(
+  turns: LiveTurnState[],
+  turnNo: number,
+  updater: (turn: LiveTurnState) => LiveTurnState
+): LiveTurnState[] {
+  const index = turns.findIndex((item) => item.turnNo === turnNo);
+  if (index === -1) {
+    const next = [
+      ...turns,
+      updater({ turnNo, reasoning: "", text: "", tools: [] }),
+    ];
+    return next.sort((a, b) => a.turnNo - b.turnNo);
+  }
+  return turns.map((item, idx) => (idx === index ? updater(item) : item));
+}
+
+function applyStreamEvent(
+  prev: LiveStreamState,
+  event: AgentStreamEvent
+): LiveStreamState {
+  switch (event.type) {
+    case "accepted":
+      return { ...prev, runId: event.runId };
+    case "turn_start":
+      return {
+        ...prev,
+        activeTurnNo: event.turnNo,
+        turns: upsertLiveTurn(prev.turns, event.turnNo, (turn) => turn),
+      };
+    case "reasoning":
+    case "reasoning_summary":
+      return {
+        ...prev,
+        turns: upsertLiveTurn(prev.turns, prev.activeTurnNo, (turn) => ({
+          ...turn,
+          reasoning: turn.reasoning + event.content,
+        })),
+      };
+    case "delta":
+      return {
+        ...prev,
+        turns: upsertLiveTurn(prev.turns, prev.activeTurnNo, (turn) => ({
+          ...turn,
+          text: turn.text + event.content,
+        })),
+      };
+    case "tool_start":
+    case "tool_waiting":
+    case "tool_done":
+      return {
+        ...prev,
+        turns: upsertLiveTurn(prev.turns, event.turnNo, (turn) => {
+          const nextTool: ToolCallProcessResponse = {
+            callId: event.callId,
+            toolName: event.toolName,
+            action: event.action,
+            target: event.target,
+            status: event.status,
+            fileId: event.fileId ?? null,
+            taskId: event.taskId ?? null,
+            errorMessage: event.message ?? null,
+          };
+          const existingIdx = turn.tools.findIndex(
+            (t) => t.callId === event.callId
+          );
+          const nextTools =
+            existingIdx === -1
+              ? [...turn.tools, nextTool]
+              : turn.tools.map((t, idx) => (idx === existingIdx ? nextTool : t));
+          return { ...turn, tools: nextTools };
+        }),
+      };
+    default:
+      return prev;
+  }
+}
+
+function buildLivePresentation(liveStream: LiveStreamState): {
+  process: AgentRunProcessResponse | null;
+  answerMarkdown: string;
+} {
+  if (liveStream.turns.length === 0) {
+    return { process: null, answerMarkdown: "" };
+  }
+
+  const lastIndex = liveStream.turns.length - 1;
+  const processTurns: AgentTurnProcessResponse[] = [];
+  let answerMarkdown = "";
+
+  liveStream.turns.forEach((turn, idx) => {
+    const isLast = idx === lastIndex;
+    const isAnsweringTurn = isLast && turn.tools.length === 0;
+    const trimmedReasoning = turn.reasoning.trim();
+    const trimmedText = turn.text.trim();
+
+    if (isAnsweringTurn) {
+      answerMarkdown = turn.text;
+      if (trimmedReasoning) {
+        processTurns.push({
+          turnNo: turn.turnNo,
+          reasoning: trimmedReasoning,
+          stepText: null,
+          toolCalls: [],
+        });
+      }
+      return;
+    }
+
+    if (trimmedReasoning || trimmedText || turn.tools.length > 0) {
+      processTurns.push({
+        turnNo: turn.turnNo,
+        reasoning: trimmedReasoning || null,
+        stepText: trimmedText || null,
+        toolCalls: turn.tools,
+      });
+    }
+  });
+
+  return {
+    process:
+      processTurns.length > 0
+        ? {
+            runId: liveStream.runId ?? "live",
+            durationMs: null,
+            turns: processTurns,
+          }
+        : null,
+    answerMarkdown,
+  };
 }
 
 function MessageAttachments({ assetIds }: { assetIds: UUID[] }) {
@@ -114,8 +246,6 @@ export function ChatPane() {
     conversationId,
     userId,
     messages,
-    files,
-    generationTasks,
     activeRun,
     localAssets,
     initialLoading,
@@ -129,11 +259,10 @@ export function ChatPane() {
 
   const [prompt, setPrompt] = useState("");
   const [attachedAssetIds, setAttachedAssetIds] = useState<UUID[]>([]);
-  const [deliveryMode, setDeliveryMode] = useState<"sse" | "poll">("sse");
   const [liveStream, setLiveStream] = useState<LiveStreamState | null>(null);
-  const [reasoningOpen, setReasoningOpen] = useState(false);
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<UUID | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
@@ -143,24 +272,39 @@ export function ChatPane() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomEndRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const handoffCheckedRef = useRef(false);
   const submittingRef = useRef(false);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    nearBottomRef.current = true;
     bottomEndRef.current?.scrollIntoView({ behavior, block: "end" });
   }, []);
 
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) {
+      return;
+    }
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = distance < 80;
+    setShowScrollBottom(distance > 160);
+  }, []);
+
   useEffect(() => {
-    scrollToBottom("auto");
+    if (nearBottomRef.current) {
+      scrollToBottom("auto");
+    }
   }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
-    if (liveStream?.delta || liveStream?.reasoningSummary) {
+    if (liveStream && nearBottomRef.current) {
       scrollToBottom("auto");
     }
-  }, [liveStream?.delta, liveStream?.reasoningSummary, scrollToBottom]);
+  }, [liveStream, scrollToBottom]);
 
   useEffect(() => {
     return subscribeComposerPatch((patch) => {
@@ -186,28 +330,6 @@ export function ChatPane() {
     };
   }, []);
 
-  const pollUntilComplete = useCallback(
-    async (runId: UUID, signal: AbortSignal) => {
-      while (!signal.aborted) {
-        const run = await conversationsApi.getAgentRun(runId);
-        if (run.status === "COMPLETED") {
-          setTrackedActiveRun(null);
-          await refreshSilent();
-          refreshSidebar();
-          return;
-        }
-        if (run.status === "FAILED") {
-          setTrackedActiveRun(null);
-          await refreshSilent();
-          refreshSidebar();
-          throw new Error(run.errorMessage || "Agent 执行失败");
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 1800));
-      }
-    },
-    [refreshSidebar, refreshSilent, setTrackedActiveRun]
-  );
-
   const submitTurn = useCallback(
     async (text: string, assetIds: UUID[]) => {
       const trimmed = text.trim();
@@ -216,8 +338,8 @@ export function ChatPane() {
       }
 
       submittingRef.current = true;
+      nearBottomRef.current = true;
       setSubmitError(null);
-      setReasoningOpen(false);
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -226,10 +348,8 @@ export function ChatPane() {
         prompt: trimmed,
         assetIds,
         runId: null,
-        reasoning: "",
-        reasoningSummary: "",
-        delta: "",
-        mode: deliveryMode,
+        turns: [],
+        activeTurnNo: 0,
       });
 
       const payload = {
@@ -238,60 +358,35 @@ export function ChatPane() {
       };
 
       try {
-        if (deliveryMode === "sse") {
-          await conversationsApi.sendStream(
-            conversationId,
-            payload,
-            {
-              onEvent: (event: AgentStreamEvent) => {
-                if (event.type === "accepted") {
-                  setTrackedActiveRun(event.runId);
-                  setLiveStream((prev) =>
-                    prev ? { ...prev, runId: event.runId } : prev
-                  );
-                } else if (event.type === "reasoning") {
-                  setLiveStream((prev) =>
-                    prev
-                      ? { ...prev, reasoning: prev.reasoning + event.content }
-                      : prev
-                  );
-                } else if (event.type === "reasoning_summary") {
-                  setLiveStream((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          reasoningSummary:
-                            prev.reasoningSummary + event.content,
-                        }
-                      : prev
-                  );
-                } else if (event.type === "delta") {
-                  setLiveStream((prev) =>
-                    prev ? { ...prev, delta: prev.delta + event.content } : prev
-                  );
-                } else if (event.type === "done") {
-                  setTrackedActiveRun(null);
-                } else if (event.type === "error") {
-                  setTrackedActiveRun(null);
-                  setSubmitError(
-                    normalizeUnknownError(new Error(event.message), event.message)
-                  );
-                }
-              },
+        await conversationsApi.sendStream(
+          conversationId,
+          payload,
+          {
+            onEvent: (event: AgentStreamEvent) => {
+              if (event.type === "accepted") {
+                setTrackedActiveRun(event.runId);
+              }
+              if (event.type === "done") {
+                setTrackedActiveRun(null);
+                return;
+              }
+              if (event.type === "error") {
+                setTrackedActiveRun(null);
+                setSubmitError(
+                  normalizeUnknownError(new Error(event.message), event.message)
+                );
+                return;
+              }
+              setLiveStream((prev) =>
+                prev ? applyStreamEvent(prev, event) : prev
+              );
             },
-            controller.signal
-          );
+          },
+          controller.signal
+        );
 
-          await refreshSilent();
-          refreshSidebar();
-        } else {
-          const turn = await conversationsApi.send(conversationId, payload);
-          setTrackedActiveRun(turn.runId);
-          setLiveStream((prev) =>
-            prev ? { ...prev, runId: turn.runId } : prev
-          );
-          await pollUntilComplete(turn.runId, controller.signal);
-        }
+        await refreshSilent();
+        refreshSidebar();
       } catch (err) {
         if (!controller.signal.aborted) {
           setSubmitError(normalizeUnknownError(err, "对话请求未完成"));
@@ -303,14 +398,7 @@ export function ChatPane() {
         setLiveStream(null);
       }
     },
-    [
-      conversationId,
-      deliveryMode,
-      pollUntilComplete,
-      refreshSidebar,
-      refreshSilent,
-      setTrackedActiveRun,
-    ]
+    [conversationId, refreshSidebar, refreshSilent, setTrackedActiveRun]
   );
 
   useEffect(() => {
@@ -405,7 +493,7 @@ export function ChatPane() {
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "图片上传失败",
-        "请确认 RustFS 对象存储 CORS 与网络状态"
+        "请检查网络连接后重试"
       );
     } finally {
       setUploading(false);
@@ -485,17 +573,9 @@ export function ChatPane() {
     [localAssets]
   );
 
-  const storyboardFile = useMemo(
-    () => files.find((file) => file.kind === "STORYBOARD") ?? null,
-    [files]
-  );
-  const scriptFile = useMemo(
-    () => files.find((file) => file.kind === "SCRIPT") ?? null,
-    [files]
-  );
-  const tasksById = useMemo(
-    () => new Map(generationTasks.map((task) => [task.taskId, task])),
-    [generationTasks]
+  const livePresentation = useMemo(
+    () => (liveStream ? buildLivePresentation(liveStream) : null),
+    [liveStream]
   );
 
   const columnWidthClass = canvasOpen
@@ -503,14 +583,18 @@ export function ChatPane() {
     : "mx-auto w-full max-w-3xl";
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4">
-        <div className={cn("flex flex-col gap-5", columnWidthClass)}>
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-background">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-40"
+      >
+        <div className={cn("flex min-h-full flex-col gap-6", columnWidthClass)}>
           {initialLoading ? (
             <div className="space-y-4">
-              <Skeleton className="ml-auto h-14 w-2/3 rounded-2xl" />
-              <Skeleton className="h-28 w-4/5 rounded-2xl" />
-              <Skeleton className="ml-auto h-12 w-1/2 rounded-2xl" />
+              <Skeleton className="ml-auto h-11 w-1/2 rounded-3xl" />
+              <Skeleton className="h-24 w-4/5 rounded-2xl" />
+              <Skeleton className="ml-auto h-11 w-2/5 rounded-3xl" />
             </div>
           ) : null}
 
@@ -518,19 +602,19 @@ export function ChatPane() {
           messages.length === 0 &&
           !liveStream &&
           !activeRun ? (
-            <div className="my-auto flex flex-col items-center justify-center gap-6 py-10 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl border bg-muted/40">
-                <SparklesIcon className="size-5 text-primary" />
+            <div className="my-auto flex flex-col items-center justify-center gap-6 py-12 text-center">
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-muted/60">
+                <SparklesIcon className="size-5 text-foreground/80" />
               </div>
-              <div className="max-w-lg space-y-1.5">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  开始这段短片创作对话
+              <div className="max-w-md space-y-1.5">
+                <h2 className="text-lg font-medium tracking-tight">
+                  开始创作对话
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  你可以先告诉我创意目标或上传参考图，导演 Agent 会协助产出剧本、分镜 JSON，并直接驱动出图、视频与最终成片合成。
+                  描述你的创意想法或附带参考图，一起完成剧本、分镜与短片生成。
                 </p>
               </div>
-              <div className="grid w-full gap-2.5 text-left sm:grid-cols-3">
+              <div className="grid w-full gap-2 text-left sm:grid-cols-3">
                 {STARTER_PROMPTS.map((starter) => (
                   <button
                     key={starter}
@@ -539,7 +623,7 @@ export function ChatPane() {
                       setPrompt(starter);
                       textareaRef.current?.focus();
                     }}
-                    className="rounded-2xl border bg-card p-3.5 text-xs leading-relaxed text-card-foreground transition-colors hover:bg-accent"
+                    className="rounded-2xl border border-border/70 bg-background p-3.5 text-xs leading-relaxed text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                   >
                     {starter}
                   </button>
@@ -548,18 +632,14 @@ export function ChatPane() {
             </div>
           ) : null}
 
-          {messages.map((message, idx) => {
-            const isLastAssistant =
-              message.role === "ASSISTANT" &&
-              idx === messages.length - 1 &&
-              !liveStream;
+          {messages.map((message) => {
             const attached = message.assetIds ?? [];
 
             if (message.role === "SYSTEM") {
               return (
                 <div
                   key={message.id}
-                  className="mx-auto rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground"
+                  className="mx-auto rounded-full bg-muted/60 px-3 py-1 text-xs text-muted-foreground"
                 >
                   {message.content}
                 </div>
@@ -568,256 +648,155 @@ export function ChatPane() {
 
             if (message.role === "USER") {
               return (
-                <div key={message.id} className="ml-auto flex max-w-[86%] flex-col items-end gap-1.5">
+                <div
+                  key={message.id}
+                  className="ml-auto flex max-w-[82%] flex-col items-end gap-2"
+                >
                   <MessageAttachments assetIds={attached} />
-                  <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
+                  <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
                     <div className="whitespace-pre-wrap">{message.content}</div>
                   </div>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
-                    {formatShortTime(message.createdAt)}
-                  </span>
                 </div>
               );
             }
 
             return (
-              <div
-                key={message.id}
-                className="group flex max-w-[94%] flex-col gap-2 rounded-2xl border bg-card px-4 py-3.5 text-sm text-card-foreground"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">
-                      幻影导演 Agent
-                    </span>
-                    <span className="tabular-nums">
-                      {formatShortTime(message.createdAt)}
-                    </span>
-                    {message.status === "FAILED" ? (
-                      <Badge variant="destructive">部分失败</Badge>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() =>
-                      void handleCopyMessage(message.id, message.content)
-                    }
-                    aria-label="复制回复内容"
-                  >
-                    {copiedMessageId === message.id ? (
-                      <CheckIcon />
-                    ) : (
-                      <CopyIcon />
-                    )}
-                  </Button>
-                </div>
+              <div key={message.id} className="group flex flex-col gap-1">
+                {message.process ? (
+                  <AgentProcessTimeline
+                    process={message.process}
+                    onOpenFile={(id) => openCanvas("files", id)}
+                    onOpenStoryboard={(id) => openCanvas("storyboard", id)}
+                    onOpenTasks={() => openCanvas("tasks")}
+                  />
+                ) : null}
 
                 <MarkdownView content={message.content} />
 
-                {(message.generationTaskIds?.length ?? 0) > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    {message.generationTaskIds.map((taskId) => {
-                      const task = tasksById.get(taskId);
-                      return (
+                <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
                         <Button
-                          key={taskId}
                           type="button"
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => openCanvas("tasks")}
-                        >
-                          <ListChecksIcon />
-                          <span>
-                            {task
-                              ? `${task.type} · ${GENERATION_STATUS_LABEL[task.status]}`
-                              : `生成任务 ${taskId.slice(0, 8)}`}
-                          </span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-
-                {isLastAssistant &&
-                (files.length > 0 || generationTasks.length > 0) ? (
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t pt-2.5">
-                    {storyboardFile ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        onClick={() =>
-                          openCanvas("storyboard", storyboardFile.id)
-                        }
-                      >
-                        <FilmIcon />
-                        <span>打开分镜画布</span>
-                      </Button>
-                    ) : null}
-                    {scriptFile ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        onClick={() => openCanvas("files", scriptFile.id)}
-                      >
-                        <FileTextIcon />
-                        <span>查看剧本</span>
-                      </Button>
-                    ) : null}
-                    {files.length > 0 ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => openCanvas("files")}
-                      >
-                        <LayersIcon />
-                        <span className="tabular-nums">
-                          全部文件 ({files.length})
-                        </span>
-                      </Button>
-                    ) : null}
-                    {generationTasks.length > 0 ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => openCanvas("tasks")}
-                      >
-                        <ListChecksIcon />
-                        <span className="tabular-nums">
-                          任务进度 ({generationTasks.length})
-                        </span>
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : null}
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() =>
+                            void handleCopyMessage(message.id, message.content)
+                          }
+                          aria-label="复制"
+                          className="text-muted-foreground"
+                        />
+                      }
+                    >
+                      {copiedMessageId === message.id ? (
+                        <CheckIcon />
+                      ) : (
+                        <CopyIcon />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>复制</TooltipContent>
+                  </Tooltip>
+                  {message.status === "FAILED" ? (
+                    <span className="ml-1 text-xs text-destructive">
+                      回复未能完整生成
+                    </span>
+                  ) : null}
+                </div>
               </div>
             );
           })}
 
           {liveStream ? (
             <>
-              <div className="ml-auto flex max-w-[86%] flex-col items-end gap-1.5">
+              <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2">
                 <MessageAttachments assetIds={liveStream.assetIds} />
-                <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
+                <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
                   <div className="whitespace-pre-wrap">{liveStream.prompt}</div>
                 </div>
               </div>
 
-              <div className="flex max-w-[94%] flex-col gap-3 rounded-2xl border bg-card px-4 py-3.5 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
-                    <span className="font-medium text-foreground">
-                      {liveStream.mode === "sse"
-                        ? "正在流式响应..."
-                        : "后台执行中..."}
-                    </span>
-                    {liveStream.runId ? (
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        {liveStream.runId.slice(0, 8)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    onClick={handleStopStream}
-                  >
-                    <SquareIcon />
-                    <span>停止接收</span>
-                  </Button>
-                </div>
-
-                {liveStream.reasoningSummary || liveStream.reasoning ? (
-                  <Collapsible
-                    open={reasoningOpen}
-                    onOpenChange={setReasoningOpen}
-                    className="rounded-xl border bg-muted/40"
-                  >
-                    <CollapsibleTrigger
-                      render={
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:text-foreground"
-                        />
-                      }
-                    >
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <BrainCircuitIcon className="size-3.5" />
-                        <span>思考过程</span>
-                      </span>
-                      <ChevronDownIcon
-                        className={cn(
-                          "size-3.5 transition-transform",
-                          reasoningOpen && "rotate-180"
-                        )}
-                      />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="border-t px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                      {liveStream.reasoningSummary || liveStream.reasoning}
-                    </CollapsibleContent>
-                  </Collapsible>
+              <div className="flex flex-col gap-1">
+                {livePresentation?.process ? (
+                  <AgentProcessTimeline
+                    process={livePresentation.process}
+                    isStreaming
+                    defaultOpen
+                    onOpenFile={(id) => openCanvas("files", id)}
+                    onOpenStoryboard={(id) => openCanvas("storyboard", id)}
+                    onOpenTasks={() => openCanvas("tasks")}
+                  />
                 ) : null}
 
-                {liveStream.delta ? (
-                  <MarkdownView content={liveStream.delta} />
-                ) : (
-                  <div className="space-y-2 py-1">
-                    <Skeleton className="h-3.5 w-3/4" />
-                    <Skeleton className="h-3.5 w-1/2" />
+                {livePresentation?.answerMarkdown ? (
+                  <MarkdownView content={livePresentation.answerMarkdown} />
+                ) : !livePresentation?.process ? (
+                  <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                    <span className="inline-block size-2 animate-pulse rounded-full bg-foreground/60" />
+                    <span>正在思考...</span>
                   </div>
-                )}
+                ) : null}
               </div>
             </>
           ) : null}
 
           {!liveStream && activeRun ? (
-            <div className="flex items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
-                <span className="font-medium">
-                  后台对话运行中 · {AGENT_RUN_STATUS_LABEL[activeRun.status]}
-                </span>
-                <Badge variant="outline" className="font-mono text-[10px]">
-                  {activeRun.id.slice(0, 8)}
-                </Badge>
-              </div>
-              <span className="text-muted-foreground">
-                完成后可发送下一条消息（避免并发冲突）
-              </span>
+            <div className="flex flex-col gap-1">
+              {activeRun.process ? (
+                <AgentProcessTimeline
+                  process={activeRun.process}
+                  isStreaming
+                  defaultOpen
+                  onOpenFile={(id) => openCanvas("files", id)}
+                  onOpenStoryboard={(id) => openCanvas("storyboard", id)}
+                  onOpenTasks={() => openCanvas("tasks")}
+                />
+              ) : (
+                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                  <span className="inline-block size-2 animate-pulse rounded-full bg-foreground/60" />
+                  <span>正在处理...</span>
+                </div>
+              )}
             </div>
           ) : null}
 
           {submitError ? (
-            <ApiErrorAlert error={submitError} title="对话执行遇到问题" />
+            <ApiErrorAlert error={submitError} title="对话未完成" />
           ) : null}
 
-          <div ref={bottomEndRef} />
+          <div ref={bottomEndRef} className="h-4" />
         </div>
       </div>
 
-      {/* Floating Gemini/ChatGPT style multimodal composer */}
-      <div className="shrink-0 px-4 pt-1 pb-4">
+      {/* Floating bottom capsule composer & scroll-to-bottom button */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-8 pb-4">
+        {showScrollBottom ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => scrollToBottom("smooth")}
+            aria-label="回到底部"
+            className="pointer-events-auto mb-2.5 size-8 rounded-full border-border/80 bg-background/95 shadow-sm backdrop-blur-sm"
+          >
+            <ArrowDownIcon className="size-4" />
+          </Button>
+        ) : null}
+
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "rounded-3xl border bg-card p-3 shadow-sm transition-colors",
+            "pointer-events-auto rounded-3xl border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors",
             isDragging && "border-primary bg-accent/40",
             columnWidthClass
           )}
         >
           {uploading ? (
-            <div className="mb-2.5 space-y-1 px-1">
+            <div className="mb-2 space-y-1 px-2 pt-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>正在上传参考图至 RustFS...</span>
+                <span>正在上传参考图...</span>
                 <span className="tabular-nums">{uploadPercent}%</span>
               </div>
               <Progress value={uploadPercent} />
@@ -825,7 +804,7 @@ export function ChatPane() {
           ) : null}
 
           {attachedAssetIds.length > 0 ? (
-            <div className="mb-2.5 flex flex-wrap gap-2 px-1">
+            <div className="mb-2 flex flex-wrap gap-2 px-1.5 pt-1">
               {attachedAssetIds.map((assetId) => (
                 <div key={assetId} className="group relative">
                   <AssetMediaPreview
@@ -854,117 +833,86 @@ export function ChatPane() {
             </div>
           ) : null}
 
-          <Textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              activeRun
-                ? "上一轮对话仍在后台执行（可能正在等待生成任务），请稍候..."
-                : isDragging
-                  ? "松开即可附加参考图片到当前输入..."
-                  : "告诉幻影导演下一步想怎么修改剧本、分镜或生成镜头... (支持拖拽图片，Enter 发送)"
-            }
-            rows={2}
-            className="max-h-44 min-h-12 resize-none border-0 bg-transparent px-1.5 py-1 text-sm shadow-none focus-visible:ring-0"
-          />
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(event) => void handleUploadFiles(event)}
-            className="hidden"
-          />
-
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={
-                        uploading || attachedAssetIds.length >= MAX_CHAT_IMAGES
-                      }
-                    />
-                  }
+          <div className="flex items-end gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={
+                      uploading || attachedAssetIds.length >= MAX_CHAT_IMAGES
+                    }
+                    aria-label="添加参考图"
+                    className="mb-0.5 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                  />
+                }
+              >
+                <PlusIcon className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <ImagePlusIcon />
-                  <span>
-                    参考图 ({attachedAssetIds.length}/{MAX_CHAT_IMAGES})
-                  </span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    <span>上传本地图片 (RustFS)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openAssetPicker}>
-                    <PaperclipIcon />
-                    <span>从当前会话素材选择 ({imageAssets.length})</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <UploadIcon />
+                  <span>上传本地图片</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openAssetPicker}>
+                  <PaperclipIcon />
+                  <span>从当前会话素材选择</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => void handleUploadFiles(event)}
+              className="hidden"
+            />
+
+            <Textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                activeRun
+                  ? "正在处理上一条消息..."
+                  : isDragging
+                    ? "松开即可附加参考图..."
+                    : "输入创作想法..."
+              }
+              rows={1}
+              className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm shadow-none focus-visible:ring-0"
+            />
+
+            {liveStream ? (
               <Button
                 type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() =>
-                  setDeliveryMode((mode) => (mode === "sse" ? "poll" : "sse"))
-                }
-                className="text-xs text-muted-foreground"
+                variant="secondary"
+                size="icon"
+                onClick={handleStopStream}
+                aria-label="停止接收"
+                className="mb-0.5 shrink-0 rounded-full"
               >
-                <span>
-                  {deliveryMode === "sse" ? "响应：流式 SSE" : "响应：异步轮询"}
-                </span>
+                <SquareIcon className="size-3.5" />
               </Button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {files.length > 0 && !canvasOpen ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openCanvas("storyboard")}
-                >
-                  <FilmIcon />
-                  <span>打开工作台</span>
-                </Button>
-              ) : null}
-
-              {liveStream ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={handleStopStream}
-                  aria-label="停止接收"
-                  className="rounded-full"
-                >
-                  <SquareIcon className="size-4" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="icon"
-                  disabled={!prompt.trim() || uploading || Boolean(activeRun)}
-                  onClick={handleSend}
-                  aria-label="发送消息"
-                  className="rounded-full"
-                >
-                  <ArrowUpIcon className="size-4" />
-                </Button>
-              )}
-            </div>
+            ) : (
+              <Button
+                type="button"
+                size="icon"
+                disabled={!prompt.trim() || uploading || Boolean(activeRun)}
+                onClick={handleSend}
+                aria-label="发送消息"
+                className="mb-0.5 shrink-0 rounded-full"
+              >
+                <ArrowUpIcon className="size-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>

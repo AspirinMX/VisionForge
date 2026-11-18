@@ -3,8 +3,6 @@
 import { useMemo, useState } from "react";
 import {
   AlertTriangleIcon,
-  CheckIcon,
-  CopyIcon,
   FileTextIcon,
   RefreshCwIcon,
   RotateCcwIcon,
@@ -21,7 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { compositionApi, generationApi } from "@/lib/api/endpoints";
 import {
-  copyToClipboard,
   notifyApiError,
   notifySuccess,
 } from "@/lib/api/feedback";
@@ -29,9 +26,6 @@ import type { GenerationTaskResponse, UUID } from "@/lib/api/types";
 import {
   COMPOSITION_STATUS_LABEL,
   formatDateTime,
-  GENERATION_BILLING_LABEL,
-  GENERATION_CANCEL_LABEL,
-  GENERATION_DELIVERY_LABEL,
   GENERATION_STATUS_LABEL,
 } from "@/lib/format";
 
@@ -71,7 +65,6 @@ export function TasksPanel() {
 
   const [filter, setFilter] = useState<TaskFilter>("ALL");
   const [actingTaskId, setActingTaskId] = useState<UUID | null>(null);
-  const [copiedId, setCopiedId] = useState<UUID | null>(null);
 
   const filteredTasks = useMemo(() => {
     return generationTasks.filter((task) => {
@@ -162,16 +155,6 @@ export function TasksPanel() {
     });
   };
 
-  const handleCopy = async (id: UUID) => {
-    const ok = await copyToClipboard(id);
-    if (ok) {
-      setCopiedId(id);
-      window.setTimeout(() => {
-        setCopiedId((curr) => (curr === id ? null : curr));
-      }, 1500);
-    }
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Filter Header */}
@@ -251,8 +234,8 @@ export function TasksPanel() {
                       >
                         {COMPOSITION_STATUS_LABEL[comp.status]}
                       </Badge>
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        分镜 v{comp.storyboardVersion} · {comp.taskId.slice(0, 8)}
+                      <Badge variant="outline" className="text-[11px]">
+                        分镜 v{comp.storyboardVersion}
                       </Badge>
                     </div>
                     <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -326,7 +309,9 @@ export function TasksPanel() {
                   {/* Top row */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">{task.type}</Badge>
+                      <Badge variant="outline">
+                        {task.type === "VIDEO" ? "视频" : "图片"}
+                      </Badge>
                       <Badge
                         variant={
                           task.status === "SUCCEEDED"
@@ -342,44 +327,17 @@ export function TasksPanel() {
                         {GENERATION_STATUS_LABEL[task.status]}
                       </Badge>
                       {task.shotId ? (
-                        <Badge variant="secondary" className="font-mono text-[10px]">
+                        <Badge variant="secondary" className="text-[11px]">
                           {task.shotId}
                         </Badge>
                       ) : null}
                     </div>
 
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
-                      <span>{task.priceUnits} 单位</span>
+                      <span>{task.priceUnits} 额度</span>
                       <span>·</span>
                       <span>{formatDateTime(task.createdAt)}</span>
                     </div>
-                  </div>
-
-                  {/* 4-axis breakdown */}
-                  <div className="flex flex-wrap gap-1.5 text-[11px]">
-                    <Badge variant="outline">
-                      交付：{GENERATION_DELIVERY_LABEL[task.deliveryStatus]}
-                    </Badge>
-                    <Badge variant="outline">
-                      账务：{GENERATION_BILLING_LABEL[task.billingStatus]}
-                    </Badge>
-                    {task.cancelStatus !== "NONE" ? (
-                      <Badge variant="outline">
-                        取消：{GENERATION_CANCEL_LABEL[task.cancelStatus]}
-                      </Badge>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void handleCopy(task.taskId)}
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                      {copiedId === task.taskId ? (
-                        <CheckIcon className="size-3" />
-                      ) : (
-                        <CopyIcon className="size-3" />
-                      )}
-                      <span>{task.taskId.slice(0, 8)}</span>
-                    </button>
                   </div>
 
                   <p className="line-clamp-2 text-xs leading-relaxed text-foreground">
@@ -389,9 +347,9 @@ export function TasksPanel() {
                   {isUnknown ? (
                     <Alert variant="destructive">
                       <AlertTriangleIcon />
-                      <AlertTitle>远端执行状态未知（待核账）</AlertTitle>
+                      <AlertTitle>生成结果核对中</AlertTitle>
                       <AlertDescription className="text-xs">
-                        系统尚在核对供应商侧结果，为避免重复扣费，此处已禁用直接同参再生成；请复制任务 ID（{task.taskId}）排查或等待账务对账完结。
+                        正在确认任务最终结果，为避免重复扣费，暂不支持重复发起同参生成。
                       </AlertDescription>
                     </Alert>
                   ) : null}

@@ -4,8 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  CheckIcon,
-  CopyIcon,
   ExternalLinkIcon,
   LogOutIcon,
   RefreshCwIcon,
@@ -31,7 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncData } from "@/hooks/use-async-data";
 import { accountApi } from "@/lib/api/endpoints";
-import { copyToClipboard, notifyApiError } from "@/lib/api/feedback";
+import { notifyApiError } from "@/lib/api/feedback";
 import type {
   CreditLedgerEntryResponse,
   CreditLedgerEntryType,
@@ -71,7 +69,6 @@ export default function AccountPage() {
   } = useCredit();
 
   const [refreshingUser, setRefreshingUser] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [ledgerGeneration, setLedgerGeneration] = useState(0);
   const [extraLedger, setExtraLedger] = useState<{
@@ -178,17 +175,6 @@ export default function AccountPage() {
     }
   };
 
-  const handleCopyUserId = async () => {
-    if (!user?.id) {
-      return;
-    }
-    const ok = await copyToClipboard(user.id);
-    if (ok) {
-      setCopiedId(true);
-      window.setTimeout(() => setCopiedId(false), 1800);
-    }
-  };
-
   const handleLogout = async () => {
     setLoggingOut(true);
     await logout();
@@ -204,10 +190,8 @@ export default function AccountPage() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div className="space-y-1">
-                <CardTitle>个人身份信息</CardTitle>
-                <CardDescription>
-                  来自服务端 `/api/v1/auth/me` 的当前登录账号档案
-                </CardDescription>
+                <CardTitle>个人资料</CardTitle>
+                <CardDescription>当前登录账号信息</CardDescription>
               </div>
               <Button
                 type="button"
@@ -233,7 +217,7 @@ export default function AccountPage() {
                 <p className="mt-1 text-sm font-medium">{user?.email ?? "—"}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">系统角色与状态</p>
+                <p className="text-xs text-muted-foreground">账号状态</p>
                 <div className="mt-1.5 flex items-center gap-2">
                   <Badge variant={user?.role === "ADMIN" ? "default" : "secondary"}>
                     {user ? USER_ROLE_LABEL[user.role] : "—"}
@@ -249,23 +233,6 @@ export default function AccountPage() {
                   {formatDateTime(user?.createdAt)}
                 </p>
               </div>
-              <div className="sm:col-span-2">
-                <p className="text-xs text-muted-foreground">用户 ID</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="rounded-lg bg-muted px-2 py-1 font-mono text-xs">
-                    {user?.id ?? "—"}
-                  </code>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={handleCopyUserId}
-                  >
-                    {copiedId ? <CheckIcon /> : <CopyIcon />}
-                    <span>{copiedId ? "已复制" : "复制"}</span>
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
@@ -275,29 +242,26 @@ export default function AccountPage() {
                 <div className="space-y-1">
                   <CardTitle className="flex items-center gap-2">
                     <WalletIcon className="size-4" />
-                    <span>额度账户与近期任务统计</span>
+                    <span>额度与消费记录</span>
                   </CardTitle>
                   <CardDescription>
-                    服务端按最小计量单位预占与结算媒体生成费用
+                    创作任务额度预占、结算与近 30 天用量概览
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">实时账本</Badge>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRefreshBilling}
-                    disabled={loadingCredit || loadingLedger || loadingUsage}
-                  >
-                    <RefreshCwIcon
-                      className={
-                        loadingCredit || loadingLedger ? "animate-spin" : ""
-                      }
-                    />
-                    <span>刷新额度</span>
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshBilling}
+                  disabled={loadingCredit || loadingLedger || loadingUsage}
+                >
+                  <RefreshCwIcon
+                    className={
+                      loadingCredit || loadingLedger ? "animate-spin" : ""
+                    }
+                  />
+                  <span>刷新额度</span>
+                </Button>
               </div>
             </CardHeader>
 
@@ -356,7 +320,7 @@ export default function AccountPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">消费流水</h3>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    按 UUIDv7 倒序 · 已加载 {allLedgerEntries.length} 条
+                    已加载 {allLedgerEntries.length} 条
                   </span>
                 </div>
                 <ApiErrorAlert error={ledgerError} title="读取额度流水失败" />
@@ -395,7 +359,9 @@ export default function AccountPage() {
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-muted-foreground tabular-nums">
                             {entry.taskType ? (
-                              <Badge variant="outline">{entry.taskType}</Badge>
+                              <Badge variant="outline">
+                                {entry.taskType === "VIDEO" ? "视频" : "图片"}
+                              </Badge>
                             ) : null}
                             {entry.taskStatus ? (
                               <span>
@@ -410,9 +376,9 @@ export default function AccountPage() {
                                 render={
                                   <Link href={`/tasks?taskId=${entry.taskId}`} />
                                 }
-                                className="h-auto p-0 font-mono text-[11px]"
+                                className="h-auto p-0 text-[11px]"
                               >
-                                <span>{entry.taskId.slice(0, 8)}</span>
+                                <span>查看任务</span>
                                 <ExternalLinkIcon className="size-3" />
                               </Button>
                             ) : null}
@@ -476,16 +442,13 @@ export default function AccountPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>会话与安全</CardTitle>
+              <CardTitle>退出登录</CardTitle>
               <CardDescription>
-                退出登录会向服务端吊销当前设备的 Refresh Token 并清空本地凭证缓存。
+                退出当前设备上的账号登录状态。
               </CardDescription>
             </CardHeader>
             <Separator />
-            <CardFooter className="justify-between pt-4">
-              <span className="text-xs text-muted-foreground">
-                Access Token 有效期 15 分钟，过期时自动轮换续期。
-              </span>
+            <CardFooter className="justify-end pt-4">
               <Button
                 type="button"
                 variant="destructive"

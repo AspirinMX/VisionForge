@@ -619,7 +619,7 @@ export function StoryboardPanel() {
         <div className="max-w-sm space-y-1.5">
           <p className="text-sm font-medium">当前会话暂无分镜方案</p>
           <p className="text-xs text-muted-foreground">
-            可以让左侧导演 Agent 为你生成完整分镜 JSON，或直接创建空白分镜草案开始编排镜头。
+            可在左侧对话中让助手创建分镜，或先手动新建空白分镜。
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
@@ -630,12 +630,12 @@ export function StoryboardPanel() {
             onClick={() =>
               sendToChatComposer({
                 promptAppend:
-                  "请结合我们上面的讨论，创建一份可执行的分镜方案（STORYBOARD JSON）。",
+                  "请结合我们上面的讨论，创建一份可执行的分镜方案。",
               })
             }
           >
             <MessageSquarePlusIcon />
-            <span>让 Agent 生成分镜</span>
+            <span>让助手生成分镜</span>
           </Button>
           <Button
             type="button"
@@ -652,7 +652,7 @@ export function StoryboardPanel() {
             <DialogHeader>
               <DialogTitle>新建分镜方案</DialogTitle>
               <DialogDescription>
-                初始化包含 1 个默认镜头的标准分镜 JSON 文件。
+                新建一份包含默认镜头的分镜草案。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 py-2">
@@ -785,10 +785,10 @@ export function StoryboardPanel() {
         {versionDrifted && activeFile ? (
           <Alert>
             <AlertTriangleIcon />
-            <AlertTitle>服务端分镜已有更新版本 (v{activeFile.currentVersion})</AlertTitle>
+            <AlertTitle>分镜已有更新 (v{activeFile.currentVersion})</AlertTitle>
             <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
               <span>
-                你当前的本地草稿基于 v{activeDraft?.baseVersion}，后台生成回写或 Agent 修改已生成新版本。
+                后台生成或助手刚刚更新了分镜内容，与当前草稿存在差异。
               </span>
               <Button
                 type="button"
@@ -799,7 +799,7 @@ export function StoryboardPanel() {
                   reloadVersion();
                 }}
               >
-                放弃草稿并加载最新服务端版本
+                加载最新版本
               </Button>
             </AlertDescription>
           </Alert>
@@ -834,7 +834,7 @@ export function StoryboardPanel() {
         ) : viewMode === "json" ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>编辑标准 Storyboard v1 JSON（保存时执行服务端规则校验）</span>
+              <span>编辑分镜数据</span>
               {isDirty && activeFile ? (
                 <Button
                   type="button"
@@ -1117,7 +1117,7 @@ export function StoryboardPanel() {
                     <div className="space-y-2.5">
                       <div className="space-y-1">
                         <Label className="text-xs text-muted-foreground">
-                          画面与叙事摘要 (visual)
+                          画面与叙事摘要
                         </Label>
                         <Input
                           disabled={isLocked}
@@ -1135,7 +1135,7 @@ export function StoryboardPanel() {
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <Label className="text-xs font-medium">
-                            首帧静态生图提示词 (firstFramePrompt · 仅描起始帧)
+                            首帧画面描述
                           </Label>
                         </div>
                         <Textarea
@@ -1154,7 +1154,7 @@ export function StoryboardPanel() {
 
                       <div className="space-y-1">
                         <Label className="text-xs font-medium">
-                          视频运动生成提示词 (videoPrompt · 仅描后续动作与运镜)
+                          视频运动描述
                         </Label>
                         <Textarea
                           disabled={isLocked}
@@ -1360,9 +1360,8 @@ export function StoryboardPanel() {
                                       allowLightbox={false}
                                       className="size-8 shrink-0 rounded-md"
                                     />
-                                    <span className="truncate font-mono text-[11px]">
-                                      {imageAssetItems[ref.assetId] ??
-                                        ref.assetId.slice(0, 8)}
+                                    <span className="truncate text-[11px]">
+                                      {imageAssetItems[ref.assetId] ?? "参考图片"}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
@@ -1776,24 +1775,24 @@ export function StoryboardPanel() {
                 className="w-full"
               >
                 <ClapperboardIcon />
-                <span>{submittingComp ? "提交合成中..." : "发起 FFmpeg 合成任务"}</span>
+                <span>{submittingComp ? "提交合成中..." : "开始合成成片"}</span>
               </Button>
             </div>
 
             {/* Recover a composition task that falls outside the server list */}
             <div className="space-y-2 rounded-xl border border-dashed p-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium">合成任务记录（服务端）</span>
-                <span className="text-muted-foreground">
-                  已追踪 {compositionTasks.length} 条
+                <span className="font-medium">合成记录</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {compositionTasks.length} 条
                 </span>
               </div>
               <div className="flex gap-2">
                 <Input
                   value={manualCompTaskId}
                   onChange={(e) => setManualCompTaskId(e.target.value)}
-                  placeholder="输入合成任务 UUID 以找回或追踪 Agent 触发的合成"
-                  className="h-8 text-xs font-mono"
+                  placeholder="输入任务编号补充追踪"
+                  className="h-8 text-xs"
                 />
                 <Button
                   type="button"
@@ -1802,7 +1801,7 @@ export function StoryboardPanel() {
                   disabled={!manualCompTaskId.trim()}
                   onClick={() => void handleTrackManualComp()}
                 >
-                  导入追踪
+                  导入
                 </Button>
               </div>
             </div>
@@ -1838,8 +1837,8 @@ export function StoryboardPanel() {
                         >
                           {COMPOSITION_STATUS_LABEL[comp.status]}
                         </Badge>
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          v{comp.storyboardVersion} · {comp.taskId.slice(0, 8)}
+                        <Badge variant="outline" className="text-[11px]">
+                          分镜 v{comp.storyboardVersion}
                         </Badge>
                       </div>
                       <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -1877,7 +1876,7 @@ export function StoryboardPanel() {
                       <AssetMediaPreview
                         assetId={comp.outputAssetId}
                         kind="VIDEO"
-                        alt={`成片 ${comp.taskId}`}
+                        alt="合成成片"
                         className="aspect-video w-full"
                       />
                     ) : null}
@@ -1885,19 +1884,18 @@ export function StoryboardPanel() {
                     {comp.inputs.length > 0 ? (
                       <div className="space-y-1 rounded-xl bg-muted/30 p-2.5 text-[11px]">
                         <p className="font-medium text-muted-foreground">
-                          入轨片段溯源 ({comp.inputs.length})
+                          成片片段 ({comp.inputs.length})
                         </p>
                         {comp.inputs.map((inp) => (
                           <div
                             key={`${inp.ordinal}-${inp.shotId}`}
-                            className="flex items-center justify-between gap-2 font-mono tabular-nums"
+                            className="flex items-center justify-between gap-2 tabular-nums"
                           >
                             <span>
                               #{inp.ordinal} {inp.shotId}
                             </span>
                             <span className="text-muted-foreground">
-                              {inp.startSeconds}s–{inp.endSeconds}s · task{" "}
-                              {inp.generationTaskId.slice(0, 8)}
+                              {inp.startSeconds}s–{inp.endSeconds}s
                             </span>
                           </div>
                         ))}

@@ -22,8 +22,8 @@ import { useTheme } from "next-themes";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { useConversations } from "@/components/providers/conversations-provider";
+import { useOptionalCredit } from "@/components/providers/credit-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,6 +103,8 @@ function AppSidebarContent() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { conversations, loading } = useConversations();
+  const creditState = useOptionalCredit();
+  const credit = creditState?.credit ?? null;
   const { isMobile, setOpenMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
   const [search, setSearch] = useState("");
@@ -131,33 +133,21 @@ function AppSidebarContent() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              size="lg"
-              tooltip="VisionForge · 幻影工坊"
+              tooltip="VisionForge"
               render={<Link href="/conversations" onClick={closeMobileIfNeeded} />}
             >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <ClapperboardIcon className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">VisionForge</span>
-                <span className="truncate text-xs text-muted-foreground">
-                  幻影工坊
-                </span>
-              </div>
+              <ClapperboardIcon />
+              <span className="font-semibold tracking-tight">VisionForge</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-        </SidebarMenu>
-
-        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              variant="outline"
-              tooltip="新建对话"
+              tooltip="新聊天"
               isActive={pathname === "/conversations"}
               render={<Link href="/conversations" onClick={closeMobileIfNeeded} />}
             >
               <PlusIcon />
-              <span>新建对话</span>
+              <span>新聊天</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -167,8 +157,8 @@ function AppSidebarContent() {
           <SidebarInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索历史会话..."
-            aria-label="搜索历史会话"
+            placeholder="搜索历史对话..."
+            aria-label="搜索历史对话"
             className="pl-8"
           />
         </div>
@@ -298,16 +288,9 @@ function AppSidebarContent() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium">
-                      {user?.displayName}
-                    </span>
-                    {isAdmin ? (
-                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                        ADMIN
-                      </Badge>
-                    ) : null}
-                  </div>
+                  <span className="truncate font-medium">
+                    {user?.displayName}
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {user?.email}
                   </span>
@@ -317,8 +300,29 @@ function AppSidebarContent() {
               <DropdownMenuContent
                 side="top"
                 align="end"
-                className="w-56"
+                className="w-60"
               >
+                {credit ? (
+                  <>
+                    <DropdownMenuItem
+                      render={
+                        <Link href="/account" onClick={closeMobileIfNeeded} />
+                      }
+                    >
+                      <WalletIcon />
+                      <span>可用额度</span>
+                      <span className="ml-auto font-medium text-foreground tabular-nums">
+                        {credit.availableUnits}
+                        {credit.reservedUnits > 0 ? (
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                            (+{credit.reservedUnits})
+                          </span>
+                        ) : null}
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>界面外观</DropdownMenuLabel>
                   <DropdownMenuRadioGroup

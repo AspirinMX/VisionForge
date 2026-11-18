@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  CheckIcon,
-  CopyIcon,
   Edit3Icon,
   EyeIcon,
   FilePlus2Icon,
@@ -51,7 +49,6 @@ import { useAsyncData } from "@/hooks/use-async-data";
 import { assetsApi, filesApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError } from "@/lib/api/errors";
 import {
-  copyToClipboard,
   notifyApiError,
   notifyError,
   notifySuccess,
@@ -191,7 +188,6 @@ export function FilesPanel() {
   );
   const [draftsByFile, setDraftsByFile] = useState<Record<UUID, FileDraft>>({});
   const [saving, setSaving] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [manualAssetIds, setManualAssetIds] = useState<Record<UUID, string>>(
     {}
@@ -518,26 +514,6 @@ export function FilesPanel() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
                     <span>更新：{formatDateTime(activeFile.updatedAt)}</span>
-                    <span>·</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void copyToClipboard(activeFile.id).then((ok) => {
-                          if (ok) {
-                            setCopiedId(true);
-                            window.setTimeout(() => setCopiedId(false), 1600);
-                          }
-                        });
-                      }}
-                      className="inline-flex items-center gap-1 font-mono hover:text-foreground"
-                    >
-                      {copiedId ? (
-                        <CheckIcon className="size-3" />
-                      ) : (
-                        <CopyIcon className="size-3" />
-                      )}
-                      <span>{activeFile.id.slice(0, 8)}</span>
-                    </button>
                   </div>
                 </div>
 
@@ -635,7 +611,7 @@ export function FilesPanel() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">
-                        正文内容（baseVersion = {activeDraft?.baseVersion ?? activeFile.currentVersion}）
+                        正文内容
                       </Label>
                       <Textarea
                         rows={18}
@@ -669,17 +645,17 @@ export function FilesPanel() {
                   ) : (
                     <Alert>
                       <FileTextIcon />
-                      <AlertTitle>对象存储文件预览说明</AlertTitle>
+                      <AlertTitle>暂无可直接预览的媒体文件</AlertTitle>
                       <AlertDescription className="space-y-2.5 text-xs">
                         <p>
-                          文件版本未记录可用的关联资产。可粘贴同一会话内的资产 UUID，服务端校验归属后再加载预览：
+                          可输入同会话媒体编号以关联加载：
                         </p>
                         <div className="flex gap-2">
                           <Input
                             value={assetInputValue}
                             onChange={(e) => setAssetInputValue(e.target.value)}
-                            placeholder="粘贴关联 assetId（UUID）..."
-                            className="h-8 font-mono text-xs"
+                            placeholder="输入媒体编号..."
+                            className="h-8 text-xs"
                           />
                           <Button
                             type="button"
@@ -881,16 +857,16 @@ export function FilesPanel() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>文件版本冲突 (409)</DialogTitle>
+            <DialogTitle>文件内容已更新</DialogTitle>
             <DialogDescription>
-              服务端版本已更新至 v{conflict?.file.currentVersion}，请选择保留服务端内容或基于最新版本重新覆盖提交。
+              云端已更新至 v{conflict?.file.currentVersion}，请选择加载最新版本或基于最新版本重新保存。
             </DialogDescription>
           </DialogHeader>
           {conflict ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">
-                  服务端 v{conflict.file.currentVersion}
+                  最新版本 v{conflict.file.currentVersion}
                 </Label>
                 <Textarea
                   readOnly
@@ -900,7 +876,7 @@ export function FilesPanel() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">你的本地修改</Label>
+                <Label className="text-xs">当前编辑内容</Label>
                 <Textarea
                   readOnly
                   rows={12}
@@ -923,7 +899,7 @@ export function FilesPanel() {
                 }
               }}
             >
-              采用服务端最新版本
+              采用最新版本
             </Button>
             <Button
               type="button"

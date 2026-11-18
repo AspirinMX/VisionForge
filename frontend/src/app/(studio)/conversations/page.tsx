@@ -13,10 +13,10 @@ import {
   ClapperboardIcon,
   FileTextIcon,
   FilmIcon,
-  ImagePlusIcon,
-  LayersIcon,
   Loader2Icon,
   MessageSquareIcon,
+  PanelRightOpenIcon,
+  PlusIcon,
   SparklesIcon,
   XIcon,
 } from "lucide-react";
@@ -25,9 +25,13 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useConversations } from "@/components/providers/conversations-provider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { putToPresignedUrl } from "@/lib/api/client";
 import { assetsApi } from "@/lib/api/endpoints";
 import { notifyApiError } from "@/lib/api/feedback";
@@ -208,33 +212,40 @@ export default function ConversationsHomePage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        title="新对话"
+        title="新聊天"
         actions={
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleCreateBlankConversation}
-            disabled={submitting}
-          >
-            <LayersIcon />
-            <span>空白工作区</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleCreateBlankConversation}
+                  disabled={submitting}
+                  aria-label="新建空白工作区"
+                />
+              }
+            >
+              <PanelRightOpenIcon />
+            </TooltipTrigger>
+            <TooltipContent>新建空白工作区</TooltipContent>
+          </Tooltip>
         }
       />
 
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
         <div className="w-full max-w-3xl space-y-6">
-          <div className="space-y-2 text-center">
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              你好，{user?.displayName ?? "创作者"}，准备创作什么作品？
+          <div className="space-y-1.5 text-center">
+            <h2 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+              你好，{user?.displayName ?? "创作者"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              用自然语言描述创意或附上参考图，对话驱动剧本、分镜、首帧图、分镜视频与顺序成片。
+              描述创作想法或附上参考图，开始生成剧本、分镜与成片。
             </p>
           </div>
 
-          <div className="rounded-3xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/30">
+          <div className="rounded-3xl border border-border/80 bg-card/95 p-3 shadow-md transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
             {queuedFiles.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1">
                 {queuedFiles.map((item) => (
@@ -268,11 +279,11 @@ export default function ConversationsHomePage() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入你的短片构想、分镜要求或图片生成需求（Enter 发送，Shift+Enter 换行）..."
-              rows={3}
+              placeholder="输入你的创作构想或分镜需求..."
+              rows={2}
               maxLength={32000}
               disabled={submitting}
-              className="min-h-20 resize-none border-0 bg-transparent px-2 py-1 text-sm shadow-none focus-visible:ring-0"
+              className="min-h-16 resize-none border-0 bg-transparent px-2 py-1 text-sm shadow-none focus-visible:ring-0"
             />
 
             <div className="mt-2 flex items-center justify-between gap-2 px-1">
@@ -285,21 +296,24 @@ export default function ConversationsHomePage() {
                   className="hidden"
                   onChange={handleFilesSelected}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting || queuedFiles.length >= MAX_ATTACHMENTS}
-                >
-                  <ImagePlusIcon />
-                  <span>
-                    添加参考图
-                    {queuedFiles.length > 0
-                      ? ` (${queuedFiles.length}/${MAX_ATTACHMENTS})`
-                      : ""}
-                  </span>
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={submitting || queuedFiles.length >= MAX_ATTACHMENTS}
+                        aria-label="添加参考图"
+                        className="rounded-full text-muted-foreground hover:text-foreground"
+                      />
+                    }
+                  >
+                    <PlusIcon className="size-4" />
+                  </TooltipTrigger>
+                  <TooltipContent>添加参考图</TooltipContent>
+                </Tooltip>
               </div>
 
               <Button
@@ -308,6 +322,7 @@ export default function ConversationsHomePage() {
                 disabled={!prompt.trim() || submitting}
                 onClick={handleStartConversation}
                 aria-label="创建并发送"
+                className="rounded-full"
               >
                 {submitting ? (
                   <Loader2Icon className="animate-spin" />
@@ -339,12 +354,7 @@ export default function ConversationsHomePage() {
 
           {recentConversations.length > 0 ? (
             <div className="pt-4">
-              <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span>最近继续</span>
-                <span className="tabular-nums">
-                  共 {conversations.length} 个会话
-                </span>
-              </div>
+              <div className="mb-2 text-xs text-muted-foreground">最近继续</div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {recentConversations.map((conv) => (
                   <Button
@@ -358,12 +368,9 @@ export default function ConversationsHomePage() {
                       <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate font-normal">{conv.title}</span>
                     </span>
-                    <Badge
-                      variant="secondary"
-                      className="ml-2 shrink-0 text-[11px] font-normal tabular-nums"
-                    >
+                    <span className="ml-2 shrink-0 text-[11px] text-muted-foreground tabular-nums">
                       {formatShortTime(conv.lastMessageAt ?? conv.createdAt)}
-                    </Badge>
+                    </span>
                   </Button>
                 ))}
               </div>

@@ -275,7 +275,7 @@ export function putToPresignedUrl(params: {
         new ApiError({
           status: xhr.status,
           code: "ASSET_STORAGE_UPLOAD_FAILED",
-          message: `对象存储上传失败（HTTP ${xhr.status}），请检查 RustFS/S3 服务配置与跨域策略`,
+          message: `文件上传失败（HTTP ${xhr.status}），请稍后重试`,
         })
       );
     };
@@ -286,7 +286,7 @@ export function putToPresignedUrl(params: {
         new ApiError({
           status: 503,
           code: "ASSET_STORAGE_UNREACHABLE",
-          message: "直传对象存储失败，请确认存储服务可达及 CORS 允许 PUT 请求",
+          message: "文件上传服务暂时不可达，请检查网络连接",
         })
       );
     };

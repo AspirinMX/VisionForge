@@ -37,23 +37,5 @@ export function notifyApiError(
     return;
   }
 
-  toast.error(apiError.message || fallbackTitle, {
-    description: apiError.traceId
-      ? `错误码：${apiError.code} · Trace ID：${apiError.traceId}`
-      : `错误码：${apiError.code}`,
-    action: apiError.traceId
-      ? {
-          label: "复制追踪 ID",
-          onClick: () => {
-            if (apiError.traceId) {
-              void copyToClipboard(apiError.traceId).then((ok) => {
-                if (ok) {
-                  toast.success("已复制 Trace ID");
-                }
-              });
-            }
-          },
-        }
-      : undefined,
-  });
+  toast.error(apiError.message || fallbackTitle);
 }

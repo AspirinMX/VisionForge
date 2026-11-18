@@ -6,7 +6,6 @@ import {
   ActivityIcon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
-  RefreshCwIcon,
 } from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
 
@@ -19,7 +18,6 @@ import {
   useStudio,
   type StudioCanvasTab,
 } from "@/components/studio/studio-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -27,6 +25,11 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { UUID } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -60,14 +63,12 @@ function WorkspaceShell({
   const {
     conversation,
     activeTaskCount,
-    refreshing,
     error,
     canvasOpen,
     setCanvasOpen,
     canvasFullscreen,
     setCanvasFullscreen,
     openCanvas,
-    refreshAll,
   } = useStudio();
 
   const isCompact = useSyncExternalStore(
@@ -100,63 +101,57 @@ function WorkspaceShell({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         title={conversation?.title ?? "加载会话中..."}
-        badge={
-          conversation ? (
-            <Badge variant="outline" className="font-mono text-[11px]">
-              {conversation.id.slice(0, 8)}
-            </Badge>
-          ) : null
-        }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {activeTaskCount > 0 ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                onClick={() => openCanvas("tasks")}
-              >
-                <ActivityIcon className="animate-pulse" />
-                <span className="tabular-nums">
-                  {activeTaskCount} 个进行中
-                </span>
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => openCanvas("tasks")}
+                      aria-label="查看进行中的任务"
+                      className="relative"
+                    />
+                  }
+                >
+                  <ActivityIcon className="animate-pulse text-primary" />
+                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
+                </TooltipTrigger>
+                <TooltipContent>{activeTaskCount} 个任务进行中</TooltipContent>
+              </Tooltip>
             ) : null}
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={refreshAll}
-              disabled={refreshing}
-              aria-label="刷新会话数据"
-            >
-              <RefreshCwIcon className={refreshing ? "animate-spin" : ""} />
-            </Button>
-
-            <Button
-              type="button"
-              variant={canvasOpen ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => {
-                if (canvasOpen) {
-                  setCanvasFullscreen(false);
-                  setCanvasOpen(false);
-                } else {
-                  setCanvasOpen(true);
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant={canvasOpen ? "secondary" : "ghost"}
+                    size="icon-sm"
+                    onClick={() => {
+                      if (canvasOpen) {
+                        setCanvasFullscreen(false);
+                        setCanvasOpen(false);
+                      } else {
+                        setCanvasOpen(true);
+                      }
+                    }}
+                    aria-label={canvasOpen ? "收起工作台" : "打开工作台"}
+                  />
                 }
-              }}
-            >
-              {canvasOpen ? (
-                <PanelRightCloseIcon />
-              ) : (
-                <PanelRightOpenIcon />
-              )}
-              <span>{canvasOpen ? "收起工作台" : "Studio Canvas"}</span>
-            </Button>
+              >
+                {canvasOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+              </TooltipTrigger>
+              <TooltipContent>
+                {canvasOpen ? "收起工作台" : "打开工作台"}
+              </TooltipContent>
+            </Tooltip>
           </div>
         }
       />
@@ -168,7 +163,7 @@ function WorkspaceShell({
       ) : null}
 
       {isCompact ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ChatPane />
           <Sheet open={canvasOpen} onOpenChange={setCanvasOpen}>
             <SheetContent
@@ -191,8 +186,9 @@ function WorkspaceShell({
               minSize="28%"
               collapsible
               collapsedSize="0%"
+              style={{ overflow: "hidden", height: "100%" }}
               className={cn(
-                "min-w-0",
+                "flex h-full min-h-0 min-w-0 flex-col",
                 canvasOpen && canvasFullscreen && "hidden"
               )}
             >
@@ -213,7 +209,11 @@ function WorkspaceShell({
               minSize="32%"
               collapsible
               collapsedSize="0%"
-              className={cn("min-w-0", !canvasOpen && "hidden")}
+              style={{ overflow: "hidden", height: "100%" }}
+              className={cn(
+                "flex h-full min-h-0 min-w-0 flex-col",
+                !canvasOpen && "hidden"
+              )}
             >
               {canvasOpen ? <StudioCanvas /> : null}
             </ResizablePanel>

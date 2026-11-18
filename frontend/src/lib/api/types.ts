@@ -170,6 +170,37 @@ export interface CreateConversationRequest {
 
 export type MessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 export type MessageStatus = "COMPLETED" | "FAILED";
+export type ToolInvocationStatus =
+  | "RUNNING"
+  | "WAITING"
+  | "SUCCEEDED"
+  | "FAILED";
+
+export interface ToolCallProcessResponse {
+  callId: string;
+  toolName: string;
+  action: string;
+  target: string | null;
+  status: ToolInvocationStatus;
+  fileId?: UUID | null;
+  taskId?: UUID | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface AgentTurnProcessResponse {
+  turnNo: number;
+  reasoning: string | null;
+  stepText: string | null;
+  toolCalls: ToolCallProcessResponse[];
+}
+
+export interface AgentRunProcessResponse {
+  runId: UUID;
+  durationMs: number | null;
+  turns: AgentTurnProcessResponse[];
+}
 
 export interface MessageResponse {
   id: UUID;
@@ -181,6 +212,7 @@ export interface MessageResponse {
   createdAt: string;
   assetIds: UUID[];
   generationTaskIds: UUID[];
+  process?: AgentRunProcessResponse | null;
 }
 
 export interface SendMessageRequest {
@@ -205,12 +237,26 @@ export interface AgentRunResponse {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  process?: AgentRunProcessResponse | null;
 }
 
 export type AgentStreamEvent =
   | { type: "accepted"; runId: UUID }
+  | { type: "turn_start"; turnNo: number }
   | { type: "reasoning"; content: string }
   | { type: "reasoning_summary"; content: string }
+  | {
+      type: "tool_start" | "tool_waiting" | "tool_done";
+      turnNo: number;
+      callId: string;
+      toolName: string;
+      action: string;
+      target: string | null;
+      status: ToolInvocationStatus;
+      fileId?: UUID | null;
+      taskId?: UUID | null;
+      message?: string | null;
+    }
   | { type: "delta"; content: string }
   | { type: "done"; assistantMessageId: UUID }
   | { type: "error"; message: string };

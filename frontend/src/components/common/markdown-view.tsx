@@ -4,6 +4,14 @@ import { Fragment, useState, type ReactNode } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { copyToClipboard } from "@/lib/api/feedback";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +81,25 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         <code>{code}</code>
       </pre>
     </div>
+  );
+}
+
+const TABLE_SEPARATOR_RE = /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*(?::?-{3,}:?\s*\|?)?\s*$/;
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim();
+  const stripped = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return stripped.split("|").map((cell) => cell.trim());
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  if (index + 1 >= lines.length) {
+    return false;
+  }
+  return (
+    lines[index].includes("|") &&
+    TABLE_SEPARATOR_RE.test(lines[index + 1]) &&
+    splitTableRow(lines[index]).length > 0
   );
 }
 
@@ -169,6 +196,72 @@ export function MarkdownView({ content, className }: MarkdownViewProps) {
       continue;
     }
 
+    if (isTableStart(lines, index)) {
+      const headers = splitTableRow(lines[index]);
+      const alignRow = splitTableRow(lines[index + 1]).map((cell) => {
+        if (cell.startsWith(":") && cell.endsWith(":")) {
+          return "text-center";
+        }
+        if (cell.endsWith(":")) {
+          return "text-right";
+        }
+        return "text-left";
+      });
+      index += 2;
+      const rows: string[][] = [];
+      while (
+        index < lines.length &&
+        lines[index].trim() &&
+        lines[index].includes("|") &&
+        !lines[index].startsWith("```")
+      ) {
+        rows.push(splitTableRow(lines[index]));
+        index += 1;
+      }
+      blocks.push(
+        <div key={blockKey++} className="my-3">
+          <Table>
+            <TableHeader className="[&_tr]:border-border/70">
+              <TableRow className="hover:bg-transparent">
+                {headers.map((header, cellIdx) => (
+                  <TableHead
+                    key={cellIdx}
+                    className={cn(
+                      "h-9 px-2.5 text-xs font-semibold text-foreground whitespace-normal",
+                      alignRow[cellIdx] ?? "text-left"
+                    )}
+                  >
+                    {renderInline(header)}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, rowIdx) => (
+                <TableRow
+                  key={rowIdx}
+                  className="border-border/50 hover:bg-muted/30"
+                >
+                  {headers.map((_, cellIdx) => (
+                    <TableCell
+                      key={cellIdx}
+                      className={cn(
+                        "px-2.5 py-2.5 text-sm whitespace-normal",
+                        alignRow[cellIdx] ?? "text-left"
+                      )}
+                    >
+                      {renderInline(row[cellIdx] ?? "")}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      );
+      continue;
+    }
+
     if (line.startsWith("> ")) {
       const quotes: string[] = [];
       while (index < lines.length && lines[index].startsWith("> ")) {
@@ -199,7 +292,8 @@ export function MarkdownView({ content, className }: MarkdownViewProps) {
       !/^#{1,4}\s+/.test(lines[index]) &&
       !/^[-*]\s+/.test(lines[index]) &&
       !/^\d+\.\s+/.test(lines[index]) &&
-      !lines[index].startsWith("> ")
+      !lines[index].startsWith("> ") &&
+      !isTableStart(lines, index)
     ) {
       paragraphLines.push(lines[index]);
       index += 1;

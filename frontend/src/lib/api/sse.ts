@@ -9,7 +9,11 @@ import {
   apiErrorFromEnvelope,
   normalizeUnknownError,
 } from "./errors";
-import type { AgentStreamEvent, ApiResponse } from "./types";
+import type {
+  AgentStreamEvent,
+  ApiResponse,
+  ToolInvocationStatus,
+} from "./types";
 
 export interface StreamHandlers {
   onEvent: (event: AgentStreamEvent) => void;
@@ -53,6 +57,42 @@ function parseSseBlock(rawBlock: string): ParsedSseBlock | null {
   };
 }
 
+function parseToolStatus(value: unknown): ToolInvocationStatus {
+  if (
+    value === "RUNNING" ||
+    value === "WAITING" ||
+    value === "SUCCEEDED" ||
+    value === "FAILED"
+  ) {
+    return value;
+  }
+  return "RUNNING";
+}
+
+function toToolStreamEvent(
+  type: "tool_start" | "tool_waiting" | "tool_done",
+  parsed: Record<string, unknown>
+): AgentStreamEvent | null {
+  if (typeof parsed.callId !== "string" || typeof parsed.toolName !== "string") {
+    return null;
+  }
+  return {
+    type,
+    turnNo: typeof parsed.turnNo === "number" ? parsed.turnNo : 0,
+    callId: parsed.callId,
+    toolName: parsed.toolName,
+    action:
+      typeof parsed.action === "string" && parsed.action.length > 0
+        ? parsed.action
+        : parsed.toolName,
+    target: typeof parsed.target === "string" ? parsed.target : null,
+    status: parseToolStatus(parsed.status),
+    fileId: typeof parsed.fileId === "string" ? parsed.fileId : null,
+    taskId: typeof parsed.taskId === "string" ? parsed.taskId : null,
+    message: typeof parsed.message === "string" ? parsed.message : null,
+  };
+}
+
 function toAgentStreamEvent(block: ParsedSseBlock): AgentStreamEvent | null {
   try {
     const parsed = JSON.parse(block.data) as Record<string, unknown>;
@@ -64,6 +104,10 @@ function toAgentStreamEvent(block: ParsedSseBlock): AgentStreamEvent | null {
         return typeof parsed.runId === "string"
           ? { type: "accepted", runId: parsed.runId }
           : null;
+      case "turn_start":
+        return typeof parsed.turnNo === "number"
+          ? { type: "turn_start", turnNo: parsed.turnNo }
+          : null;
       case "reasoning":
         return {
           type: "reasoning",
@@ -74,6 +118,10 @@ function toAgentStreamEvent(block: ParsedSseBlock): AgentStreamEvent | null {
           type: "reasoning_summary",
           content: typeof parsed.content === "string" ? parsed.content : "",
         };
+      case "tool_start":
+      case "tool_waiting":
+      case "tool_done":
+        return toToolStreamEvent(type, parsed);
       case "delta":
         return {
           type: "delta",

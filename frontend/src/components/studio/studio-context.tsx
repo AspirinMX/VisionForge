@@ -457,7 +457,7 @@ export function StudioProvider({
             source: "GENERATED",
             label:
               title ??
-              `${task.type === "VIDEO" ? "生成视频" : "生成图片"} · ${task.shotId ?? out.assetId.slice(0, 8)}`,
+              `${task.type === "VIDEO" ? "生成视频" : "生成图片"}${task.shotId ? ` · ${task.shotId}` : ""}`,
             createdAt: task.completedAt ?? task.createdAt,
             fileId: out.fileId,
             taskId: task.taskId,
@@ -497,7 +497,7 @@ export function StudioProvider({
         assetId: asset.id,
         kind: asset.kind,
         source: mappedSource,
-        label: `${asset.kind === "VIDEO" ? "视频" : "图片"}资产 · ${asset.id.slice(0, 8)}`,
+        label: `${asset.kind === "VIDEO" ? "视频" : "图片"}素材`,
         mimeType: asset.mimeType,
         sizeBytes: asset.sizeBytes,
         createdAt: asset.createdAt,

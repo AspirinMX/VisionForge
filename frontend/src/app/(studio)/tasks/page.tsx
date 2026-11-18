@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangleIcon,
-  CheckIcon,
-  CopyIcon,
   ExternalLinkIcon,
   RefreshCwIcon,
   RotateCcwIcon,
@@ -48,16 +46,12 @@ import {
 import { useAsyncData } from "@/hooks/use-async-data";
 import { generationApi } from "@/lib/api/endpoints";
 import {
-  copyToClipboard,
   notifyApiError,
   notifySuccess,
 } from "@/lib/api/feedback";
 import type { GenerationType, UUID } from "@/lib/api/types";
 import {
   formatDateTime,
-  GENERATION_BILLING_LABEL,
-  GENERATION_CANCEL_LABEL,
-  GENERATION_DELIVERY_LABEL,
   GENERATION_STATUS_LABEL,
 } from "@/lib/format";
 
@@ -68,17 +62,6 @@ type StatusBucket =
   | "UNKNOWN"
   | "SUCCEEDED"
   | "FAILED_OR_CANCELLED";
-
-function formatParameters(raw: string): string {
-  if (!raw || !raw.trim()) {
-    return "{}";
-  }
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
-  } catch {
-    return raw;
-  }
-}
 
 function GlobalTasksContent() {
   const searchParams = useSearchParams();
@@ -101,7 +84,6 @@ function GlobalTasksContent() {
     dismissedUrlTaskId: null,
   });
   const [actingTaskId, setActingTaskId] = useState<UUID | null>(null);
-  const [copiedId, setCopiedId] = useState<UUID | null>(null);
 
   const tasks = useMemo(() => data ?? [], [data]);
   const selectedTaskId =
@@ -218,31 +200,20 @@ function GlobalTasksContent() {
     }
   };
 
-  const handleCopy = async (id: UUID) => {
-    const ok = await copyToClipboard(id);
-    if (ok) {
-      setCopiedId(id);
-      window.setTimeout(() => {
-        setCopiedId((curr) => (curr === id ? null : curr));
-      }, 1600);
-    }
-  };
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
         title="全局任务中心"
-        subtitle="查看当前账号下的跨会话生成任务（含 4 轴状态与产物回看）"
         actions={
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
             onClick={reload}
             disabled={loading}
+            aria-label="刷新任务"
           >
             <RefreshCwIcon className={loading ? "animate-spin" : ""} />
-            <span>刷新</span>
           </Button>
         }
       />
@@ -256,12 +227,12 @@ function GlobalTasksContent() {
             <div className="flex flex-wrap items-center gap-1.5">
               {(
                 [
-                  { id: "ALL", label: `全部 (${tasks.length})` },
+                  { id: "ALL", label: "全部" },
                   { id: "ACTIVE", label: "进行中" },
                   { id: "ARCHIVE_FAILED", label: "待归档修复" },
                   { id: "UNKNOWN", label: "待核账" },
                   { id: "SUCCEEDED", label: "已交付" },
-                  { id: "FAILED_OR_CANCELLED", label: "失败 / 已取消" },
+                  { id: "FAILED_OR_CANCELLED", label: "已结束" },
                 ] as const
               ).map((item) => (
                 <Button
@@ -280,8 +251,8 @@ function GlobalTasksContent() {
               value={typeFilter}
               items={{
                 ALL: "全部类型",
-                IMAGE: "图片 (IMAGE)",
-                VIDEO: "视频 (VIDEO)",
+                IMAGE: "图片",
+                VIDEO: "视频",
               }}
               onValueChange={(v) => {
                 if (v) {
@@ -294,8 +265,8 @@ function GlobalTasksContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">全部类型</SelectItem>
-                <SelectItem value="IMAGE">图片 (IMAGE)</SelectItem>
-                <SelectItem value="VIDEO">视频 (VIDEO)</SelectItem>
+                <SelectItem value="IMAGE">图片</SelectItem>
+                <SelectItem value="VIDEO">视频</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -304,7 +275,7 @@ function GlobalTasksContent() {
             <Skeleton className="h-64 w-full rounded-2xl" />
           ) : filteredTasks.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-              暂无符合条件的媒体生成任务记录。
+              暂无符合条件的生成任务。
             </div>
           ) : (
             <div className="rounded-2xl border bg-card">
@@ -312,10 +283,9 @@ function GlobalTasksContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>类型</TableHead>
-                    <TableHead>提示词摘要</TableHead>
-                    <TableHead>执行状态</TableHead>
-                    <TableHead>交付 / 账务</TableHead>
-                    <TableHead className="text-right">额度单位</TableHead>
+                    <TableHead>描述摘要</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead className="text-right">消耗</TableHead>
                     <TableHead>创建时间</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -329,11 +299,13 @@ function GlobalTasksContent() {
                     >
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <Badge variant="outline">{task.type}</Badge>
+                          <Badge variant="outline">
+                            {task.type === "VIDEO" ? "视频" : "图片"}
+                          </Badge>
                           {task.shotId ? (
                             <Badge
                               variant="secondary"
-                              className="font-mono text-[10px]"
+                              className="text-[11px]"
                             >
                               {task.shotId}
                             </Badge>
@@ -358,10 +330,6 @@ function GlobalTasksContent() {
                         >
                           {GENERATION_STATUS_LABEL[task.status]}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {GENERATION_DELIVERY_LABEL[task.deliveryStatus]} ·{" "}
-                        {GENERATION_BILLING_LABEL[task.billingStatus]}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {task.priceUnits}
@@ -419,29 +387,18 @@ function GlobalTasksContent() {
             <>
               <SheetHeader>
                 <SheetTitle className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{selectedTask.type}</Badge>
+                  <Badge variant="outline">
+                    {selectedTask.type === "VIDEO" ? "视频" : "图片"}
+                  </Badge>
                   <span>任务详情</span>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopy(selectedTask.taskId)}
-                    className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px] font-normal text-muted-foreground hover:text-foreground"
-                  >
-                    {copiedId === selectedTask.taskId ? (
-                      <CheckIcon className="size-3" />
-                    ) : (
-                      <CopyIcon className="size-3" />
-                    )}
-                    <span>{selectedTask.taskId.slice(0, 8)}</span>
-                  </button>
                 </SheetTitle>
                 <SheetDescription className="tabular-nums">
-                  创建于 {formatDateTime(selectedTask.createdAt)} · 计费{" "}
-                  {selectedTask.priceUnits} 单位
+                  {formatDateTime(selectedTask.createdAt)} · 消耗{" "}
+                  {selectedTask.priceUnits} 额度
                 </SheetDescription>
               </SheetHeader>
 
               <div className="flex-1 space-y-4 overflow-y-auto px-4 py-2">
-                {/* 4-axis badges */}
                 <div className="flex flex-wrap gap-1.5">
                   <Badge
                     variant={
@@ -455,25 +412,16 @@ function GlobalTasksContent() {
                           : "secondary"
                     }
                   >
-                    执行：{GENERATION_STATUS_LABEL[selectedTask.status]}
-                  </Badge>
-                  <Badge variant="outline">
-                    交付：{GENERATION_DELIVERY_LABEL[selectedTask.deliveryStatus]}
-                  </Badge>
-                  <Badge variant="outline">
-                    账务：{GENERATION_BILLING_LABEL[selectedTask.billingStatus]}
-                  </Badge>
-                  <Badge variant="outline">
-                    取消：{GENERATION_CANCEL_LABEL[selectedTask.cancelStatus]}
+                    {GENERATION_STATUS_LABEL[selectedTask.status]}
                   </Badge>
                 </div>
 
                 {selectedTask.status === "UNKNOWN" ? (
                   <Alert variant="destructive">
                     <AlertTriangleIcon />
-                    <AlertTitle>远端状态未知（PENDING_RECONCILIATION）</AlertTitle>
+                    <AlertTitle>生成结果核对中</AlertTitle>
                     <AlertDescription className="text-xs">
-                      请勿重复创建相同任务以免重复扣费；复制上方任务 ID 排查或等待系统核账结束。
+                      为避免重复扣费，当前暂不支持重复提交相同任务，请稍后刷新查看最终结果。
                     </AlertDescription>
                   </Alert>
                 ) : null}
@@ -481,7 +429,7 @@ function GlobalTasksContent() {
                 {selectedTask.errorMessage ? (
                   <Alert variant="destructive">
                     <AlertTriangleIcon />
-                    <AlertTitle>错误信息</AlertTitle>
+                    <AlertTitle>未成功原因</AlertTitle>
                     <AlertDescription className="text-xs">
                       {selectedTask.errorMessage}
                     </AlertDescription>
@@ -490,20 +438,11 @@ function GlobalTasksContent() {
 
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">
-                    提示词 (prompt)
+                    提示词
                   </p>
                   <div className="rounded-xl border bg-muted/30 p-3 text-xs leading-relaxed whitespace-pre-wrap">
                     {selectedTask.prompt}
                   </div>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    请求参数 (parameters)
-                  </p>
-                  <pre className="overflow-x-auto rounded-xl border bg-muted/30 p-3 font-mono text-[11px]">
-                    {formatParameters(selectedTask.parameters)}
-                  </pre>
                 </div>
 
                 {selectedTask.inputs.length > 0 ? (

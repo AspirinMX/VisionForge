@@ -119,11 +119,11 @@ export function ShotCandidatesSheet({
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-2">
           {candidates.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              当前镜头尚无已回写的视频候选（videoCandidates）。你可以先在镜头卡片点击「生成视频候选」。
+              当前镜头尚无可选视频候选。你可以先在镜头卡片点击「生成视频候选」。
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              {candidates.map((candidate: StoryboardVideoCandidate) => {
+              {candidates.map((candidate: StoryboardVideoCandidate, idx: number) => {
                 const isSelected = selectedTaskId === candidate.taskId;
                 const canSelect = Boolean(candidate.assetId);
                 return (
@@ -135,9 +135,9 @@ export function ShotCandidatesSheet({
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <Badge variant="outline" className="font-mono text-[10px]">
-                        {candidate.taskId.slice(0, 8)}
-                      </Badge>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        候选 #{idx + 1}
+                      </span>
                       <Badge
                         variant={
                           candidate.status === "SUCCEEDED"
@@ -145,7 +145,7 @@ export function ShotCandidatesSheet({
                             : "outline"
                         }
                       >
-                        {candidate.status}
+                        {candidate.status === "SUCCEEDED" ? "已完成" : candidate.status}
                       </Badge>
                     </div>
 
@@ -153,19 +153,19 @@ export function ShotCandidatesSheet({
                       <AssetMediaPreview
                         assetId={candidate.assetId}
                         kind="VIDEO"
-                        alt={`候选 ${candidate.taskId}`}
+                        alt={`候选 #${idx + 1}`}
                         className="aspect-video w-full"
                       />
                     ) : (
                       <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
-                        等待归档资产 ID...
+                        等待生成文件...
                       </div>
                     )}
 
                     <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate font-mono text-muted-foreground">
+                      <span className="truncate text-muted-foreground">
                         {candidate.assetId
-                          ? `Asset ${candidate.assetId.slice(0, 8)} · v${candidate.version ?? 1}`
+                          ? `分镜版本 v${candidate.version ?? 1}`
                           : "未归档"}
                       </span>
                       <Button

@@ -8,8 +8,6 @@ import {
   type Ref,
 } from "react";
 import {
-  CheckIcon,
-  CopyIcon,
   FolderPlusIcon,
   ImagePlusIcon,
   MessageSquarePlusIcon,
@@ -46,7 +44,6 @@ import { useAsyncData } from "@/hooks/use-async-data";
 import { createIdempotencyKey } from "@/lib/api/client";
 import { generationApi, modelsApi } from "@/lib/api/endpoints";
 import {
-  copyToClipboard,
   notifyApiError,
   notifyError,
   notifyInfo,
@@ -58,21 +55,21 @@ import type {
   GenerationType,
   UUID,
 } from "@/lib/api/types";
-import { formatBytes, formatShortTime, MEDIA_PROTOCOL_LABEL } from "@/lib/format";
+import { formatBytes, formatShortTime } from "@/lib/format";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
 
 const MAX_INPUTS = 8;
 
 const IMAGE_ROLES: { value: GenerationInputRole; label: string }[] = [
-  { value: "REFERENCE", label: "参考图 (REFERENCE)" },
-  { value: "INIT_IMAGE", label: "底图编辑 (INIT_IMAGE)" },
-  { value: "MASK", label: "局部遮罩 (MASK)" },
+  { value: "REFERENCE", label: "参考图" },
+  { value: "INIT_IMAGE", label: "底图编辑" },
+  { value: "MASK", label: "局部遮罩" },
 ];
 
 const VIDEO_ROLES: { value: GenerationInputRole; label: string }[] = [
-  { value: "FIRST_FRAME", label: "首帧 (FIRST_FRAME)" },
-  { value: "LAST_FRAME", label: "尾帧 (LAST_FRAME)" },
-  { value: "REFERENCE", label: "视觉参考 (REFERENCE)" },
+  { value: "FIRST_FRAME", label: "首帧" },
+  { value: "LAST_FRAME", label: "尾帧" },
+  { value: "REFERENCE", label: "视觉参考" },
 ];
 
 interface QuickFormHandle {
@@ -340,7 +337,7 @@ function QuickGenerateForm({
             variant={genType === "IMAGE" ? "default" : "outline"}
             onClick={() => handleTypeChange("IMAGE")}
           >
-            图片生成 (IMAGE)
+            图片生成
           </Button>
           <Button
             type="button"
@@ -348,7 +345,7 @@ function QuickGenerateForm({
             variant={genType === "VIDEO" ? "default" : "outline"}
             onClick={() => handleTypeChange("VIDEO")}
           >
-            视频生成 (VIDEO)
+            视频生成
           </Button>
         </div>
       </div>
@@ -372,8 +369,8 @@ function QuickGenerateForm({
             </Badge>
           ) : null}
           {sourceTaskId ? (
-            <Badge variant="outline" className="gap-1 font-mono text-[10px]">
-              <span>基于任务：{sourceTaskId.slice(0, 8)}</span>
+            <Badge variant="outline" className="gap-1">
+              <span>基于历史任务再生成</span>
               <button
                 type="button"
                 onClick={() => setSourceTaskId("")}
@@ -385,7 +382,7 @@ function QuickGenerateForm({
           ) : null}
           {shotId ? (
             <span className="text-muted-foreground">
-              完成后将自动回写到对应分镜版本号
+              完成后将自动回写到对应分镜
             </span>
           ) : null}
         </div>
@@ -415,7 +412,7 @@ function QuickGenerateForm({
                 <SelectItem key={model.id} value={model.id}>
                   {model.displayName} · {model.modelId}
                   {model.defaultModel ? " · 默认" : ""}
-                  {model.priceUnits > 0 ? ` · ${model.priceUnits} 单位/次` : ""}
+                  {model.priceUnits > 0 ? ` · ${model.priceUnits} 额度` : ""}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -423,14 +420,14 @@ function QuickGenerateForm({
           <Input
             value={modelDefinitionId}
             onChange={(e) => setModelDefinitionId(e.target.value)}
-            placeholder="或手动填写 modelDefinitionId (UUID)"
-            className="h-8 font-mono text-xs"
+            placeholder="或指定模型编号"
+            className="h-8 text-xs"
           />
         </div>
         <div className="flex items-end text-[11px] text-muted-foreground">
           {resolvedModel
-            ? `当前路由：${resolvedModel.displayName}（${MEDIA_PROTOCOL_LABEL[resolvedModel.protocol]} · ${resolvedModel.priceUnits} 单位/次）`
-            : "提示：留空由服务端按能力类型选择默认启用模型并预占额度；模型价格以服务端 priceUnits 为准。"}
+            ? `已选择 ${resolvedModel.displayName}（每次消耗 ${resolvedModel.priceUnits} 额度）`
+            : "留空时自动使用系统默认模型"}
         </div>
       </div>
 
@@ -812,7 +809,6 @@ export function AssetsGeneratePanel() {
   const [uploadPercent, setUploadPercent] = useState(0);
   const [importIdInput, setImportIdInput] = useState("");
   const [importing, setImporting] = useState(false);
-  const [copiedId, setCopiedId] = useState<UUID | null>(null);
 
   const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(event.target.files ?? []);
@@ -836,11 +832,11 @@ export function AssetsGeneratePanel() {
         });
         registerLocalAsset(asset);
       }
-      notifySuccess(`已上传 ${picked.length} 项素材至 RustFS`);
+      notifySuccess(`已上传 ${picked.length} 项素材`);
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "上传素材失败",
-        "请检查浏览器与对象存储 CORS 配置"
+        "请检查网络连接后重试"
       );
     } finally {
       setUploading(false);
@@ -862,16 +858,6 @@ export function AssetsGeneratePanel() {
       notifyApiError(err, "导入资产失败");
     } finally {
       setImporting(false);
-    }
-  };
-
-  const handleCopyId = async (assetId: UUID) => {
-    const ok = await copyToClipboard(assetId);
-    if (ok) {
-      setCopiedId(assetId);
-      window.setTimeout(() => {
-        setCopiedId((curr) => (curr === assetId ? null : curr));
-      }, 1500);
     }
   };
 
@@ -922,7 +908,7 @@ export function AssetsGeneratePanel() {
         {uploading ? (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>直传 RustFS 对象存储中...</span>
+              <span>正在上传文件...</span>
               <span className="tabular-nums">{uploadPercent}%</span>
             </div>
             <Progress value={uploadPercent} />
@@ -933,8 +919,8 @@ export function AssetsGeneratePanel() {
           <Input
             value={importIdInput}
             onChange={(e) => setImportIdInput(e.target.value)}
-            placeholder="输入已有资产 UUID 导入当前会话素材池..."
-            className="h-8 font-mono text-xs"
+            placeholder="输入素材编号导入当前会话..."
+            className="h-8 text-xs"
           />
           <Button
             type="button"
@@ -982,23 +968,10 @@ export function AssetsGeneratePanel() {
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyId(item.assetId)}
-                      className="inline-flex items-center gap-1 font-mono hover:text-foreground"
-                    >
-                      {copiedId === item.assetId ? (
-                        <CheckIcon className="size-3" />
-                      ) : (
-                        <CopyIcon className="size-3" />
-                      )}
-                      <span>{item.assetId.slice(0, 8)}</span>
-                    </button>
                     <span>
-                      {item.sizeBytes
-                        ? formatBytes(item.sizeBytes)
-                        : formatShortTime(item.createdAt)}
+                      {item.sizeBytes ? formatBytes(item.sizeBytes) : ""}
                     </span>
+                    <span>{formatShortTime(item.createdAt)}</span>
                   </div>
                 </div>
 

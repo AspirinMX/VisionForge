@@ -60,7 +60,8 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 仍然存在的边界：
 
-- `AgentRunStreamService` 仍只推送 `accepted` / `reasoning` / `reasoning_summary` / `delta` / `done` / `error`，不含工具调用进度事件；界面以轮询持久化任务状态为准。
+- 服务端通过 SSE 推送 `accepted` / `turn_start` / `reasoning` / `reasoning_summary` / `delta` / `tool_start` / `tool_waiting` / `tool_done` / `done` / `error`，并在 `GET /messages` 与 `GET /agent-runs` 返回 `process` 思考与工具调用时间线（仅含可读推理与语义动作摘要，不返回 `encryptedContent`）。
+- 界面保持极简克制：顶栏移除会话短 ID、页面副标题与右上角额度文字，可用余额收入侧栏左下角个人菜单；对话正文去卡片化、底部采用真正悬浮的胶囊输入框与回底按钮、支持边框极简的 Markdown 表格，并将思考过程与工具调用渲染为“竖线引用推理 + 圆角动作条”时间线。
 - 会话删除与跨设备草稿同步尚未实现，侧栏不渲染虚假的删除入口。
 
 ---
@@ -243,10 +244,10 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 #### 左侧对话主列功能详设
 
-1. **流式消费与思考过程渲染**：
-   - 使用 `fetch` 发起 `POST /api/v1/conversations/{conversationId}/messages/stream`（`Accept: text/event-stream`），逐事件解析 `accepted` / `reasoning` / `reasoning_summary` / `delta` / `done` / `error`。
-   - 渲染独立的「思考过程（`Collapsible`）」区块，区分明文推理（`reasoning`）与加密推理摘要（`reasoning_summary`）；正文到达期间流式渲染 Markdown。
-   - 提供「使用非流式提交」切换开关（针对 Redis 不可用场景回退 `POST /messages` + 轮询 `GET /api/v1/agent-runs/{runId}`）。
+1. **流式消费与思考/工具时间线渲染**：
+   - 使用 `fetch` 发起 `POST /api/v1/conversations/{conversationId}/messages/stream`（`Accept: text/event-stream`），逐事件解析 `accepted` / `turn_start` / `reasoning` / `reasoning_summary` / `tool_start` / `tool_waiting` / `tool_done` / `delta` / `done` / `error`。
+   - 对话消息采用去卡片化的简洁正文排版并支持 Markdown 表格；思考过程与工具调用统一渲染为可折叠的「思考过程 / 思考了 Xs」时间线（左侧竖线引用展示推理，圆角动作条展示中间步骤与工具执行，点击关联文件/分镜/任务条可直接定位右侧 Canvas）。
+   - 底部输入框为真正悬浮的居中胶囊，滚动离开底部时展示圆形回底按钮；历史与进行中状态统一通过服务端持久化 `process` 回放，不在对话流中暴露 `runId`、`SSE` 切换开关等技术调试细节。
 2. **后台运行态恢复与防并发冲突**：
    - 当会话中存在正在进行的 `AgentRun`（如正在执行 `await_generation` 持久化等待图片/视频交付）时，顶部展示非阻断状态条（`RUNNING / PENDING`），禁用重复发送（避免触发 `409 CONVERSATION_BUSY`）并自动轮询至终态。
    - 若服务端返回 `409`，明确告知“上一轮执行尚在进行中（含生成任务等待），请稍候或查看任务中心”。
