@@ -170,6 +170,13 @@
 | `GET /api/v1/account/credit/ledger` | `200` | `?limit=50&before=<ledgerId>`（UUIDv7 倒序游标） | `CreditLedgerEntryResponse[]` |
 | `GET /api/v1/account/usage` | `200` | `?window=100` | `CreditUsageResponse { window, totalPriceUnits, buckets }` |
 
+### 6.4 管理员审计日志 (`AdminAuditLogController`, `/api/v1/admin/audit-logs`)
+
+| 方法与路径 | 状态码 | 权限 | 查询参数 | 响应 `data` / 内容 |
+| --- | --- | --- | --- | --- |
+| `GET /api/v1/admin/audit-logs` | `200` | `ADMIN` | `?page=1&size=50&type=&subType=&operatorId=&bizNo=&traceId=&success=&from=&to=` | `PageResult<AuditLogResponse>` |
+| `GET /api/v1/admin/audit-logs/export` | `200` | `ADMIN` | 同上（支持 `&maxRows=2000`，最高 10000） | `text/csv; charset=UTF-8` 下载文件（含 UTF-8 BOM 与公式字符转义） |
+
 ---
 
 ## 7. 全量错误码矩阵
