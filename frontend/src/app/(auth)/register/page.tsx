@@ -218,7 +218,7 @@ export default function RegisterPage() {
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting ? (
               <>
-                <Loader2Icon className="animate-spin" />
+                <Loader2Icon className="animate-spin motion-reduce:animate-none" />
                 <span>创建账号中...</span>
               </>
             ) : (

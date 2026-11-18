@@ -120,7 +120,7 @@ function WorkspaceShell({
                     />
                   }
                 >
-                  <ActivityIcon className="animate-pulse text-primary" />
+                  <ActivityIcon className="animate-pulse motion-reduce:animate-none text-primary" />
                   <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
                 </TooltipTrigger>
                 <TooltipContent>{activeTaskCount} 个任务进行中</TooltipContent>

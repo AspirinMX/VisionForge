@@ -189,7 +189,9 @@ export function TasksPanel() {
           disabled={refreshing}
           onClick={refreshAll}
         >
-          <RefreshCwIcon className={refreshing ? "animate-spin" : ""} />
+          <RefreshCwIcon
+            className={refreshing ? "animate-spin motion-reduce:animate-none" : ""}
+          />
           <span>刷新</span>
         </Button>
       </div>

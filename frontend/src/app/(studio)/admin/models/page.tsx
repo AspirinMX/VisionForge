@@ -115,7 +115,9 @@ function ModelsAdminContent() {
               disabled={loading}
               aria-label="刷新模型列表"
             >
-              <RefreshCwIcon className={loading ? "animate-spin" : ""} />
+              <RefreshCwIcon
+                className={loading ? "animate-spin motion-reduce:animate-none" : ""}
+              />
             </Button>
             <Button type="button" size="sm" onClick={handleCreateClick}>
               <PlusIcon />

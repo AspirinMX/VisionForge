@@ -105,7 +105,9 @@ function UsersAdminContent() {
             disabled={loading}
             aria-label="刷新用户列表"
           >
-            <RefreshCwIcon className={loading ? "animate-spin" : ""} />
+            <RefreshCwIcon
+              className={loading ? "animate-spin motion-reduce:animate-none" : ""}
+            />
           </Button>
         }
       />

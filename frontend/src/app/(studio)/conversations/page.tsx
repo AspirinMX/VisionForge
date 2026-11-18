@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import { Fade } from "@animate-ui/react/primitives/effects/fade";
+import { Slide } from "@animate-ui/react/primitives/effects/slide";
 import {
   ArrowUpIcon,
   ClapperboardIcon,
@@ -230,17 +232,18 @@ export default function ConversationsHomePage() {
       />
 
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
-        <div className="w-full max-w-3xl space-y-6">
-          <div className="space-y-1.5 text-center">
-            <h2 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-              你好，{user?.displayName ?? "创作者"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              描述创作想法或附上参考图，开始生成剧本、分镜与成片。
-            </p>
-          </div>
+        <Fade transition={{ duration: 0.18 }} className="w-full max-w-3xl">
+          <Slide direction="up" offset={8} transition={{ duration: 0.2 }} className="space-y-6">
+            <div className="space-y-1.5 text-center">
+              <h2 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+                你好，{user?.displayName ?? "创作者"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                描述创作想法或附上参考图，开始生成剧本、分镜与成片。
+              </p>
+            </div>
 
-          <div className="rounded-3xl border border-border/80 bg-card/95 p-3 shadow-md transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+            <div className="rounded-3xl border border-border/80 bg-card/95 p-3 shadow-md transition-shadow motion-reduce:transition-none focus-within:ring-2 focus-within:ring-ring/20">
             {queuedFiles.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1">
                 {queuedFiles.map((item) => (
@@ -320,7 +323,7 @@ export default function ConversationsHomePage() {
                 className="rounded-full"
               >
                 {submitting ? (
-                  <Loader2Icon className="animate-spin" />
+                  <Loader2Icon className="animate-spin motion-reduce:animate-none" />
                 ) : (
                   <ArrowUpIcon />
                 )}
@@ -346,7 +349,8 @@ export default function ConversationsHomePage() {
               );
             })}
           </div>
-        </div>
+          </Slide>
+        </Fade>
       </div>
     </div>
   );

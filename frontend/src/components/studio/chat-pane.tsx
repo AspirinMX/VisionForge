@@ -10,6 +10,8 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ShimmeringText } from "@animate-ui/react/primitives/texts/shimmering";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -732,8 +734,13 @@ export function ChatPane() {
                   <MarkdownView content={livePresentation.answerMarkdown} />
                 ) : !livePresentation?.process ? (
                   <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                    <span className="inline-block size-2 animate-pulse rounded-full bg-foreground/60" />
-                    <span>正在思考...</span>
+                    <span className="inline-block size-2 animate-pulse motion-reduce:animate-none rounded-full bg-foreground/60" />
+                    <ShimmeringText
+                      text="正在思考..."
+                      color="var(--muted-foreground)"
+                      shimmeringColor="var(--foreground)"
+                      duration={1.4}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -753,8 +760,13 @@ export function ChatPane() {
                 />
               ) : (
                 <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                  <span className="inline-block size-2 animate-pulse rounded-full bg-foreground/60" />
-                  <span>正在处理...</span>
+                  <span className="inline-block size-2 animate-pulse motion-reduce:animate-none rounded-full bg-foreground/60" />
+                  <ShimmeringText
+                    text="正在处理..."
+                    color="var(--muted-foreground)"
+                    shimmeringColor="var(--foreground)"
+                    duration={1.4}
+                  />
                 </div>
               )}
             </div>
@@ -770,25 +782,36 @@ export function ChatPane() {
 
       {/* Floating bottom capsule composer & scroll-to-bottom button */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-8 pb-4">
-        {showScrollBottom ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => scrollToBottom("smooth")}
-            aria-label="回到底部"
-            className="pointer-events-auto mb-2.5 size-8 rounded-full border-border/80 bg-background/95 shadow-sm backdrop-blur-sm"
-          >
-            <ArrowDownIcon className="size-4" />
-          </Button>
-        ) : null}
+        <AnimatePresence>
+          {showScrollBottom ? (
+            <motion.div
+              key="scroll-to-bottom"
+              initial={{ opacity: 0, y: 6, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.94 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="pointer-events-auto mb-2.5"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => scrollToBottom("smooth")}
+                aria-label="回到底部"
+                className="size-8 rounded-full border-border/80 bg-background/95 shadow-sm backdrop-blur-sm"
+              >
+                <ArrowDownIcon className="size-4" />
+              </Button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "pointer-events-auto rounded-3xl border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors",
+            "pointer-events-auto rounded-3xl border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors motion-reduce:transition-none",
             isDragging && "border-primary bg-accent/40",
             columnWidthClass
           )}

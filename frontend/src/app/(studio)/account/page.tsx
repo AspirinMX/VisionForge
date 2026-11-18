@@ -200,7 +200,11 @@ export default function AccountPage() {
                 onClick={handleRefreshProfile}
                 disabled={refreshingUser}
               >
-                <RefreshCwIcon className={refreshingUser ? "animate-spin" : ""} />
+                <RefreshCwIcon
+                  className={
+                    refreshingUser ? "animate-spin motion-reduce:animate-none" : ""
+                  }
+                />
                 <span>刷新信息</span>
               </Button>
             </CardHeader>
@@ -257,7 +261,9 @@ export default function AccountPage() {
                 >
                   <RefreshCwIcon
                     className={
-                      loadingCredit || loadingLedger ? "animate-spin" : ""
+                      loadingCredit || loadingLedger
+                        ? "animate-spin motion-reduce:animate-none"
+                        : ""
                     }
                   />
                   <span>刷新额度</span>

@@ -93,7 +93,7 @@ export function AssetMediaPreview({
             className="h-full w-full object-cover"
           />
           {allowLightbox ? (
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100">
               <Button
                 type="button"
                 size="icon-xs"

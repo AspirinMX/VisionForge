@@ -213,7 +213,9 @@ function GlobalTasksContent() {
             disabled={loading}
             aria-label="刷新任务"
           >
-            <RefreshCwIcon className={loading ? "animate-spin" : ""} />
+            <RefreshCwIcon
+              className={loading ? "animate-spin motion-reduce:animate-none" : ""}
+            />
           </Button>
         }
       />

@@ -700,7 +700,7 @@ function ModelFormContent({
         <Button type="submit" form="model-config-form" disabled={submitting}>
           {submitting ? (
             <>
-              <Loader2Icon className="animate-spin" />
+              <Loader2Icon className="animate-spin motion-reduce:animate-none" />
               <span>保存中...</span>
             </>
           ) : isEdit ? (

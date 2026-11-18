@@ -1193,7 +1193,7 @@ export function StoryboardPanel() {
                         <span>对白 / 旁白 / 声音提示 ({shot.references?.length ?? 0} 个引用参考)</span>
                         <ChevronDownIcon
                           className={cn(
-                            "size-3.5 transition-transform",
+                            "size-3.5 transition-transform motion-reduce:transition-none",
                             detailsOpen && "rotate-180"
                           )}
                         />

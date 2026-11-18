@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ShimmeringText } from "@animate-ui/react/primitives/texts/shimmering";
+import { motion } from "motion/react";
 import {
   AlertCircleIcon,
   AtomIcon,
@@ -58,7 +60,9 @@ function formatDurationLabel(durationMs: number | null): string | null {
 
 function renderToolIcon(tool: ToolCallProcessResponse) {
   if (tool.status === "RUNNING" || tool.status === "WAITING") {
-    return <Loader2Icon className="size-3.5 shrink-0 animate-spin text-muted-foreground" />;
+    return (
+      <Loader2Icon className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none text-muted-foreground" />
+    );
   }
   if (tool.status === "FAILED") {
     return <AlertCircleIcon className="size-3.5 shrink-0 text-destructive" />;
@@ -151,20 +155,29 @@ export function AgentProcessTimeline({
         render={
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground transition-colors motion-reduce:transition-none hover:text-foreground"
           />
         }
       >
         <AtomIcon
           className={cn(
             "size-3.5 shrink-0",
-            isStreaming && "animate-pulse text-foreground"
+            isStreaming && "animate-pulse motion-reduce:animate-none text-foreground"
           )}
         />
-        <span>{durationText}</span>
+        {isStreaming ? (
+          <ShimmeringText
+            text={durationText}
+            color="var(--muted-foreground)"
+            shimmeringColor="var(--foreground)"
+            duration={1.4}
+          />
+        ) : (
+          <span>{durationText}</span>
+        )}
         <ChevronDownIcon
           className={cn(
-            "size-3.5 transition-transform duration-150",
+            "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
             !open && "-rotate-90"
           )}
         />
@@ -217,30 +230,36 @@ export function AgentProcessTimeline({
 
                   if (clickable) {
                     return (
-                      <button
+                      <motion.button
                         key={tool.callId}
                         type="button"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.14, ease: "easeOut" }}
                         onClick={() => handleToolClick(tool)}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-left text-xs transition-colors hover:bg-muted",
+                          "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-left text-xs transition-colors motion-reduce:transition-none hover:bg-muted",
                           tool.status === "FAILED" && "bg-destructive/8 hover:bg-destructive/12"
                         )}
                       >
                         {chipBody}
-                      </button>
+                      </motion.button>
                     );
                   }
 
                   return (
-                    <div
+                    <motion.div
                       key={tool.callId}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.14, ease: "easeOut" }}
                       className={cn(
                         "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-xs",
                         tool.status === "FAILED" && "bg-destructive/8"
                       )}
                     >
                       {chipBody}
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>

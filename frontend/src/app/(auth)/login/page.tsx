@@ -146,7 +146,7 @@ export default function LoginPage() {
           >
             {submitting ? (
               <>
-                <Loader2Icon className="animate-spin" />
+                <Loader2Icon className="animate-spin motion-reduce:animate-none" />
                 <span>登录中...</span>
               </>
             ) : (
