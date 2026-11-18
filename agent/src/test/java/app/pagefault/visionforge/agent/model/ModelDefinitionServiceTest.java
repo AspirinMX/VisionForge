@@ -111,6 +111,52 @@ class ModelDefinitionServiceTest {
                 .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_NOT_CONFIGURED));
     }
 
+    @Test
+    void mediaModelsDefaultToRealProtocolsAndExecutionModes() {
+        when(mapper.selectCount(any())).thenReturn(0L);
+
+        ModelDefinition image = service.create(mediaInput(
+                ModelCapabilityType.IMAGE, null, null));
+        ModelDefinition video = service.create(mediaInput(
+                ModelCapabilityType.VIDEO, null, null));
+
+        assertThat(image.getProtocol()).isEqualTo(MediaProtocol.OPENAI_IMAGES);
+        assertThat(image.getExecutionMode()).isEqualTo(ExecutionMode.INLINE_RESULT);
+        assertThat(video.getProtocol()).isEqualTo(MediaProtocol.ARK_VIDEO_TASKS);
+        assertThat(video.getExecutionMode()).isEqualTo(ExecutionMode.REMOTE_TASK);
+    }
+
+    @Test
+    void stubIsNotAValidModelRoute() {
+        when(mapper.selectCount(any())).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.create(mediaInput(
+                ModelCapabilityType.IMAGE, MediaProtocol.STUB, ExecutionMode.INLINE_RESULT)))
+                .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_CONFIG_INVALID));
+    }
+
+    private ModelDefinitionInput mediaInput(
+            ModelCapabilityType capability,
+            MediaProtocol protocol,
+            ExecutionMode executionMode) {
+        return new ModelDefinitionInput(
+                "Media Model",
+                "https://media.example.com/api/v1",
+                "sk-media",
+                "media-model",
+                null,
+                null,
+                null,
+                null,
+                true,
+                false,
+                capability,
+                protocol,
+                executionMode,
+                1L,
+                true);
+    }
+
     private ModelDefinitionInput input(String apiKey, boolean defaultModel) {
         return new ModelDefinitionInput(
                 "Mock Text",

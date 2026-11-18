@@ -188,11 +188,14 @@ A generation may carry `shotId`, `storyboardFileId` and `storyboardVersion`. Com
 
 Registered media protocols:
 
-- `STUB`: real PNG images, placeholder video bytes that are **not playable**.
 - `OPENAI_IMAGES`: GPT Image generation and reference-image editing via `openai-java`.
+- `ARK_IMAGES`: Seedream image generation and reference images via `ark-runtime`.
 - `ARK_VIDEO_TASKS`: Seedance submit/query/video download via `ark-runtime`.
+- `DASHSCOPE_IMAGE_MESSAGES`: Wanxiang multimodal image generation, synchronous result.
+- `DASHSCOPE_T2I`: Wanxiang text-to-image async task submit/query.
+- `DASHSCOPE_VIDEO`: Wanxiang video async task submit/query with first-frame/reference media.
 
-The OpenAI Images and Ark Seedance adapters are implemented but have **not been verified against a live gateway**. Ark images, DashScope/Wanxiang, ffprobe/cover/transcoding and the frontend generation UI are still pending. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
+The GPT Image, Seedream, Seedance and Wanxiang adapters are implemented but have **not been verified against a live gateway**. `GATEWAY_CUSTOM` has no adapter yet, and ffprobe/cover/transcoding are still pending. `STUB` remains only as a test double and is not a selectable or registered model route. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
 
 ## Deployment
 

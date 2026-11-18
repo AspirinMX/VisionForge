@@ -1,6 +1,6 @@
 # 图片、视频生成与媒体资产方案
 
-调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；生成任务、额度预占、Temporal 工作流、媒体工具、归档发布和离线 `STUB` 协议已实现。本次范围的分镜校验、shotId 关联、`await_generation`、成片合成（FFmpeg S3→S3）以及 OpenAI Images / Ark Seedance 适配器已实现；真实网关联调、FFmpeg 真实运行和媒体处理（ffprobe/封面/转码）尚未验证。
+调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；生成任务、额度预占、Temporal 工作流、媒体工具、归档发布均已实现。分镜校验、shotId 关联、`await_generation`、成片合成（FFmpeg S3→S3）以及 OpenAI Images、Ark Images、Ark Seedance、万相图片与视频适配器已实现；真实网关联调、FFmpeg 真实运行和媒体处理（ffprobe/封面/转码）尚未验证。
 
 依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、会话工作区存储服务和 V1–V14 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
@@ -256,6 +256,7 @@ Seedance 与万相异步图片/视频更接近：都是“提交 → 保存任�
 - 视频：`VideoSynthesisParam` + `VideoSynthesis.call(param)` 阻塞到出片，`asyncCall(param)` 提交任务，`fetch(taskId, apiKey)` 查询结果（部分版本提供 `wait` 阻塞等待）。`VideoSynthesisParam.Media` 对应 `first_frame`、`last_frame`、`reference_image` 等类型。
 - 版本下限：wan2.7 图片要求 DashScope Java SDK ≥ 2.22.13；wan3.0 视频要求 ≥ 2.22.31。统一锁定 2.23.2 及以上。
 - `Constants.baseHttpApiUrl` 是全局静态配置；多地域部署时必须把 SDK 调用隔离在独立配置中，不能靠一个全局变量切换。
+- 当前实现改用官方文档中的 HTTP JSON 契约（`DashScopeHttpClient`），因为模型配置需要在同一进程内按模型使用不同 base URL，而 SDK 的全局静态地址无法安全支持这一点。请求体、状态枚举和结果字段仍以官方文档为准，后续若 SDK 提供实例级地址配置可再切换。
 
 #### 选型规则
 
@@ -683,7 +684,7 @@ vf-media-process    解码、缩略图、转码
 
 产品范围以 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 为准。下面 A–G 是第一阶段“成片创作闭环（单镜头 + 多镜头顺序合成）”的工程拆分；剧本、分镜、首帧图、分镜视频、顺序成片、前端、归档、版本和费用共同构成第一阶段验收，不能仅完成图片接口就标记该阶段完成。主对话与 compact 保留 Responses SSE，媒体协议适配边界已由产品路线采纳。
 
-截至 2026-11-18 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地离线切片（`STUB` 协议）；E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片、OpenAI Images 与 Ark Seedance 适配器已实现。A 的真实网关联调、D 的其余协议（Ark 图片、DashScope/万相）、FFmpeg 真实运行、G 的上线准备和前端入口仍未完成。离线通过不等于网关联调通过。
+截至 2026-11-19 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地；E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片已实现。媒体协议适配器已覆盖 OpenAI Images、Ark Images、Ark Seedance、万相 Messages 图片、万相 T2I 和万相视频；`STUB` 仅保留为测试替身，不再注册为模型路由。A 的真实网关联调、`GATEWAY_CUSTOM`、ffprobe/封面/转码、FFmpeg 真实运行、G 的上线准备仍未完成。离线契约测试通过不等于网关联调通过。
 
 | 阶段 | 交付 | 验收重点 |
 | --- | --- | --- |
@@ -701,11 +702,15 @@ SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream�
 
 | 能力 | 适配实现 | 离线契约验证 | 真实网关联调 |
 | --- | --- | --- | --- |
-| 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
-| 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
+| 离线 `STUB` 图片 | 测试替身（未注册） | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
+| 离线 `STUB` 视频 | 测试替身（未注册） | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
 | OpenAI Images（生成/编辑） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark Images（Seedream 生成/参考图） | 已实现 | 请求映射单测通过 | 未联调 |
 | Ark Seedance 视频（提交/查询/下载） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
-| Ark 图片 / DashScope 万相 | 未实现 | 未验证 | 未联调 |
+| 万相 Messages 图片 | 已实现 | 本地 HTTP 契约测试通过 | 未联调 |
+| 万相 T2I（异步任务） | 已实现 | 本地 HTTP 契约测试通过 | 未联调 |
+| 万相视频（异步任务） | 已实现 | 本地 HTTP 契约测试通过 | 未联调 |
+| `GATEWAY_CUSTOM` | 未实现 | 不适用 | 未联调 |
 | `await_generation` 同 run 等待 | 已实现 | Workflow 测试通过 | 不适用 |
 | FFmpeg S3→S3 成片 | 已实现 | 伪 FFmpeg 进程验证 multipart/发布；真实 FFmpeg 未运行 | 不适用 |
 

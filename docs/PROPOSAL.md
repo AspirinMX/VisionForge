@@ -899,15 +899,15 @@ billing 独立于 Agent 的自然语言判断。
 - 推理项：请求统一携带 `include: ["reasoning.encrypted_content"]`；每轮把推理项原文写入 `agent_run_turn.reasoning`，并记录 `context_epoch`。下一轮按 `model_definition.reasoning_replay` 回放：默认只回放带 `encrypted_content` 的推理项，且省略服务端 `id`、始终提交 `summary`；明文推理只留档不回放。`context_epoch` 与当前 epoch 不一致的推理项不再回放。明文推理增量和加密推理的摘要增量分别以 `reasoning`、`reasoning_summary` 事件实时推送给客户端。
 - 媒体生成（第一阶段后端切片）：V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和最小额度账本；模型配置区分 CHAT/IMAGE/VIDEO、协议与执行方式，默认模型按能力类型唯一。生成受理在单个本地事务内完成任务、输入冻结、输出占位、额度预占与 `workflow_start_request`，`MediaGenerationWorkflow` 在独立生命周期内提交、等待、归档并结算；`generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset` 已注册为工具；`POST/GET /api/v1/generation-tasks`、取消和 `retry-archive` 已提供。
 - 多模态输入：用户消息可通过 `assetIds` 附带最多 8 张会话内图片，服务端写入 `message_part`；构建本轮输入时由 asset 服务签发短时 URL，provider 映射为 `input_image` 内容块；历史消息默认只回放文本。
-- 离线媒体桩：`STUB` 协议图片输出真实 PNG，视频输出仅用于验证受理、归档、交付与结算的占位字节，不代表可播放视频，也不代表真实网关已联调。
+- 离线媒体桩：`STUB` 仅作为测试替身保留，图片输出真实 PNG，视频输出用于验证受理、归档、交付与结算的占位字节；它不再注册为模型路由，也不代表可播放视频或真实网关已联调。
 - 分镜执行：`StoryboardValidator` 校验 `schemaVersion`、`shotId`、`order`、`firstFramePrompt`、`videoPrompt`、`usedRange`、候选和选中引用；文件创建/更新及 `validate_storyboard` 工具都会校验。生成任务可携带 `shotId`、`storyboardFileId` 和冻结的 `storyboardVersion`；首帧图完成后写回 `firstFrame`，视频完成后追加 `videoCandidates` 并默认选中第一个候选。
 - 同 run 等待：`await_generation` 工具返回 `WAITING`，`AgentRunWorkflow` 用持久化 Timer 加短状态查询等待终态，再把最终 payload 作为同一工具调用的结果继续模型；`tool_invocation` 支持 `WAITING` 状态。
 - 成片合成：V15 `composition_task`/`composition_input`，`POST/GET /api/v1/composition-tasks`、取消、重试，`compose_video`/`get_composition` 工具，`VideoCompositionWorkflow` 和 `CompositionActivitiesImpl` 已实现。输入按分镜顺序冻结 `selectedVideo`、资产和 `usedRange`；输出通过内部预签名 GET 输入、FFmpeg fragmented MP4 stdout、S3 multipart 流式上传、Complete/Abort 和成片资产发布完成。`ObjectStorage.uploadPart` 已返回真实 ETag。
-- 实际协议适配（部分）：`OPENAI_IMAGES` 使用 `openai-java` 实现文生图与参考图编辑；`ARK_VIDEO_TASKS` 使用 `ark-runtime` 实现 Seedance 提交、查询和视频下载。两者均关闭自动重试；网关真实调用尚未验证。
+- 实际协议适配：`OPENAI_IMAGES` 使用 `openai-java` 实现文生图与参考图编辑；`ARK_IMAGES` 和 `ARK_VIDEO_TASKS` 使用 `ark-runtime` 实现 Seedream 图片、Seedance 视频提交/查询/下载；`DASHSCOPE_IMAGE_MESSAGES`、`DASHSCOPE_T2I` 和 `DASHSCOPE_VIDEO` 按官方 JSON 契约实现万相图片与视频。所有适配器均关闭自动重试；网关真实调用尚未验证。
 
 尚未实现：
 
-- DashScope/万相、Ark 图片等其他协议适配；OpenAI Images 多图编辑的 MIME/文件名兼容性尚未实测。
+- `GATEWAY_CUSTOM` 自定义协议适配；OpenAI Images 多图编辑的 MIME/文件名兼容性尚未实测。
 - 真实网关联调、真实计费样例和 `REMOTE_TASK` 的真实取消语义验证。
 - 真实 FFmpeg 运行验证与目标播放器兼容性；当前成片输出为无音轨视频，声音、字幕、转场属于第二阶段。
 - ffprobe 探测、封面、播放转码、缩略图等媒体处理；当前归档直接发布原文件。
@@ -927,11 +927,13 @@ billing 独立于 Agent 的自然语言判断。
 
 | 能力 | 适配实现 | 离线契约验证 | 真实网关联调 |
 | --- | --- | --- | --- |
-| 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
-| 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
+| 离线 `STUB` 图片 | 测试替身（未注册） | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
+| 离线 `STUB` 视频 | 测试替身（未注册） | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
 | OpenAI Images（生成/编辑） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark Images（Seedream） | 已实现 | 请求映射单测通过 | 未联调 |
 | Ark Seedance 视频（提交/查询/下载） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
-| Ark 图片 / DashScope 万相 | 未实现 | 未验证 | 未联调 |
+| 万相 Messages 图片 / T2I / 视频 | 已实现 | 本地 HTTP 契约测试通过 | 未联调 |
+| `GATEWAY_CUSTOM` | 未实现 | 不适用 | 未联调 |
 | 分镜校验、shotId 关联与候选写回 | 已实现 | 已通过 API 端到端验证首帧/视频写回 | 不适用 |
 | `await_generation` 同 run 等待 | 已实现 | 已通过 Workflow 测试 | 不适用 |
 | FFmpeg S3→S3 成片 | 已实现 | 已用伪 FFmpeg 进程验证 multipart/发布；真实 FFmpeg 未运行 | 不适用 |

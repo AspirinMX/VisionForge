@@ -45,14 +45,12 @@ import {
 const PROTOCOLS_BY_CAPABILITY: Record<ModelCapabilityType, MediaProtocol[]> = {
   CHAT: ["OPENAI_RESPONSES"],
   IMAGE: [
-    "STUB",
     "OPENAI_IMAGES",
     "ARK_IMAGES",
     "DASHSCOPE_IMAGE_MESSAGES",
     "DASHSCOPE_T2I",
-    "GATEWAY_CUSTOM",
   ],
-  VIDEO: ["STUB", "ARK_VIDEO_TASKS", "DASHSCOPE_VIDEO", "GATEWAY_CUSTOM"],
+  VIDEO: ["ARK_VIDEO_TASKS", "DASHSCOPE_VIDEO"],
 };
 
 const REASONING_EFFORTS: ReasoningEffort[] = [
@@ -161,7 +159,8 @@ function ModelFormContent({
       nextCapability === "CHAT"
         ? "INLINE_RESULT"
         : nextProtocol === "ARK_VIDEO_TASKS" ||
-            nextProtocol === "DASHSCOPE_VIDEO"
+            nextProtocol === "DASHSCOPE_VIDEO" ||
+            nextProtocol === "DASHSCOPE_T2I"
           ? "REMOTE_TASK"
           : form.executionMode;
 

@@ -25,10 +25,15 @@ import app.pagefault.visionforge.agent.generation.GenerationInputMapper;
 import app.pagefault.visionforge.agent.generation.GenerationOutputMapper;
 import app.pagefault.visionforge.agent.generation.GenerationTaskMapper;
 import app.pagefault.visionforge.agent.generation.GenerationTaskService;
+import app.pagefault.visionforge.agent.provider.media.ArkClientFactory;
+import app.pagefault.visionforge.agent.provider.media.ArkImagesProvider;
 import app.pagefault.visionforge.agent.provider.media.ArkVideoProvider;
+import app.pagefault.visionforge.agent.provider.media.DashScopeImageMessagesProvider;
+import app.pagefault.visionforge.agent.provider.media.DashScopeT2iProvider;
+import app.pagefault.visionforge.agent.provider.media.DashScopeVideoProvider;
+import app.pagefault.visionforge.agent.provider.media.HttpMediaDownloader;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.provider.media.OpenAiImagesProvider;
-import app.pagefault.visionforge.agent.provider.media.StubMediaProvider;
 import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationActivitiesImpl;
@@ -203,10 +208,16 @@ public class AgentConfiguration {
 
     @Bean
     public MediaProviderRegistry mediaProviderRegistry(ObjectMapper objectMapper) {
+        ArkClientFactory arkClients = new ArkClientFactory();
+        HttpMediaDownloader imageDownloader = new HttpMediaDownloader(64L * 1024 * 1024);
+        HttpMediaDownloader videoDownloader = new HttpMediaDownloader(1024L * 1024 * 1024);
         return new MediaProviderRegistry(List.of(
-                new StubMediaProvider(),
                 new OpenAiImagesProvider(objectMapper),
-                new ArkVideoProvider(objectMapper)));
+                new ArkImagesProvider(objectMapper, arkClients),
+                new ArkVideoProvider(objectMapper, arkClients),
+                new DashScopeImageMessagesProvider(objectMapper, imageDownloader),
+                new DashScopeT2iProvider(objectMapper, imageDownloader),
+                new DashScopeVideoProvider(objectMapper, videoDownloader)));
     }
 
     @Bean

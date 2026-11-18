@@ -86,7 +86,7 @@ public class ModelDefinitionService {
                 ? defaultProtocol(capability)
                 : input.protocol();
         ExecutionMode executionMode = input.executionMode() == null
-                ? ExecutionMode.INLINE_RESULT
+                ? defaultExecutionMode(protocol)
                 : input.executionMode();
         validateRoute(capability, protocol, executionMode);
         long priceUnits = validatePrice(input.priceUnits());
@@ -194,7 +194,7 @@ public class ModelDefinitionService {
             model.setProtocol(defaultProtocol(model.getCapabilityType()));
         }
         if (model.getExecutionMode() == null) {
-            model.setExecutionMode(ExecutionMode.INLINE_RESULT);
+            model.setExecutionMode(defaultExecutionMode(model.getProtocol()));
         }
         validateRoute(
                 model.getCapabilityType(), model.getProtocol(), model.getExecutionMode());
@@ -322,16 +322,30 @@ public class ModelDefinitionService {
                 .set(ModelDefinition::getUpdatedAt, now));
     }
 
+    private ExecutionMode defaultExecutionMode(MediaProtocol protocol) {
+        return switch (protocol) {
+            case ARK_VIDEO_TASKS, DASHSCOPE_T2I, DASHSCOPE_VIDEO -> ExecutionMode.REMOTE_TASK;
+            default -> ExecutionMode.INLINE_RESULT;
+        };
+    }
+
     private MediaProtocol defaultProtocol(ModelCapabilityType capabilityType) {
-        return capabilityType == ModelCapabilityType.CHAT
-                ? MediaProtocol.OPENAI_RESPONSES
-                : MediaProtocol.STUB;
+        return switch (capabilityType) {
+            case CHAT -> MediaProtocol.OPENAI_RESPONSES;
+            case IMAGE -> MediaProtocol.OPENAI_IMAGES;
+            case VIDEO -> MediaProtocol.ARK_VIDEO_TASKS;
+        };
     }
 
     private void validateRoute(
             ModelCapabilityType capabilityType,
             MediaProtocol protocol,
             ExecutionMode executionMode) {
+        if (protocol == MediaProtocol.STUB || protocol == MediaProtocol.GATEWAY_CUSTOM) {
+            throw new BusinessException(
+                    AgentErrorCode.MODEL_CONFIG_INVALID,
+                    "协议 " + protocol + " 尚未开放为模型路由");
+        }
         boolean valid = switch (capabilityType) {
             case CHAT -> protocol == MediaProtocol.OPENAI_RESPONSES
                     && executionMode == ExecutionMode.INLINE_RESULT;
@@ -344,7 +358,14 @@ public class ModelDefinitionService {
                     && protocol != MediaProtocol.DASHSCOPE_IMAGE_MESSAGES
                     && protocol != MediaProtocol.DASHSCOPE_T2I;
         };
-        if (!valid) {
+        boolean executionValid = switch (protocol) {
+            case OPENAI_IMAGES, ARK_IMAGES, DASHSCOPE_IMAGE_MESSAGES ->
+                    executionMode == ExecutionMode.INLINE_RESULT;
+            case ARK_VIDEO_TASKS, DASHSCOPE_T2I, DASHSCOPE_VIDEO ->
+                    executionMode == ExecutionMode.REMOTE_TASK;
+            default -> true;
+        };
+        if (!valid || !executionValid) {
             throw new BusinessException(
                     AgentErrorCode.MODEL_CONFIG_INVALID, "模型能力、协议与执行方式不匹配");
         }

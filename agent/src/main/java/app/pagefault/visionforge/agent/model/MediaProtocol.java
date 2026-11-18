@@ -1,8 +1,9 @@
 package app.pagefault.visionforge.agent.model;
 
 /**
- * Wire protocol supported by a model route. The first stage ships the offline {@link #STUB}
- * provider only; real gateway adapters are added once the gateway contract is verified.
+ * Wire protocol supported by a model route. Every media protocol except {@link #GATEWAY_CUSTOM}
+ * and {@link #STUB} has a registered adapter; {@link #STUB} is a test double that is neither
+ * registered nor accepted for new model routes.
  */
 public enum MediaProtocol {
     OPENAI_RESPONSES,

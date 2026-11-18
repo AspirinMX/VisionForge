@@ -188,11 +188,14 @@ POST /api/v1/composition-tasks/{taskId}/retry
 
 媒体协议当前注册：
 
-- `STUB`：图片为真实 PNG，视频为占位字节，**不可播放**。
 - `OPENAI_IMAGES`：GPT Image 文生图和参考图编辑，使用现有 `openai-java`。
+- `ARK_IMAGES`：Seedream 图片生成和参考图，使用 `ark-runtime`。
 - `ARK_VIDEO_TASKS`：Seedance 提交、查询和视频下载，使用 `ark-runtime`。
+- `DASHSCOPE_IMAGE_MESSAGES`：万相多模态图片生成，同步返回结果。
+- `DASHSCOPE_T2I`：万相文生图异步任务提交与查询。
+- `DASHSCOPE_VIDEO`：万相视频异步任务提交与查询，支持首帧和参考素材。
 
-OpenAI Images 和 Ark Seedance 适配器已实现，但**尚未进行真实网关联调**；Ark 图片、DashScope/万相、ffprobe/封面/转码和前端生成入口仍未实现。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
+GPT Image、Seedream、Seedance 和万相适配器均已实现，但**尚未进行真实网关联调**；`GATEWAY_CUSTOM` 尚无适配器，ffprobe/封面/转码仍未实现。`STUB` 仅保留为测试替身，不再作为可选或已注册的模型路由。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
 
 ## 部署
 

@@ -319,7 +319,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 ### 5.6 `/admin/models` 与 `/admin/users`（系统运维后台，仅 `ADMIN`）
 
 - **`/admin/models` 模型与协议配置台**：
-  - 布局：继承共享 `AppShell`，顶部能力分组 Tabs（`全部` / `CHAT` / `IMAGE` / `VIDEO`）+ 右侧「+ 新增模型」按钮；主体 `Table` 展示显示名、Model ID、能力类型、协议（`OPENAI_RESPONSES` / `OPENAI_IMAGES` / `ARK_VIDEO_TASKS` / `STUB` 等）、执行模式（`INLINE_RESULT` / `REMOTE_TASK`）、`priceUnits`、图片输入支持、API Key 已配置状态、启用开关与默认标记。
+  - 布局：继承共享 `AppShell`，顶部能力分组 Tabs（`全部` / `CHAT` / `IMAGE` / `VIDEO`）+ 右侧「+ 新增模型」按钮；主体 `Table` 展示显示名、Model ID、能力类型、协议（`OPENAI_RESPONSES` / `OPENAI_IMAGES` / `ARK_IMAGES` / `ARK_VIDEO_TASKS` / `DASHSCOPE_*` 等）、执行模式（`INLINE_RESULT` / `REMOTE_TASK`）、`priceUnits`、图片输入支持、API Key 已配置状态、启用开关与默认标记。
   - 编辑/创建使用右侧 `Sheet` 表单，严格同步 `ModelDefinitionService` 校验规则（`CHAT` 强制 token 上限与 `OPENAI_RESPONSES + INLINE_RESULT`、`IMAGE`/`VIDEO` 过滤对应允许协议、`defaultModel` 不允许与 `enabled=false` 共存、编辑留空 `apiKey` 保留原密钥）。
 - **`/admin/users` 用户与角色管理台**：
   - 布局：继承共享 `AppShell`，标准分页表格（`GET /api/v1/admin/users?page=1&size=20`）+ 页码控制器 + 行内角色变更下拉触发 `AlertDialog` 二次确认后调用 `PUT /api/v1/admin/users/{id}/role`。
@@ -334,4 +334,4 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 | **Phase 1：鉴权与壳层** | `/` 自动分流、居中单卡 `/login` 与 `/register`、`not-found.tsx`、共享 `AppShell`（Gemini/ChatGPT 风格侧栏 + `/conversations` 起始页）、`/account`、`/admin/models`、`/admin/users` | 登录/注册全字段校验映射、Token 自动刷新、ADMIN/USER 权限路由隔离 |
 | **Phase 2：Gemini 式对话与文件工作区** | `/conversations/[conversationId]` 居中对话主列、`fetch` SSE 流式解析（`reasoning` / `reasoning_summary` / `delta` / `done` / `error`）、非流式降级与刷新后 `AgentRun` 轮询恢复、最多 8 图多模态附件直传、Canvas 抽屉展开与「剧本与文件」读写/乐观锁冲突处理 | SSE 流式与断线恢复正常；`409` 文件版本冲突正确提示对比；RustFS 直传跑通 |
 | **Phase 3：分镜 Canvas、快捷生成、任务中心与成片** | Canvas「分镜与成片」（可视化镜头卡片 + JSON 源码切换 + 双提示词编辑 + 单镜生图/视频快捷入口 + 多视频候选并排对比选片与 `usedRange` 调节 + 成片合成提交/取消/重试/播放追溯）、「素材与快捷生成」、「任务中心」（Canvas 内 + 全局 `/tasks`） | 完整跑通上传参考图、对话/快捷生成、候选对比选片、顺序成片播放下载、`ARCHIVE_FAILED` 重试归档与 `UNKNOWN` 防重提 |
-| **Phase 4：视觉验收与文档同步** | 骨架屏/空态/错误态细节打磨；桌面端（1440px / 1280px）与移动端（390px）实机检查与问题修复；全量 `lint` / `build` 校验 | `pnpm --dir frontend lint` 与 `pnpm --dir frontend build` 全绿；前后端联调边界清晰标注（不把占位或离线 `STUB` 冒充真实网关联调） |
+| **Phase 4：视觉验收与文档同步** | 骨架屏/空态/错误态细节打磨；桌面端（1440px / 1280px）与移动端（390px）实机检查与问题修复；全量 `lint` / `build` 校验 | `pnpm --dir frontend lint` 与 `pnpm --dir frontend build` 全绿；前后端联调边界清晰标注（不把占位或离线契约测试冒充真实网关联调） |

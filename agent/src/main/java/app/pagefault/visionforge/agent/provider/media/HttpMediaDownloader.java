@@ -16,7 +16,7 @@ import app.pagefault.visionforge.common.error.BusinessException;
  * Bounded downloader for provider result URLs. Only HTTPS is accepted, redirects are not followed
  * and the response size is capped before decoding.
  */
-public class HttpMediaDownloader {
+public class HttpMediaDownloader implements MediaResultDownloader {
 
     private final long maxBytes;
     private final HttpClient client;

@@ -1,10 +1,7 @@
 package app.pagefault.visionforge.agent.provider.media;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.volcengine.ark.runtime.models.content_generation.ContentGenerationTask;
 import com.volcengine.ark.runtime.models.content_generation.ContentItem;
@@ -32,12 +29,11 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class ArkVideoProvider implements RemoteMediaProvider {
 
-    private static final int MAX_CACHED_CLIENTS = 16;
     private static final long MAX_RESULT_BYTES = 1024L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
+    private final ArkClientFactory clients;
     private final HttpMediaDownloader downloader = new HttpMediaDownloader(MAX_RESULT_BYTES);
-    private final Map<String, ArkService> clients = new ConcurrentHashMap<>();
 
     @Override
     public MediaProtocol protocol() {
@@ -159,22 +155,7 @@ public class ArkVideoProvider implements RemoteMediaProvider {
     }
 
     private ArkService client(MediaProviderRequest request) {
-        String key = request.baseUrl() + '|' + request.apiKey();
-        ArkService cached = clients.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        ArkService created = ArkService.builder()
-                .baseUrl(request.baseUrl())
-                .apiKey(request.apiKey())
-                .retryTimes(0)
-                .timeout(Duration.ofMinutes(15))
-                .build();
-        if (clients.size() >= MAX_CACHED_CLIENTS) {
-            clients.clear();
-        }
-        ArkService existing = clients.putIfAbsent(key, created);
-        return existing == null ? created : existing;
+        return clients.get(request);
     }
 
     private MediaProviderReceipt receipt(
