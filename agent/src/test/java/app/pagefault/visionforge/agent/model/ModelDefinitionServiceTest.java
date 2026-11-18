@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -44,6 +45,15 @@ class ModelDefinitionServiceTest {
         IdGenerator idGenerator = () -> new UUID(0, sequence.incrementAndGet());
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new ModelDefinitionService(mapper, cipher, idGenerator, clock);
+    }
+
+    @Test
+    void listEnabledReturnsTheMapperRowsForTheRequestedCapability() {
+        ModelDefinition model = existingModel();
+        when(mapper.selectList(any())).thenReturn(List.of(model));
+
+        assertThat(service.listEnabled(ModelCapabilityType.IMAGE)).containsExactly(model);
+        verify(mapper).selectList(any());
     }
 
     @Test

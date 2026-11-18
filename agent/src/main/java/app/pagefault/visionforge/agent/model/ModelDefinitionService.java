@@ -40,6 +40,20 @@ public class ModelDefinitionService {
                         .orderByAsc(ModelDefinition::getCreatedAt));
     }
 
+    /**
+     * Enabled models only, for the end-user catalog. Disabled routes never appear here.
+     */
+    public List<ModelDefinition> listEnabled(ModelCapabilityType capabilityType) {
+        return modelDefinitionMapper.selectList(
+                Wrappers.<ModelDefinition>lambdaQuery()
+                        .eq(ModelDefinition::isEnabled, true)
+                        .eq(capabilityType != null,
+                                ModelDefinition::getCapabilityType, capabilityType)
+                        .orderByAsc(ModelDefinition::getCapabilityType)
+                        .orderByDesc(ModelDefinition::isDefaultModel)
+                        .orderByAsc(ModelDefinition::getCreatedAt));
+    }
+
     public ModelDefinition get(UUID id) {
         ModelDefinition model = id == null ? null : modelDefinitionMapper.selectById(id);
         if (model == null) {
