@@ -2,8 +2,11 @@ package app.pagefault.visionforge.agent.conversation;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +89,47 @@ public class ConversationService {
                 Wrappers.<Message>lambdaQuery()
                         .eq(Message::getConversationId, conversationId)
                         .orderByAsc(Message::getSequenceNo));
+    }
+
+    /**
+     * Messages plus their attachment parts, loaded with one extra query for the whole conversation.
+     */
+    public List<MessageWithParts> messagesWithParts(UUID userId, UUID conversationId) {
+        List<Message> messages = messages(userId, conversationId);
+        if (messages.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> messageIds = messages.stream().map(Message::getId).toList();
+        Map<UUID, List<MessagePart>> partsByMessage = messagePartMapper.selectList(
+                        Wrappers.<MessagePart>lambdaQuery()
+                                .in(MessagePart::getMessageId, messageIds)
+                                .orderByAsc(MessagePart::getMessageId)
+                                .orderByAsc(MessagePart::getOrdinal))
+                .stream()
+                .collect(Collectors.groupingBy(
+                        MessagePart::getMessageId,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        return messages.stream()
+                .map(message -> {
+                    List<MessagePart> parts =
+                            partsByMessage.getOrDefault(message.getId(), List.of());
+                    return new MessageWithParts(
+                            message,
+                            parts.stream()
+                                    .filter(part -> part.getPartType()
+                                            == MessagePartType.ASSET_REFERENCE)
+                                    .map(MessagePart::getAssetId)
+                                    .filter(java.util.Objects::nonNull)
+                                    .toList(),
+                            parts.stream()
+                                    .filter(part -> part.getPartType()
+                                            == MessagePartType.GENERATION_TASK)
+                                    .map(MessagePart::getGenerationTaskId)
+                                    .filter(java.util.Objects::nonNull)
+                                    .toList());
+                })
+                .toList();
     }
 
     public AgentTurnResult startTurn(UUID userId, UUID conversationId, String content) {

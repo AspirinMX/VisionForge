@@ -1,11 +1,13 @@
 package app.pagefault.visionforge.api.agent.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.conversation.Message;
 import app.pagefault.visionforge.agent.conversation.MessageRole;
 import app.pagefault.visionforge.agent.conversation.MessageStatus;
+import app.pagefault.visionforge.agent.conversation.MessageWithParts;
 
 public record MessageResponse(
         UUID id,
@@ -14,9 +16,20 @@ public record MessageResponse(
         long sequenceNo,
         MessageStatus status,
         UUID senderUserId,
-        Instant createdAt) {
+        Instant createdAt,
+        List<UUID> assetIds,
+        List<UUID> generationTaskIds) {
 
     public static MessageResponse from(Message message) {
+        return from(message, List.of(), List.of());
+    }
+
+    public static MessageResponse from(MessageWithParts view) {
+        return from(view.message(), view.assetIds(), view.generationTaskIds());
+    }
+
+    private static MessageResponse from(
+            Message message, List<UUID> assetIds, List<UUID> generationTaskIds) {
         return new MessageResponse(
                 message.getId(),
                 message.getRole(),
@@ -24,6 +37,8 @@ public record MessageResponse(
                 message.getSequenceNo(),
                 message.getStatus(),
                 message.getSenderUserId(),
-                message.getCreatedAt());
+                message.getCreatedAt(),
+                assetIds,
+                generationTaskIds);
     }
 }

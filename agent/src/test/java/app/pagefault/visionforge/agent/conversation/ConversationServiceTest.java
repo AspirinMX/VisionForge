@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,6 +37,7 @@ class ConversationServiceTest {
 
     private ConversationMapper conversationMapper;
     private MessageMapper messageMapper;
+    private MessagePartMapper messagePartMapper;
     private AgentRunMapper agentRunMapper;
     private ConversationService service;
 
@@ -43,7 +45,7 @@ class ConversationServiceTest {
     void setUp() {
         conversationMapper = mock(ConversationMapper.class);
         messageMapper = mock(MessageMapper.class);
-        MessagePartMapper messagePartMapper = mock(MessagePartMapper.class);
+        messagePartMapper = mock(MessagePartMapper.class);
         agentRunMapper = mock(AgentRunMapper.class);
         WorkflowStartRequestMapper startRequestMapper = mock(WorkflowStartRequestMapper.class);
         ModelDefinitionService modelDefinitionService = mock(ModelDefinitionService.class);
@@ -95,6 +97,54 @@ class ConversationServiceTest {
         ArgumentCaptor<AgentRun> runCaptor = ArgumentCaptor.forClass(AgentRun.class);
         verify(agentRunMapper).insert(runCaptor.capture());
         assertThat(runCaptor.getValue().getUserId()).isEqualTo(USER_ID);
+    }
+
+    @Test
+    void messagesWithPartsGroupsAttachmentsByMessageInOneQuery() {
+        UUID messageId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
+        when(messageMapper.selectList(any())).thenReturn(List.of(message(messageId)));
+        MessagePart assetPart = new MessagePart();
+        assetPart.setMessageId(messageId);
+        assetPart.setPartType(MessagePartType.ASSET_REFERENCE);
+        assetPart.setOrdinal(0);
+        assetPart.setAssetId(assetId);
+        MessagePart taskPart = new MessagePart();
+        taskPart.setMessageId(messageId);
+        taskPart.setPartType(MessagePartType.GENERATION_TASK);
+        taskPart.setOrdinal(1);
+        taskPart.setGenerationTaskId(taskId);
+        when(messagePartMapper.selectList(any())).thenReturn(List.of(assetPart, taskPart));
+
+        List<MessageWithParts> result = service.messagesWithParts(USER_ID, CONVERSATION_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).assetIds()).containsExactly(assetId);
+        assertThat(result.get(0).generationTaskIds()).containsExactly(taskId);
+        verify(messagePartMapper).selectList(any());
+    }
+
+    @Test
+    void messagesWithPartsSkipsThePartQueryForAnEmptyConversation() {
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
+        when(messageMapper.selectList(any())).thenReturn(List.of());
+
+        assertThat(service.messagesWithParts(USER_ID, CONVERSATION_ID)).isEmpty();
+        verify(messagePartMapper, never()).selectList(any());
+    }
+
+    private Message message(UUID messageId) {
+        Message message = new Message();
+        message.setId(messageId);
+        message.setConversationId(CONVERSATION_ID);
+        message.setRole(MessageRole.USER);
+        message.setContent("hello");
+        message.setSequenceNo(1);
+        message.setStatus(MessageStatus.COMPLETED);
+        message.setCreatedAt(NOW);
+        return message;
     }
 
     private Conversation conversation() {

@@ -15,7 +15,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +90,27 @@ class AssetServiceTest {
                 properties,
                 idGenerator,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    @Test
+    void listsConversationAssetsAfterTheOwnershipCheck() {
+        Asset asset = new Asset();
+        asset.setId(ASSET_ID);
+        asset.setConversationId(CONVERSATION_ID);
+        when(assetMapper.selectList(any())).thenReturn(List.of(asset));
+
+        List<Asset> result = service.list(
+                USER_ID, CONVERSATION_ID, AssetKind.IMAGE, AssetSource.UPLOAD, 500);
+
+        assertThat(result).containsExactly(asset);
+        verify(conversationChecker).requireOwned(USER_ID, CONVERSATION_ID);
+    }
+
+    @Test
+    void filterOwnedSkipsTheQueryForAnEmptyCandidateList() {
+        assertThat(service.filterOwned(USER_ID, CONVERSATION_ID, List.of())).isEmpty();
+        assertThat(service.filterOwned(USER_ID, CONVERSATION_ID, null)).isEqualTo(Set.of());
+        verify(assetMapper, never()).selectList(any());
     }
 
     @Test

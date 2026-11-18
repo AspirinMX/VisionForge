@@ -72,7 +72,7 @@ public class ConversationController {
             @PathVariable UUID conversationId,
             @AuthenticationPrincipal Jwt jwt) {
         List<MessageResponse> messages = conversationService
-                .messages(AuthenticatedUser.id(jwt), conversationId)
+                .messagesWithParts(AuthenticatedUser.id(jwt), conversationId)
                 .stream()
                 .map(MessageResponse::from)
                 .toList();

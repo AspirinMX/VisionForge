@@ -5,12 +5,14 @@ import java.util.UUID;
 
 import app.pagefault.visionforge.asset.media.Asset;
 import app.pagefault.visionforge.asset.media.AssetKind;
+import app.pagefault.visionforge.asset.media.AssetSource;
 import app.pagefault.visionforge.asset.media.AssetStatus;
 
 public record AssetResponse(
         UUID id,
         UUID conversationId,
         AssetKind kind,
+        AssetSource source,
         String mimeType,
         long sizeBytes,
         String checksum,
@@ -25,6 +27,7 @@ public record AssetResponse(
                 asset.getId(),
                 asset.getConversationId(),
                 asset.getKind(),
+                asset.getSource(),
                 asset.getMimeType(),
                 asset.getSizeBytes(),
                 asset.getChecksum(),

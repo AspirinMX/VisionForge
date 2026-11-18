@@ -3,10 +3,16 @@ package app.pagefault.visionforge.asset.media;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
 import app.pagefault.visionforge.asset.error.AssetErrorCode;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
@@ -177,6 +183,54 @@ public class AssetService {
             throw new BusinessException(AssetErrorCode.ASSET_NOT_FOUND);
         }
         return asset;
+    }
+
+    /**
+     * Newest-first assets of one conversation. Deleted rows are never listed, and the limit is
+     * capped so a single request cannot scan a large work area.
+     */
+    public List<Asset> list(
+            UUID userId,
+            UUID conversationId,
+            AssetKind kind,
+            AssetSource source,
+            int limit) {
+        requireConversation(userId, conversationId);
+        return assetMapper.selectList(
+                Wrappers.<Asset>lambdaQuery()
+                        .eq(Asset::getUserId, userId)
+                        .eq(Asset::getConversationId, conversationId)
+                        .eq(kind != null, Asset::getKind, kind)
+                        .eq(source != null, Asset::getSource, source)
+                        .ne(Asset::getStatus, AssetStatus.DELETED)
+                        .orderByDesc(Asset::getCreatedAt)
+                        .orderByDesc(Asset::getId)
+                        .last("LIMIT " + safeLimit(limit)));
+    }
+
+    /**
+     * Returns the subset of {@code assetIds} that belong to the user and conversation. Used to
+     * validate asset ids recovered from generation and composition outputs.
+     */
+    public Set<UUID> filterOwned(
+            UUID userId, UUID conversationId, Collection<UUID> assetIds) {
+        List<UUID> ids = assetIds == null
+                ? List.of()
+                : assetIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return Set.of();
+        }
+        return assetMapper.selectList(
+                        Wrappers.<Asset>lambdaQuery()
+                                .eq(Asset::getUserId, userId)
+                                .eq(Asset::getConversationId, conversationId)
+                                .in(Asset::getId, ids))
+                .stream()
+                .map(Asset::getId)
+                .collect(Collectors.toSet());
     }
 
     /**
@@ -445,5 +499,12 @@ public class AssetService {
     private SystemException storageFailure(ObjectStorageException exception) {
         return new SystemException(
                 AssetErrorCode.STORAGE_OPERATION_FAILED, exception.getMessage(), exception);
+    }
+
+    private int safeLimit(int limit) {
+        if (limit <= 0) {
+            return 50;
+        }
+        return Math.min(limit, 200);
     }
 }
