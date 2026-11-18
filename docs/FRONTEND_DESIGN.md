@@ -36,7 +36,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 | 样式与组件 | Tailwind CSS `4.3.3` + **强制 `shadcn`（固定 `--preset b27GcrRo`，仅通过 `pnpm dlx` 获取）** |
 | 组件禁令（`frontend/AGENTS.md`） | 禁止引入任何其他 UI 组件库（含 Animate UI）；禁止自建通用基础组件库；凡 `shadcn` 能表达的交互必须使用对应组件及组合；Tailwind 仅用于布局、间距、响应式和组件适配 |
 | Next.js 16 兼容 | 启用 `cacheComponents: true` 后，动态数据读取与鉴权态必须放在 `<Suspense>` 边界或客户端鉴权层内，避免顶层 `layout.tsx` 读取请求态阻塞静态壳预渲染 |
-| 接口代理与流式 | 通过 `frontend/next.config.ts` 的 `rewrites()` 将 `/api/v1/:path*` 转发至后端（默认 `http://127.0.0.1:8080/api/v1/:path*`），同源消除浏览器 CORS 问题同时保持 `POST /messages/stream` 的原生流式透传；S3 预签名 PUT/GET 直连对象存储 |
+| 接口代理与流式 | 通过运行时路由处理器 `frontend/src/app/api/v1/[...path]/route.ts` 按 `VISIONFORGE_API_BASE_URL`（默认 `http://127.0.0.1:8080`）同源代理 `/api/v1/*`，消除浏览器 CORS 并支持 `POST /messages/stream` 流式透传（适配 standalone 镜像迁移）；S3 预签名 PUT/GET 直连对象存储 |
 | 令牌与流式协议 | Access Token 存于内存（辅以受控会话持久化策略），遇到 `401` 自动串行调用 `POST /api/v1/auth/refresh` 轮换刷新并重放请求；SSE 必须使用 `fetch` + `ReadableStream` 携带 `Authorization: Bearer` 读取，禁用 `EventSource` |
 | 统一错误与校验 | 解包 `ApiResponse<T>`（`code` / `message` / `data` / `traceId` / `timestamp`）；`400 COMMON_INVALID_ARGUMENT` 将 `data` 中的 `{ field: message }` 映射回各表单字段一次性展示；系统错误展示可读提示并附可复制 `traceId` |
 
@@ -338,7 +338,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 | 阶段 | 主要交付 | 验收要点 |
 | --- | --- | --- |
-| **Phase 0：底座初始化** | 通过 `pnpm dlx shadcn@latest init --preset b27GcrRo` 初始化样式与基础组件；配置 `next.config.ts` `/api/v1/*` 代理；实现 `ApiResponse` 解包客户端、Token 内存态与并发 401 refresh 队列、全字段校验映射、统一 Toast/Alert 报错（含 `traceId`） | `shadcn` preset 完整无手工仿写；`pnpm --dir frontend lint/build` 通过；`cacheComponents: true` 构建无错误 |
+| **Phase 0：底座初始化** | 通过 `pnpm dlx shadcn@latest init --preset b27GcrRo` 初始化样式与基础组件；配置 `/api/v1/*` 同源代理与 `standalone` 输出；实现 `ApiResponse` 解包客户端、Token 内存态与并发 401 refresh 队列、全字段校验映射、统一 Toast/Alert 报错（含 `traceId`） | `shadcn` preset 完整无手工仿写；`pnpm --dir frontend lint/build` 通过；`cacheComponents: true` 构建无错误 |
 | **Phase 1：鉴权与壳层** | `/` 自动分流、居中单卡 `/login` 与 `/register`、`not-found.tsx`、共享 `AppShell`（Gemini/ChatGPT 风格侧栏 + `/conversations` 起始页）、`/account`、`/admin/models`、`/admin/users` | 登录/注册全字段校验映射、Token 自动刷新、ADMIN/USER 权限路由隔离 |
 | **Phase 2：Gemini 式对话与文件工作区** | `/conversations/[conversationId]` 居中对话主列、`fetch` SSE 流式解析（`reasoning` / `reasoning_summary` / `delta` / `done` / `error`）、非流式降级与刷新后 `AgentRun` 轮询恢复、最多 8 图多模态附件直传、Canvas 抽屉展开与「剧本与文件」读写/乐观锁冲突处理 | SSE 流式与断线恢复正常；`409` 文件版本冲突正确提示对比；RustFS 直传跑通 |
 | **Phase 3：分镜 Canvas、快捷生成、任务中心与成片** | Canvas「分镜与成片」（可视化镜头卡片 + JSON 源码切换 + 双提示词编辑 + 单镜生图/视频快捷入口 + 多视频候选并排对比选片与 `usedRange` 调节 + 成片合成提交/取消/重试/播放追溯）、「素材与快捷生成」、「任务中心」（Canvas 内 + 全局 `/tasks`） | 完整跑通上传参考图、对话/快捷生成、候选对比选片、顺序成片播放下载、`ARCHIVE_FAILED` 重试归档与 `UNKNOWN` 防重提 |

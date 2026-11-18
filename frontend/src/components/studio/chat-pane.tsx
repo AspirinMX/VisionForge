@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type KeyboardEvent,
 } from "react";
 import {
@@ -61,7 +62,11 @@ import { conversationsApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError, type ApiError } from "@/lib/api/errors";
 import { copyToClipboard, notifyError, notifyInfo } from "@/lib/api/feedback";
 import type { AgentStreamEvent, UUID } from "@/lib/api/types";
-import { AGENT_RUN_STATUS_LABEL, formatShortTime } from "@/lib/format";
+import {
+  AGENT_RUN_STATUS_LABEL,
+  formatShortTime,
+  GENERATION_STATUS_LABEL,
+} from "@/lib/format";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
 import { cn } from "@/lib/utils";
@@ -132,6 +137,7 @@ export function ChatPane() {
 
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDraftIds, setPickerDraftIds] = useState<UUID[]>([]);
 
@@ -323,7 +329,10 @@ export function ChatPane() {
 
   const handleSend = () => {
     const trimmed = prompt.trim();
-    if (!trimmed || liveStream || uploading) {
+    if (!trimmed || liveStream || uploading || activeRun) {
+      if (activeRun && trimmed) {
+        notifyInfo("当前仍有对话轮次在后台执行，完成后即可继续发送");
+      }
       return;
     }
     const assetsToSend = [...attachedAssetIds];
@@ -351,10 +360,15 @@ export function ChatPane() {
     }
   };
 
-  const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (!picked.length || !userId) {
+  const uploadImageFiles = async (picked: File[]) => {
+    const imageFiles = picked.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) {
+      if (picked.length > 0) {
+        notifyError("当前输入框仅支持附加图片文件");
+      }
+      return;
+    }
+    if (!userId) {
       return;
     }
 
@@ -364,7 +378,7 @@ export function ChatPane() {
       return;
     }
 
-    const candidates = picked.slice(0, remainingSlots);
+    const candidates = imageFiles.slice(0, remainingSlots);
     setUploading(true);
     setUploadPercent(0);
 
@@ -396,6 +410,37 @@ export function ChatPane() {
     } finally {
       setUploading(false);
       setUploadPercent(0);
+    }
+  };
+
+  const handleUploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!picked.length) {
+      return;
+    }
+    await uploadImageFiles(picked);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer.types.includes("Files")) {
+      event.preventDefault();
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const dropped = Array.from(event.dataTransfer.files ?? []);
+    if (dropped.length > 0) {
+      void uploadImageFiles(dropped);
     }
   };
 
@@ -447,6 +492,10 @@ export function ChatPane() {
   const scriptFile = useMemo(
     () => files.find((file) => file.kind === "SCRIPT") ?? null,
     [files]
+  );
+  const tasksById = useMemo(
+    () => new Map(generationTasks.map((task) => [task.taskId, task])),
+    [generationTasks]
   );
 
   const columnWidthClass = canvasOpen
@@ -566,6 +615,30 @@ export function ChatPane() {
                 </div>
 
                 <MarkdownView content={message.content} />
+
+                {(message.generationTaskIds?.length ?? 0) > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {message.generationTaskIds.map((taskId) => {
+                      const task = tasksById.get(taskId);
+                      return (
+                        <Button
+                          key={taskId}
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => openCanvas("tasks")}
+                        >
+                          <ListChecksIcon />
+                          <span>
+                            {task
+                              ? `${task.type} · ${GENERATION_STATUS_LABEL[task.status]}`
+                              : `生成任务 ${taskId.slice(0, 8)}`}
+                          </span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
                 {isLastAssistant &&
                 (files.length > 0 || generationTasks.length > 0) ? (
@@ -715,7 +788,9 @@ export function ChatPane() {
                   {activeRun.id.slice(0, 8)}
                 </Badge>
               </div>
-              <span className="text-muted-foreground">将自动刷新结果</span>
+              <span className="text-muted-foreground">
+                完成后可发送下一条消息（避免并发冲突）
+              </span>
             </div>
           ) : null}
 
@@ -729,7 +804,16 @@ export function ChatPane() {
 
       {/* Floating Gemini/ChatGPT style multimodal composer */}
       <div className="shrink-0 px-4 pt-1 pb-4">
-        <div className={cn("rounded-3xl border bg-card p-3 shadow-sm", columnWidthClass)}>
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={cn(
+            "rounded-3xl border bg-card p-3 shadow-sm transition-colors",
+            isDragging && "border-primary bg-accent/40",
+            columnWidthClass
+          )}
+        >
           {uploading ? (
             <div className="mb-2.5 space-y-1 px-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -775,7 +859,13 @@ export function ChatPane() {
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="告诉幻影导演下一步想怎么修改剧本、分镜或生成镜头... (Enter 发送，Shift+Enter 换行)"
+            placeholder={
+              activeRun
+                ? "上一轮对话仍在后台执行（可能正在等待生成任务），请稍候..."
+                : isDragging
+                  ? "松开即可附加参考图片到当前输入..."
+                  : "告诉幻影导演下一步想怎么修改剧本、分镜或生成镜头... (支持拖拽图片，Enter 发送)"
+            }
             rows={2}
             className="max-h-44 min-h-12 resize-none border-0 bg-transparent px-1.5 py-1 text-sm shadow-none focus-visible:ring-0"
           />
@@ -866,7 +956,7 @@ export function ChatPane() {
                 <Button
                   type="button"
                   size="icon"
-                  disabled={!prompt.trim() || uploading}
+                  disabled={!prompt.trim() || uploading || Boolean(activeRun)}
                   onClick={handleSend}
                   aria-label="发送消息"
                   className="rounded-full"

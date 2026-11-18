@@ -76,6 +76,7 @@ import type {
   StoryboardCamera,
   StoryboardDocument,
   StoryboardRange,
+  StoryboardReferenceRole,
   StoryboardShot,
   StoryboardShotSize,
   StoryboardVideoSelection,
@@ -87,10 +88,12 @@ import {
   createBlankStoryboard,
   DEFAULT_COMPOSITION_SPEC,
   parseStoryboardJson,
+  REFERENCE_ROLE_LABEL,
   SHOT_SIZE_LABEL,
   SHOT_STATUS_LABEL,
   sortShotsByOrder,
   STORYBOARD_CAMERAS,
+  STORYBOARD_REFERENCE_ROLES,
   STORYBOARD_SHOT_SIZES,
   validateStoryboardDocument,
 } from "@/lib/studio/storyboard";
@@ -122,6 +125,7 @@ export function StoryboardPanel() {
     conversationId,
     userId,
     files,
+    localAssets,
     compositionTasks,
     selectedFileId,
     setSelectedFileId,
@@ -191,6 +195,21 @@ export function StoryboardPanel() {
   const [expandedDetailsByShot, setExpandedDetailsByShot] = useState<
     Record<string, boolean>
   >({});
+  const [pendingRefAssetByShot, setPendingRefAssetByShot] = useState<
+    Record<string, UUID>
+  >({});
+  const [pendingRefRoleByShot, setPendingRefRoleByShot] = useState<
+    Record<string, StoryboardReferenceRole>
+  >({});
+
+  const imageAssets = useMemo(
+    () => localAssets.filter((asset) => asset.kind !== "VIDEO"),
+    [localAssets]
+  );
+  const imageAssetItems = useMemo(
+    () => Object.fromEntries(imageAssets.map((a) => [a.assetId, a.label])),
+    [imageAssets]
+  );
 
   // Composition drawer state
   const [compSheetOpen, setCompSheetOpen] = useState(false);
@@ -1179,7 +1198,7 @@ export function StoryboardPanel() {
                           )}
                         />
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="space-y-2 border-t p-3">
+                      <CollapsibleContent className="space-y-3 border-t p-3">
                         <div className="grid gap-2 sm:grid-cols-3">
                           <div className="space-y-1">
                             <Label className="text-[11px] text-muted-foreground">
@@ -1226,6 +1245,194 @@ export function StoryboardPanel() {
                               }
                             />
                           </div>
+                        </div>
+
+                        <div className="space-y-2 border-t pt-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              镜头引用参考资产 ({shot.references?.length ?? 0})
+                            </span>
+                            {imageAssets.length > 0 && !isLocked ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Select
+                                  value={pendingRefAssetByShot[shot.id] ?? null}
+                                  items={imageAssetItems}
+                                  onValueChange={(val) =>
+                                    setPendingRefAssetByShot((prev) => ({
+                                      ...prev,
+                                      [shot.id]: val ?? "",
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger size="sm" className="h-7 w-40 text-xs">
+                                    <SelectValue placeholder="选择参考素材..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {imageAssets.map((asset) => (
+                                      <SelectItem
+                                        key={asset.assetId}
+                                        value={asset.assetId}
+                                      >
+                                        {asset.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Select
+                                  value={
+                                    pendingRefRoleByShot[shot.id] ?? "CHARACTER"
+                                  }
+                                  items={REFERENCE_ROLE_LABEL}
+                                  onValueChange={(val) => {
+                                    if (val) {
+                                      setPendingRefRoleByShot((prev) => ({
+                                        ...prev,
+                                        [shot.id]: val as StoryboardReferenceRole,
+                                      }));
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger size="sm" className="h-7 w-28 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {STORYBOARD_REFERENCE_ROLES.map((role) => (
+                                      <SelectItem key={role} value={role}>
+                                        {REFERENCE_ROLE_LABEL[role]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="xs"
+                                  disabled={!pendingRefAssetByShot[shot.id]}
+                                  onClick={() => {
+                                    const assetId =
+                                      pendingRefAssetByShot[shot.id];
+                                    if (!assetId) {
+                                      return;
+                                    }
+                                    const role =
+                                      pendingRefRoleByShot[shot.id] ??
+                                      "CHARACTER";
+                                    if (
+                                      (shot.references ?? []).some(
+                                        (r) => r.assetId === assetId
+                                      )
+                                    ) {
+                                      notifyError("该资产已在当前镜头参考中");
+                                      return;
+                                    }
+                                    updateShot(shot.id, (s) => ({
+                                      ...s,
+                                      references: [
+                                        ...(s.references ?? []),
+                                        { assetId, version: 1, role },
+                                      ],
+                                    }));
+                                    setPendingRefAssetByShot((prev) => {
+                                      const next = { ...prev };
+                                      delete next[shot.id];
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  <PlusIcon />
+                                  <span>添加引用</span>
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {(shot.references?.length ?? 0) > 0 ? (
+                            <div className="space-y-1.5">
+                              {(shot.references ?? []).map((ref) => (
+                                <div
+                                  key={`${ref.assetId}-${ref.role}`}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-2 py-1.5 text-xs"
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <AssetMediaPreview
+                                      assetId={ref.assetId}
+                                      kind="IMAGE"
+                                      allowLightbox={false}
+                                      className="size-8 shrink-0 rounded-md"
+                                    />
+                                    <span className="truncate font-mono text-[11px]">
+                                      {imageAssetItems[ref.assetId] ??
+                                        ref.assetId.slice(0, 8)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <Select
+                                      disabled={isLocked}
+                                      value={ref.role}
+                                      items={REFERENCE_ROLE_LABEL}
+                                      onValueChange={(val) => {
+                                        if (!val) {
+                                          return;
+                                        }
+                                        updateShot(shot.id, (s) => ({
+                                          ...s,
+                                          references: (s.references ?? []).map(
+                                            (item) =>
+                                              item.assetId === ref.assetId
+                                                ? {
+                                                    ...item,
+                                                    role: val as StoryboardReferenceRole,
+                                                  }
+                                                : item
+                                          ),
+                                        }));
+                                      }}
+                                    >
+                                      <SelectTrigger
+                                        size="sm"
+                                        className="h-7 w-28 text-xs"
+                                      >
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {STORYBOARD_REFERENCE_ROLES.map(
+                                          (role) => (
+                                            <SelectItem key={role} value={role}>
+                                              {REFERENCE_ROLE_LABEL[role]}
+                                            </SelectItem>
+                                          )
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      disabled={isLocked}
+                                      onClick={() =>
+                                        updateShot(shot.id, (s) => ({
+                                          ...s,
+                                          references: (
+                                            s.references ?? []
+                                          ).filter(
+                                            (item) =>
+                                              item.assetId !== ref.assetId
+                                          ),
+                                        }))
+                                      }
+                                      aria-label="移除参考资产"
+                                    >
+                                      <Trash2Icon />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground">
+                              暂无绑定参考图；可在右侧添加角色/产品/场景一致性参考图，「生成首帧」与「生成视频候选」时会自动带入。
+                            </p>
+                          )}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>

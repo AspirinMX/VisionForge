@@ -13,6 +13,7 @@ import {
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { useConversations } from "@/components/providers/conversations-provider";
+import { useOptionalCredit } from "@/components/providers/credit-provider";
 import { useAsyncData } from "@/hooks/use-async-data";
 import {
   agentRunsApi,
@@ -43,7 +44,7 @@ export type StudioCanvasTab = "storyboard" | "files" | "assets" | "tasks";
 export interface ConversationAssetItem {
   assetId: UUID;
   kind: AssetKind;
-  source: "UPLOAD" | "GENERATED" | "COMPOSED" | "IMPORTED";
+  source: "UPLOAD" | "GENERATED" | "COMPOSED" | "DERIVED" | "IMPORTED";
   label: string;
   mimeType?: string;
   sizeBytes?: number;
@@ -207,6 +208,7 @@ export function StudioProvider({
 }: StudioProviderProps) {
   const { user } = useAuth();
   const { upsertConversation } = useConversations();
+  const creditState = useOptionalCredit();
   const userId = user?.id ?? null;
 
   const [canvasOpen, setCanvasOpen] = useState<boolean>(Boolean(initialTab));
@@ -252,6 +254,8 @@ export function StudioProvider({
     }
   }, [conversation, upsertConversation]);
 
+  const refreshCreditSilent = creditState?.refreshCreditSilent;
+
   const refreshSilent = useCallback(async (): Promise<StudioCoreSnapshot | null> => {
     if (!userId || !conversationId) {
       return null;
@@ -259,12 +263,13 @@ export function StudioProvider({
     try {
       const fresh = await fetchStudioSnapshot(conversationId);
       mutate(() => fresh);
+      void refreshCreditSilent?.();
       return fresh;
     } catch {
       // Keep existing UI state during transient background poll errors.
       return null;
     }
-  }, [conversationId, mutate, userId]);
+  }, [conversationId, mutate, refreshCreditSilent, userId]);
 
   const generationTasks = useMemo(
     () => data?.generationTasks ?? [],
@@ -482,10 +487,16 @@ export function StudioProvider({
       if (byId.has(asset.id)) {
         continue;
       }
+      const mappedSource =
+        asset.source === "UPLOAD"
+          ? "UPLOAD"
+          : asset.source === "DERIVED"
+            ? "DERIVED"
+            : "GENERATED";
       byId.set(asset.id, {
         assetId: asset.id,
         kind: asset.kind,
-        source: asset.source === "UPLOAD" ? "UPLOAD" : "GENERATED",
+        source: mappedSource,
         label: `${asset.kind === "VIDEO" ? "视频" : "图片"}资产 · ${asset.id.slice(0, 8)}`,
         mimeType: asset.mimeType,
         sizeBytes: asset.sizeBytes,

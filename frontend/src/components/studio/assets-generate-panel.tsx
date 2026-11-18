@@ -58,9 +58,8 @@ import type {
   GenerationType,
   UUID,
 } from "@/lib/api/types";
-import { formatBytes, formatShortTime } from "@/lib/format";
+import { formatBytes, formatShortTime, MEDIA_PROTOCOL_LABEL } from "@/lib/format";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
-import { cn } from "@/lib/utils";
 
 const MAX_INPUTS = 8;
 
@@ -156,6 +155,11 @@ function QuickGenerateForm({
   const [vidWatermark, setVidWatermark] = useState(
     Boolean(initialParams.watermark ?? false)
   );
+  const [vidSeed, setVidSeed] = useState(
+    initialParams.seed !== undefined && initialParams.seed !== null
+      ? String(initialParams.seed)
+      : ""
+  );
 
   // Raw JSON override toggle
   const [rawParamsMode, setRawParamsMode] = useState(false);
@@ -225,8 +229,18 @@ function QuickGenerateForm({
     modelItems[modelDefinitionId] = modelDefinitionId;
   }
 
+  const resolvedModel =
+    (modelDefinitionId.trim()
+      ? (availableModels ?? []).find((m) => m.id === modelDefinitionId.trim())
+      : (availableModels ?? []).find((m) => m.defaultModel) ??
+        (availableModels ?? [])[0]) ?? null;
+
   const hasMaskRole =
     genType === "IMAGE" && inputs.some((item) => item.role === "MASK");
+  const maskBlockedByOpenAi =
+    hasMaskRole && resolvedModel?.protocol === "OPENAI_IMAGES";
+  const imageInputUnsupported =
+    Boolean(resolvedModel && !resolvedModel.supportsImageInput && inputs.length > 0);
 
   const handleTypeChange = (nextType: GenerationType) => {
     setGenType(nextType);
@@ -274,6 +288,9 @@ function QuickGenerateForm({
         durationSeconds: Math.min(12, Math.max(2, Number(vidDuration) || 5)),
         generateAudio: vidAudio,
         watermark: vidWatermark,
+        ...(vidSeed.trim() && Number.isInteger(Number(vidSeed.trim()))
+          ? { seed: Number(vidSeed.trim()) }
+          : {}),
       };
     }
 
@@ -411,8 +428,9 @@ function QuickGenerateForm({
           />
         </div>
         <div className="flex items-end text-[11px] text-muted-foreground">
-          提示：留空由服务端按能力类型选择默认启用模型并预占额度；模型价格以服务端
-          priceUnits 为准。
+          {resolvedModel
+            ? `当前路由：${resolvedModel.displayName}（${MEDIA_PROTOCOL_LABEL[resolvedModel.protocol]} · ${resolvedModel.priceUnits} 单位/次）`
+            : "提示：留空由服务端按能力类型选择默认启用模型并预占额度；模型价格以服务端 priceUnits 为准。"}
         </div>
       </div>
 
@@ -488,11 +506,22 @@ function QuickGenerateForm({
           ) : null}
         </div>
 
+        {imageInputUnsupported ? (
+          <Alert variant="destructive">
+            <AlertTitle>所选模型不支持图片输入</AlertTitle>
+            <AlertDescription className="text-xs">
+              「{resolvedModel?.displayName}」未开启图片输入支持，请移除参考资产或更换支持图生图/首帧输入的模型。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {hasMaskRole ? (
-          <Alert>
+          <Alert variant={maskBlockedByOpenAi ? "destructive" : "default"}>
             <AlertTitle>MASK 角色协议提示</AlertTitle>
             <AlertDescription className="text-xs">
-              部分协议（如 OpenAI Images 当前实现）暂不支持 MASK 局部重绘角色；请确认目标模型支持后再提交。
+              {maskBlockedByOpenAi
+                ? "当前选定模型采用 OpenAI Images 协议，服务端暂不支持 MASK 局部重绘角色，请改用 REFERENCE/INIT_IMAGE 或切换协议。"
+                : "部分协议（如 OpenAI Images）暂不支持 MASK 局部重绘角色；请确认目标模型支持后再提交。"}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -703,7 +732,7 @@ function QuickGenerateForm({
                 />
               </div>
             </div>
-            <div className="flex flex-wrap gap-4 pt-1 text-xs">
+            <div className="flex flex-wrap items-center gap-4 pt-1 text-xs">
               <label className="flex cursor-pointer items-center gap-1.5">
                 <Checkbox
                   checked={vidAudio}
@@ -720,6 +749,22 @@ function QuickGenerateForm({
                 />
                 <span>保留水印 (watermark)</span>
               </label>
+              <div className="flex items-center gap-1.5">
+                <Label
+                  htmlFor="vid-seed-input"
+                  className="text-[11px] text-muted-foreground"
+                >
+                  Seed
+                </Label>
+                <Input
+                  id="vid-seed-input"
+                  type="number"
+                  value={vidSeed}
+                  onChange={(e) => setVidSeed(e.target.value)}
+                  placeholder="随机"
+                  className="h-7 w-28 text-xs tabular-nums"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -727,7 +772,12 @@ function QuickGenerateForm({
 
       <Button
         type="button"
-        disabled={submitting || !prompt.trim()}
+        disabled={
+          submitting ||
+          !prompt.trim() ||
+          imageInputUnsupported ||
+          maskBlockedByOpenAi
+        }
         onClick={() => void handleSubmit()}
         className="w-full"
       >
@@ -846,7 +896,7 @@ export function AssetsGeneratePanel() {
           <div>
             <h3 className="text-sm font-semibold">会话素材库</h3>
             <p className="text-[11px] text-muted-foreground">
-              汇总本会话生成产物与 RustFS 上传文件（上传历史由本地账号+会话隔离缓存占位）。
+              汇总当前会话已上传、生成与合成归档的媒体资产。
             </p>
           </div>
           <Button
@@ -926,7 +976,9 @@ export function AssetsGeneratePanel() {
                         ? "上传"
                         : item.source === "COMPOSED"
                           ? "成片"
-                          : "生成"}
+                          : item.source === "DERIVED"
+                            ? "衍生"
+                            : "生成"}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
@@ -982,14 +1034,6 @@ export function AssetsGeneratePanel() {
             ))}
           </div>
         )}
-      </div>
-
-      <div
-        className={cn(
-          "rounded-xl border border-dashed px-3 py-2 text-[11px] text-muted-foreground"
-        )}
-      >
-        说明：受限读取（普通用户模型列表、全量上传资产列表、配额余额）已按当前接口规范显式标注占位边界，所有写入提交仍严格走真实后端校验与租户隔离。
       </div>
     </div>
   );
