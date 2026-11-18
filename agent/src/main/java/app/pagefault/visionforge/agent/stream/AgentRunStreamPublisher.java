@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import app.pagefault.visionforge.agent.runtime.ToolInvocationSummary;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.ObjectMapper;
@@ -25,6 +27,10 @@ public class AgentRunStreamPublisher {
         return CHANNEL_PREFIX + runId;
     }
 
+    public void publishTurnStart(UUID runId, int turnNo) {
+        publish(runId, AgentRunStreamEvent.turnStart(turnNo));
+    }
+
     public void publishDelta(UUID runId, String content) {
         publish(runId, AgentRunStreamEvent.delta(content));
     }
@@ -35,6 +41,18 @@ public class AgentRunStreamPublisher {
 
     public void publishReasoningSummary(UUID runId, String content) {
         publish(runId, AgentRunStreamEvent.reasoningSummary(content));
+    }
+
+    public void publishToolStart(UUID runId, int turnNo, ToolInvocationSummary tool) {
+        publish(runId, AgentRunStreamEvent.toolStart(turnNo, tool));
+    }
+
+    public void publishToolWaiting(UUID runId, int turnNo, ToolInvocationSummary tool) {
+        publish(runId, AgentRunStreamEvent.toolWaiting(turnNo, tool));
+    }
+
+    public void publishToolDone(UUID runId, int turnNo, ToolInvocationSummary tool) {
+        publish(runId, AgentRunStreamEvent.toolDone(turnNo, tool));
     }
 
     public void publishDone(UUID runId, UUID assistantMessageId) {

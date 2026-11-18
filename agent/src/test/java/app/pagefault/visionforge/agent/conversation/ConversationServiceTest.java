@@ -21,8 +21,11 @@ import org.mockito.ArgumentCaptor;
 
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
+import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
+import app.pagefault.visionforge.agent.runtime.AgentTurnProcessView;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.common.error.BusinessException;
@@ -39,6 +42,11 @@ class ConversationServiceTest {
     private MessageMapper messageMapper;
     private MessagePartMapper messagePartMapper;
     private AgentRunMapper agentRunMapper;
+    private WorkflowStartRequestMapper startRequestMapper;
+    private ModelDefinitionService modelDefinitionService;
+    private AssetService assetService;
+    private IdGenerator idGenerator;
+    private Clock clock;
     private ConversationService service;
 
     @BeforeEach
@@ -47,12 +55,12 @@ class ConversationServiceTest {
         messageMapper = mock(MessageMapper.class);
         messagePartMapper = mock(MessagePartMapper.class);
         agentRunMapper = mock(AgentRunMapper.class);
-        WorkflowStartRequestMapper startRequestMapper = mock(WorkflowStartRequestMapper.class);
-        ModelDefinitionService modelDefinitionService = mock(ModelDefinitionService.class);
-        AssetService assetService = mock(AssetService.class);
+        startRequestMapper = mock(WorkflowStartRequestMapper.class);
+        modelDefinitionService = mock(ModelDefinitionService.class);
+        assetService = mock(AssetService.class);
         AtomicLong sequence = new AtomicLong();
-        IdGenerator idGenerator = () -> new UUID(0, sequence.incrementAndGet());
-        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        idGenerator = () -> new UUID(0, sequence.incrementAndGet());
+        clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new ConversationService(
                 conversationMapper,
                 messageMapper,
@@ -133,6 +141,42 @@ class ConversationServiceTest {
 
         assertThat(service.messagesWithParts(USER_ID, CONVERSATION_ID)).isEmpty();
         verify(messagePartMapper, never()).selectList(any());
+    }
+
+    @Test
+    void messagesWithPartsAttachesPersistedProcessForAssistantMessages() {
+        AgentProcessReader processReader = mock(AgentProcessReader.class);
+        ConversationService withProcess = new ConversationService(
+                conversationMapper,
+                messageMapper,
+                messagePartMapper,
+                agentRunMapper,
+                startRequestMapper,
+                modelDefinitionService,
+                assetService,
+                processReader,
+                idGenerator,
+                clock);
+
+        UUID assistantMessageId = UUID.randomUUID();
+        Message assistantMessage = message(assistantMessageId);
+        assistantMessage.setRole(MessageRole.ASSISTANT);
+        AgentRunProcessView expectedProcess = new AgentRunProcessView(
+                UUID.randomUUID(),
+                12_000L,
+                List.of(new AgentTurnProcessView(0, "分析思路", null, List.of())));
+
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
+        when(messageMapper.selectList(any())).thenReturn(List.of(assistantMessage));
+        when(messagePartMapper.selectList(any())).thenReturn(List.of());
+        when(processReader.byAssistantMessageIds(List.of(assistantMessageId)))
+                .thenReturn(java.util.Map.of(assistantMessageId, expectedProcess));
+
+        List<MessageWithParts> result =
+                withProcess.messagesWithParts(USER_ID, CONVERSATION_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).process()).isEqualTo(expectedProcess);
     }
 
     private Message message(UUID messageId) {

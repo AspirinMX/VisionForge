@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.runtime.AgentRun;
+import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
 import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
 
 public record AgentRunResponse(
@@ -14,9 +15,14 @@ public record AgentRunResponse(
         String errorMessage,
         Instant createdAt,
         Instant startedAt,
-        Instant completedAt) {
+        Instant completedAt,
+        AgentRunProcessResponse process) {
 
     public static AgentRunResponse from(AgentRun run) {
+        return from(run, null);
+    }
+
+    public static AgentRunResponse from(AgentRun run, AgentRunProcessView process) {
         return new AgentRunResponse(
                 run.getId(),
                 run.getConversationId(),
@@ -25,6 +31,7 @@ public record AgentRunResponse(
                 run.getErrorMessage(),
                 run.getCreatedAt(),
                 run.getStartedAt(),
-                run.getCompletedAt());
+                run.getCompletedAt(),
+                AgentRunProcessResponse.from(process));
     }
 }

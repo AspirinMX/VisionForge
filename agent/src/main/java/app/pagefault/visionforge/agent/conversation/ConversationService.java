@@ -16,8 +16,10 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
+import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
 import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
@@ -33,7 +35,6 @@ import app.pagefault.visionforge.common.id.IdGenerator;
 
 import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 public class ConversationService {
 
     private static final String DEFAULT_TITLE = "新对话";
@@ -47,8 +48,55 @@ public class ConversationService {
     private final WorkflowStartRequestMapper workflowStartRequestMapper;
     private final ModelDefinitionService modelDefinitionService;
     private final AssetService assetService;
+    private final AgentProcessReader agentProcessReader;
     private final IdGenerator idGenerator;
     private final Clock clock;
+
+    public ConversationService(
+            ConversationMapper conversationMapper,
+            MessageMapper messageMapper,
+            MessagePartMapper messagePartMapper,
+            AgentRunMapper agentRunMapper,
+            WorkflowStartRequestMapper workflowStartRequestMapper,
+            ModelDefinitionService modelDefinitionService,
+            AssetService assetService,
+            IdGenerator idGenerator,
+            Clock clock) {
+        this(
+                conversationMapper,
+                messageMapper,
+                messagePartMapper,
+                agentRunMapper,
+                workflowStartRequestMapper,
+                modelDefinitionService,
+                assetService,
+                null,
+                idGenerator,
+                clock);
+    }
+
+    public ConversationService(
+            ConversationMapper conversationMapper,
+            MessageMapper messageMapper,
+            MessagePartMapper messagePartMapper,
+            AgentRunMapper agentRunMapper,
+            WorkflowStartRequestMapper workflowStartRequestMapper,
+            ModelDefinitionService modelDefinitionService,
+            AssetService assetService,
+            AgentProcessReader agentProcessReader,
+            IdGenerator idGenerator,
+            Clock clock) {
+        this.conversationMapper = conversationMapper;
+        this.messageMapper = messageMapper;
+        this.messagePartMapper = messagePartMapper;
+        this.agentRunMapper = agentRunMapper;
+        this.workflowStartRequestMapper = workflowStartRequestMapper;
+        this.modelDefinitionService = modelDefinitionService;
+        this.assetService = assetService;
+        this.agentProcessReader = agentProcessReader;
+        this.idGenerator = idGenerator;
+        this.clock = clock;
+    }
 
     public Conversation create(UUID userId, String title) {
         Instant now = clock.instant();
@@ -110,6 +158,14 @@ public class ConversationService {
                         MessagePart::getMessageId,
                         LinkedHashMap::new,
                         Collectors.toList()));
+        List<UUID> assistantMessageIds = messages.stream()
+                .filter(message -> message.getRole() == MessageRole.ASSISTANT)
+                .map(Message::getId)
+                .toList();
+        Map<UUID, AgentRunProcessView> processByMessage =
+                agentProcessReader == null || assistantMessageIds.isEmpty()
+                        ? Map.of()
+                        : agentProcessReader.byAssistantMessageIds(assistantMessageIds);
         return messages.stream()
                 .map(message -> {
                     List<MessagePart> parts =
@@ -127,7 +183,8 @@ public class ConversationService {
                                             == MessagePartType.GENERATION_TASK)
                                     .map(MessagePart::getGenerationTaskId)
                                     .filter(java.util.Objects::nonNull)
-                                    .toList());
+                                    .toList(),
+                            processByMessage.get(message.getId()));
                 })
                 .toList();
     }

@@ -50,6 +50,7 @@ import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.persistence.AgentUuidTypeHandler;
 import app.pagefault.visionforge.agent.provider.OpenAiResponsesModelClient;
 import app.pagefault.visionforge.agent.provider.ResponsesModelClient;
+import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
 import app.pagefault.visionforge.agent.runtime.AgentRunMapper;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.AgentRunTurnMapper;
@@ -119,6 +120,16 @@ public class AgentConfiguration {
     }
 
     @Bean
+    public AgentProcessReader agentProcessReader(
+            AgentRunMapper agentRunMapper,
+            AgentRunTurnMapper agentRunTurnMapper,
+            ToolInvocationMapper toolInvocationMapper,
+            ObjectMapper objectMapper) {
+        return new AgentProcessReader(
+                agentRunMapper, agentRunTurnMapper, toolInvocationMapper, objectMapper);
+    }
+
+    @Bean
     public ConversationService conversationService(
             ConversationMapper conversationMapper,
             MessageMapper messageMapper,
@@ -127,6 +138,7 @@ public class AgentConfiguration {
             WorkflowStartRequestMapper workflowStartRequestMapper,
             ModelDefinitionService modelDefinitionService,
             AssetService assetService,
+            AgentProcessReader agentProcessReader,
             IdGenerator idGenerator,
             Clock clock) {
         return new ConversationService(
@@ -137,6 +149,7 @@ public class AgentConfiguration {
                 workflowStartRequestMapper,
                 modelDefinitionService,
                 assetService,
+                agentProcessReader,
                 idGenerator,
                 clock);
     }

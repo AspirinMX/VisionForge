@@ -332,15 +332,43 @@ public class AgentRunService {
         return turn;
     }
 
-    public ModelToolCall findToolCall(UUID runId, String toolCallId) {
+    public ToolCallLookup findToolCallWithTurn(UUID runId, String toolCallId) {
         for (AgentRunTurn turn : listTurns(runId)) {
             for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
                 if (call.callId().equals(toolCallId)) {
-                    return call;
+                    return new ToolCallLookup(turn.getTurnNo(), call);
                 }
             }
         }
         return null;
+    }
+
+    public ModelToolCall findToolCall(UUID runId, String toolCallId) {
+        ToolCallLookup lookup = findToolCallWithTurn(runId, toolCallId);
+        return lookup == null ? null : lookup.call();
+    }
+
+    public ToolInvocationSummary summarizeTool(
+            ModelToolCall call,
+            ToolInvocationStatus status,
+            String resultJson,
+            String errorMessage) {
+        ToolDisplayFormatter.Display display = new ToolDisplayFormatter(objectMapper)
+                .format(call.name(), call.arguments(), resultJson);
+        return new ToolInvocationSummary(
+                call.callId(),
+                call.name(),
+                display.action(),
+                display.target(),
+                status,
+                display.fileId(),
+                display.taskId(),
+                errorMessage,
+                null,
+                null);
+    }
+
+    public record ToolCallLookup(int turnNo, ModelToolCall call) {
     }
 
     public ToolInvocation findInvocation(UUID runId, String toolCallId) {

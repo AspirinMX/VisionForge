@@ -24,6 +24,8 @@ import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
 import app.pagefault.visionforge.agent.tool.AgentToolExecutor;
 import app.pagefault.visionforge.agent.tool.ToolDefinition;
 import app.pagefault.visionforge.agent.tool.ToolExecutionContext;
+import app.pagefault.visionforge.agent.tool.ToolInvocation;
+import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
 import app.pagefault.visionforge.agent.tool.ToolRegistry;
 import app.pagefault.visionforge.agent.tool.ToolResult;
 import app.pagefault.visionforge.common.error.BusinessException;
@@ -67,6 +69,7 @@ public class AgentActivitiesImpl implements AgentActivities {
             ModelProviderSettings settings = modelDefinitionService.settings(model);
             AgentModelInput input = agentRunService.buildInput(runId);
 
+            streamPublisher.publishTurnStart(runId, turnNo);
             ModelResponse response = responsesModelClient.stream(
                     new ModelRequest(
                             settings.baseUrl(),
@@ -119,16 +122,39 @@ public class AgentActivitiesImpl implements AgentActivities {
 
     @Override
     public ToolExecution executeTool(UUID runId, String toolCallId) {
-        ModelToolCall call = agentRunService.findToolCall(runId, toolCallId);
-        if (call == null) {
+        AgentRunService.ToolCallLookup lookup =
+                agentRunService.findToolCallWithTurn(runId, toolCallId);
+        if (lookup == null) {
             throw ApplicationFailure.newNonRetryableFailure(
                     "工具调用记录不存在", AgentErrorCode.TOOL_NOT_FOUND.code());
         }
+        ModelToolCall call = lookup.call();
         ToolExecutionContext context = agentRunService.toolContext(runId, toolCallId);
+        boolean freshExecution = agentRunService.findInvocation(runId, toolCallId) == null;
+        if (freshExecution) {
+            streamPublisher.publishToolStart(
+                    runId,
+                    lookup.turnNo(),
+                    agentRunService.summarizeTool(
+                            call, ToolInvocationStatus.RUNNING, null, null));
+        }
         ToolResult result = toolExecutor.execute(context, call.name(), call.arguments());
         if (result.waiting()) {
+            streamPublisher.publishToolWaiting(
+                    runId,
+                    lookup.turnNo(),
+                    agentRunService.summarizeTool(
+                            call, ToolInvocationStatus.WAITING, result.content(), null));
             return ToolExecution.waiting(UUID.fromString(result.waitTaskId()));
         }
+        ToolInvocationStatus status = result.success()
+                ? ToolInvocationStatus.SUCCEEDED
+                : ToolInvocationStatus.FAILED;
+        streamPublisher.publishToolDone(
+                runId,
+                lookup.turnNo(),
+                agentRunService.summarizeTool(
+                        call, status, result.content(), result.errorMessage()));
         return ToolExecution.completed();
     }
 
@@ -140,7 +166,24 @@ public class AgentActivitiesImpl implements AgentActivities {
     @Override
     public void completeAwait(UUID runId, String toolCallId, UUID taskId) {
         ToolExecutionContext context = agentRunService.toolContext(runId, toolCallId);
-        toolExecutor.completeWaiting(context, generationTaskService.resultJson(taskId));
+        String resultJson = generationTaskService.resultJson(taskId);
+        toolExecutor.completeWaiting(context, resultJson);
+        AgentRunService.ToolCallLookup lookup =
+                agentRunService.findToolCallWithTurn(runId, toolCallId);
+        if (lookup != null) {
+            ToolInvocation updated = agentRunService.findInvocation(runId, toolCallId);
+            ToolInvocationStatus status = updated != null
+                    ? updated.getStatus()
+                    : ToolInvocationStatus.SUCCEEDED;
+            streamPublisher.publishToolDone(
+                    runId,
+                    lookup.turnNo(),
+                    agentRunService.summarizeTool(
+                            lookup.call(),
+                            status,
+                            updated != null ? updated.getResult() : resultJson,
+                            updated != null ? updated.getErrorMessage() : null));
+        }
     }
 
     @Override

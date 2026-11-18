@@ -473,14 +473,18 @@ Redis 丢失不应导致完整消息、任务或额度账目丢失。媒体不�
 
 ```text
 event: accepted          data: {"type":"accepted","runId":"..."}
+event: turn_start        data: {"type":"turn_start","turnNo":0}
 event: reasoning         data: {"type":"reasoning","content":"..."}
 event: reasoning_summary data: {"type":"reasoning_summary","content":"..."}
 event: delta             data: {"type":"delta","content":"..."}
+event: tool_start        data: {"type":"tool_start","turnNo":0,"callId":"...","toolName":"...","action":"...","target":"...","status":"RUNNING"}
+event: tool_waiting      data: {"type":"tool_waiting","turnNo":0,"callId":"...","toolName":"...","action":"...","target":"...","status":"WAITING","taskId":"..."}
+event: tool_done         data: {"type":"tool_done","turnNo":0,"callId":"...","toolName":"...","action":"...","target":"...","status":"SUCCEEDED|FAILED","fileId":"...","taskId":"..."}
 event: done              data: {"type":"done","assistantMessageId":"..."}
 event: error             data: {"type":"error","message":"..."}
 ```
 
-推理内容与正文一样实时推送给客户端：明文推理使用 `reasoning` 事件，加密推理的摘要部分使用 `reasoning_summary` 事件。两者在正文 `delta` 之前按上游顺序到达，同一轮内保持顺序，但不保证跨轮合并成完整文本。
+推理内容与工具调用过程与正文一样实时推送给客户端：明文推理使用 `reasoning` 事件，加密推理的摘要部分使用 `reasoning_summary` 事件，轮次切换使用 `turn_start` 事件，工具开始、持久化等待与完成分别使用 `tool_start` / `tool_waiting` / `tool_done` 事件（仅传面向展示的语义动作、安全目标与关联 `fileId`/`taskId`，不暴露原始工具 JSON）。持久化历史消息（`GET /messages`）与运行详情（`GET /agent-runs`）通过 `process` 字段返回每轮可读推理、耗时与工具调用时间线（不回传 `encryptedContent`）。
 
 执行链路：
 
@@ -898,7 +902,7 @@ billing 独立于 Agent 的自然语言判断。
 - agent：模型配置（baseUrl、加密 apiKey、模型 ID、reasoning effort、最大输入/输出）、conversation/message/agent_run/model_invocation/agent_run_turn 落库；模型调用通过 OpenAI 官方 Java SDK 的 `responses().createStreaming()` 请求 Responses API，显式构造 `input`，不使用 Chat Completions、同步上游或 `previous_response_id`。`AgentRunWorkflow` 已实现多步工具循环：模型 Activity 返回工具调用，Workflow 逐个调用工具 Activity，再以 `function_call_output` 回填进入下一轮；循环不设轮数上限，唯一的规模约束是当前对话上下文 token 预算；每轮模型输出写入 `agent_run_turn`，重放时不再重复请求模型。Worker 运行时并发/缓存/优雅停机和启动补偿已实现。
 - asset：会话工作区文件已实现，提供创建、读取、更新、搜索、版本列表和指定版本读取；更新使用 `baseVersion` 检测并发冲突，单条文本上限 1 MB，所有查询按 `conversation_id` + `user_id` 限定。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。
 - agent 工具注册表：已实现 `ToolDefinition`、`AgentTool`、`ToolRegistry`、`AgentToolExecutor` 和 `tool_invocation` 幂等记录；注册 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions` 六个会话工作区工具。工具参数只包含文件 ID、路径和内容，会话和用户来自服务端执行上下文。
-- 流式：`POST /messages/stream` 已按 SSE 返回 accepted/delta/done/error；Worker 通过 Redis pub/sub 发布模型增量，助手消息以数据库为准；非流式接口保留。
+- 流式：`POST /messages/stream` 已按 SSE 返回 `accepted`/`turn_start`/`reasoning`/`reasoning_summary`/`delta`/`tool_start`/`tool_waiting`/`tool_done`/`done`/`error`；Worker 通过 Redis pub/sub 发布模型增量、轮次切换与工具执行事件，助手消息、轮次推理和工具记录以数据库为准（`GET /messages` 与 `GET /agent-runs` 通过 `process` 回放历史时间线）；非流式接口保留。
 - 会话串行：同一会话在任意时刻只允许一个 PENDING/RUNNING 的 AgentRun；消息序号分配在会话行锁内完成，存储层用部分唯一索引兜底，活跃期间再次发送返回 409。
 - 本地 compact：接近输入预算时，用一次普通的 Responses 调用把最早的消息区间压成结构化摘要，写入 `context_summary` 并递增 epoch；摘要按覆盖区间校验 `source_digest` 判定是否过期，摘要调用以 `purpose=COMPACT` 记录。失败或摘要为空时回退到裁剪历史，不失败 AgentRun。
 - 推理项：请求统一携带 `include: ["reasoning.encrypted_content"]`；每轮把推理项原文写入 `agent_run_turn.reasoning`，并记录 `context_epoch`。下一轮按 `model_definition.reasoning_replay` 回放：默认只回放带 `encrypted_content` 的推理项，且省略服务端 `id`、始终提交 `summary`；明文推理只留档不回放。`context_epoch` 与当前 epoch 不一致的推理项不再回放。明文推理增量和加密推理的摘要增量分别以 `reasoning`、`reasoning_summary` 事件实时推送给客户端。
@@ -917,7 +921,7 @@ billing 独立于 Agent 的自然语言判断。
 - 真实 FFmpeg 运行验证与目标播放器兼容性；当前成片输出为无音轨视频，声音、字幕、转场属于第二阶段。
 - 资产入库元数据探测、封面、播放转码和缩略图仍待实现。合成前用 ffprobe 检查输入视频时长。
 - 前端生成入口、任务卡片、候选比较、成片播放页面。
-- 批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
+- 批量镜头调度、run 内 turn 级压缩。
 - 真实额度充值/管理接口；当前新账户按 `BILLING_INITIAL_CREDIT_UNITS` 初始化。
 - 已提供 frontend、api、worker 三个根目录 Dockerfile；开发 Compose 覆盖 PostgreSQL、Redis、RustFS、Temporal 和 Temporal UI，生产 Compose 覆盖完整应用栈。Worker 镜像内置 FFmpeg/ffprobe。
 
