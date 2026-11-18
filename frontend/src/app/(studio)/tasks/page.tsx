@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -15,6 +16,7 @@ import {
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { AssetMediaPreview } from "@/components/common/media-preview";
 import { PageHeader } from "@/components/layout/page-header";
+import { useCredit } from "@/components/providers/credit-provider";
 import { isGenerationStatusActive } from "@/components/studio/studio-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +80,11 @@ function formatParameters(raw: string): string {
   }
 }
 
-export default function GlobalTasksPage() {
+function GlobalTasksContent() {
+  const searchParams = useSearchParams();
+  const urlTaskId = searchParams.get("taskId");
+  const { refreshCreditSilent } = useCredit();
+
   const { data, loading, error, reload, mutate } = useAsyncData(
     () => generationApi.list({ limit: 50 }),
     "global-generation-tasks",
@@ -87,11 +93,28 @@ export default function GlobalTasksPage() {
 
   const [typeFilter, setTypeFilter] = useState<GenerationType | "ALL">("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusBucket>("ALL");
-  const [selectedTaskId, setSelectedTaskId] = useState<UUID | null>(null);
+  const [selection, setSelection] = useState<{
+    manualTaskId: UUID | null;
+    dismissedUrlTaskId: string | null;
+  }>({
+    manualTaskId: null,
+    dismissedUrlTaskId: null,
+  });
   const [actingTaskId, setActingTaskId] = useState<UUID | null>(null);
   const [copiedId, setCopiedId] = useState<UUID | null>(null);
 
   const tasks = useMemo(() => data ?? [], [data]);
+  const selectedTaskId =
+    selection.manualTaskId ??
+    (urlTaskId && selection.dismissedUrlTaskId !== urlTaskId ? urlTaskId : null);
+
+  const selectTask = (taskId: UUID | null) => {
+    if (taskId === null) {
+      setSelection({ manualTaskId: null, dismissedUrlTaskId: urlTaskId });
+    } else {
+      setSelection((prev) => ({ ...prev, manualTaskId: taskId }));
+    }
+  };
 
   const hasActiveTasks = useMemo(
     () => tasks.some((t) => isGenerationStatusActive(t.status)),
@@ -147,13 +170,29 @@ export default function GlobalTasksPage() {
     });
   }, [statusFilter, tasks, typeFilter]);
 
-  const selectedTask = useMemo(
+  const listedSelectedTask = useMemo(
     () =>
       selectedTaskId
         ? tasks.find((t) => t.taskId === selectedTaskId) ?? null
         : null,
     [selectedTaskId, tasks]
   );
+
+  const { data: fetchedSelectedTask } = useAsyncData(
+    () => {
+      if (!selectedTaskId) {
+        return Promise.reject(new Error("No taskId"));
+      }
+      return generationApi.get(selectedTaskId);
+    },
+    selectedTaskId ? `global-task-detail:${selectedTaskId}` : "global-task-detail:none",
+    {
+      enabled: Boolean(selectedTaskId && data && !listedSelectedTask),
+      errorMessage: "加载目标任务详情失败",
+    }
+  );
+
+  const selectedTask = listedSelectedTask ?? fetchedSelectedTask ?? null;
 
   const handleTaskAction = async (
     taskId: UUID,
@@ -168,6 +207,7 @@ export default function GlobalTasksPage() {
       mutate((prev) =>
         (prev ?? []).map((t) => (t.taskId === taskId ? updated : t))
       );
+      void refreshCreditSilent();
       notifySuccess(
         action === "cancel" ? "已请求取消任务" : "已发起重试归档"
       );
@@ -284,7 +324,7 @@ export default function GlobalTasksPage() {
                   {filteredTasks.map((task) => (
                     <TableRow
                       key={task.taskId}
-                      onClick={() => setSelectedTaskId(task.taskId)}
+                      onClick={() => selectTask(task.taskId)}
                       className="cursor-pointer"
                     >
                       <TableCell>
@@ -338,7 +378,7 @@ export default function GlobalTasksPage() {
                             type="button"
                             variant="ghost"
                             size="xs"
-                            onClick={() => setSelectedTaskId(task.taskId)}
+                            onClick={() => selectTask(task.taskId)}
                           >
                             详情
                           </Button>
@@ -370,7 +410,7 @@ export default function GlobalTasksPage() {
         open={Boolean(selectedTask)}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedTaskId(null);
+            selectTask(null);
           }
         }}
       >
@@ -566,5 +606,20 @@ export default function GlobalTasksPage() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+export default function GlobalTasksPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      }
+    >
+      <GlobalTasksContent />
+    </Suspense>
   );
 }

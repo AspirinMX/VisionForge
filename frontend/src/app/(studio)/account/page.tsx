@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckIcon,
   CopyIcon,
+  ExternalLinkIcon,
   LogOutIcon,
   RefreshCwIcon,
   WalletIcon,
@@ -14,6 +16,7 @@ import { toast } from "sonner";
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useCredit } from "@/components/providers/credit-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +32,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncData } from "@/hooks/use-async-data";
 import { accountApi } from "@/lib/api/endpoints";
 import { copyToClipboard, notifyApiError } from "@/lib/api/feedback";
-import type { CreditLedgerEntryType } from "@/lib/api/types";
+import type {
+  CreditLedgerEntryResponse,
+  CreditLedgerEntryType,
+} from "@/lib/api/types";
 import {
   formatDateTime,
   GENERATION_BILLING_LABEL,
@@ -52,34 +58,41 @@ const CREDIT_ENTRY_HINT: Record<CreditLedgerEntryType, string> = {
   RELEASE: "仅释放冻结",
 };
 
+const LEDGER_PAGE_SIZE = 50;
+
 export default function AccountPage() {
   const router = useRouter();
   const { user, refreshUser, logout } = useAuth();
+  const {
+    credit,
+    loading: loadingCredit,
+    error: creditError,
+    refreshCredit,
+  } = useCredit();
 
   const [refreshingUser, setRefreshingUser] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [ledgerGeneration, setLedgerGeneration] = useState(0);
+  const [extraLedger, setExtraLedger] = useState<{
+    baseKey: string;
+    items: CreditLedgerEntryResponse[];
+    hasMore: boolean;
+  } | null>(null);
+  const [loadingMoreLedger, setLoadingMoreLedger] = useState(false);
 
-  const {
-    data: credit,
-    loading: loadingCredit,
-    error: creditError,
-  } = useAsyncData(
-    () => accountApi.credit(),
-    user ? `account-credit:${user.id}` : "account-credit:anon",
-    {
-      enabled: Boolean(user),
-      errorMessage: "加载额度余额失败",
-    }
-  );
+  const ledgerBaseKey = user
+    ? `account-ledger:${user.id}:${ledgerGeneration}`
+    : "account-ledger:anon";
 
   const {
     data: ledger,
     loading: loadingLedger,
     error: ledgerError,
+    reload: reloadLedger,
   } = useAsyncData(
-    () => accountApi.ledger({ limit: 50 }),
-    user ? `account-ledger:${user.id}` : "account-ledger:anon",
+    () => accountApi.ledger({ limit: LEDGER_PAGE_SIZE }),
+    ledgerBaseKey,
     {
       enabled: Boolean(user),
       errorMessage: "加载额度流水失败",
@@ -90,6 +103,7 @@ export default function AccountPage() {
     data: usage,
     loading: loadingUsage,
     error: usageError,
+    reload: reloadUsage,
   } = useAsyncData(
     () => accountApi.usage(100),
     user ? `account-usage:${user.id}` : "account-usage:anon",
@@ -98,6 +112,59 @@ export default function AccountPage() {
       errorMessage: "加载近期任务额度汇总失败",
     }
   );
+
+  const allLedgerEntries = useMemo(() => {
+    const first = ledger ?? [];
+    if (extraLedger && extraLedger.baseKey === ledgerBaseKey) {
+      const seen = new Set(first.map((item) => item.id));
+      return [...first, ...extraLedger.items.filter((item) => !seen.has(item.id))];
+    }
+    return first;
+  }, [extraLedger, ledger, ledgerBaseKey]);
+
+  const hasMoreLedger =
+    extraLedger?.baseKey === ledgerBaseKey
+      ? extraLedger.hasMore
+      : (ledger?.length ?? 0) === LEDGER_PAGE_SIZE;
+
+  const handleRefreshBilling = () => {
+    refreshCredit();
+    setLedgerGeneration((n) => n + 1);
+    setExtraLedger(null);
+    reloadLedger();
+    reloadUsage();
+  };
+
+  const handleLoadMoreLedger = async () => {
+    if (loadingMoreLedger || allLedgerEntries.length === 0) {
+      return;
+    }
+    const lastEntry = allLedgerEntries[allLedgerEntries.length - 1];
+    setLoadingMoreLedger(true);
+    try {
+      const older = await accountApi.ledger({
+        limit: LEDGER_PAGE_SIZE,
+        before: lastEntry.id,
+      });
+      setExtraLedger((prev) => {
+        const previousItems =
+          prev && prev.baseKey === ledgerBaseKey ? prev.items : [];
+        const seen = new Set(previousItems.map((item) => item.id));
+        return {
+          baseKey: ledgerBaseKey,
+          items: [
+            ...previousItems,
+            ...older.filter((item) => !seen.has(item.id)),
+          ],
+          hasMore: older.length === LEDGER_PAGE_SIZE,
+        };
+      });
+    } catch (err) {
+      notifyApiError(err, "加载更早额度流水失败");
+    } finally {
+      setLoadingMoreLedger(false);
+    }
+  };
 
   const handleRefreshProfile = async () => {
     setRefreshingUser(true);
@@ -214,7 +281,23 @@ export default function AccountPage() {
                     服务端按最小计量单位预占与结算媒体生成费用
                   </CardDescription>
                 </div>
-                <Badge variant="outline">实时账本</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">实时账本</Badge>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefreshBilling}
+                    disabled={loadingCredit || loadingLedger || loadingUsage}
+                  >
+                    <RefreshCwIcon
+                      className={
+                        loadingCredit || loadingLedger ? "animate-spin" : ""
+                      }
+                    />
+                    <span>刷新额度</span>
+                  </Button>
+                </div>
               </div>
             </CardHeader>
 
@@ -272,59 +355,84 @@ export default function AccountPage() {
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">消费流水</h3>
-                  <span className="text-xs text-muted-foreground">
-                    按 UUIDv7 倒序，最近 50 条
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    按 UUIDv7 倒序 · 已加载 {allLedgerEntries.length} 条
                   </span>
                 </div>
                 <ApiErrorAlert error={ledgerError} title="读取额度流水失败" />
                 {loadingLedger && !ledger ? (
                   <Skeleton className="h-24 rounded-2xl" />
-                ) : (ledger ?? []).length === 0 ? (
+                ) : allLedgerEntries.length === 0 ? (
                   <p className="rounded-2xl border px-3.5 py-6 text-center text-xs text-muted-foreground">
                     暂无额度流水；首次生成或访问本页后会出现初始授予记录。
                   </p>
                 ) : (
-                  <div className="divide-y rounded-2xl border">
-                    {(ledger ?? []).map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs"
+                  <div className="space-y-2">
+                    <div className="divide-y rounded-2xl border">
+                      {allLedgerEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={
+                                entry.entryType === "SETTLE"
+                                  ? "default"
+                                  : entry.entryType === "GRANT"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                            >
+                              {CREDIT_ENTRY_LABEL[entry.entryType]}
+                            </Badge>
+                            <span className="font-mono font-medium tabular-nums">
+                              {entry.amountUnits}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {CREDIT_ENTRY_HINT[entry.entryType]}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-muted-foreground tabular-nums">
+                            {entry.taskType ? (
+                              <Badge variant="outline">{entry.taskType}</Badge>
+                            ) : null}
+                            {entry.taskStatus ? (
+                              <span>
+                                {GENERATION_STATUS_LABEL[entry.taskStatus]}
+                              </span>
+                            ) : null}
+                            {entry.taskId ? (
+                              <Button
+                                variant="link"
+                                size="xs"
+                                nativeButton={false}
+                                render={
+                                  <Link href={`/tasks?taskId=${entry.taskId}`} />
+                                }
+                                className="h-auto p-0 font-mono text-[11px]"
+                              >
+                                <span>{entry.taskId.slice(0, 8)}</span>
+                                <ExternalLinkIcon className="size-3" />
+                              </Button>
+                            ) : null}
+                            <span>{formatDateTime(entry.createdAt)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {hasMoreLedger ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleLoadMoreLedger()}
+                        disabled={loadingMoreLedger}
+                        className="w-full"
                       >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={
-                              entry.entryType === "SETTLE"
-                                ? "default"
-                                : entry.entryType === "GRANT"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                          >
-                            {CREDIT_ENTRY_LABEL[entry.entryType]}
-                          </Badge>
-                          <span className="font-mono font-medium tabular-nums">
-                            {entry.amountUnits}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {CREDIT_ENTRY_HINT[entry.entryType]}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground tabular-nums">
-                          {entry.taskType ? (
-                            <Badge variant="outline">{entry.taskType}</Badge>
-                          ) : null}
-                          {entry.taskStatus ? (
-                            <span>{GENERATION_STATUS_LABEL[entry.taskStatus]}</span>
-                          ) : null}
-                          {entry.taskId ? (
-                            <code className="font-mono text-[11px]">
-                              {entry.taskId.slice(0, 8)}
-                            </code>
-                          ) : null}
-                          <span>{formatDateTime(entry.createdAt)}</span>
-                        </div>
-                      </div>
-                    ))}
+                        {loadingMoreLedger ? "加载中..." : "加载更早流水"}
+                      </Button>
+                    ) : null}
                   </div>
                 )}
               </div>

@@ -1,7 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { WalletIcon } from "lucide-react";
 
+import { useOptionalCredit } from "@/components/providers/credit-provider";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -18,6 +23,11 @@ export function PageHeader({
   badge,
   actions,
 }: PageHeaderProps) {
+  const pathname = usePathname();
+  const creditState = useOptionalCredit();
+  const credit = creditState?.credit ?? null;
+  const showCreditPill = Boolean(credit && pathname !== "/account");
+
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b bg-background px-3 md:px-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -35,8 +45,27 @@ export function PageHeader({
           ) : null}
         </div>
       </div>
-      {actions ? (
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      {actions || showCreditPill ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {showCreditPill && credit ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              nativeButton={false}
+              render={<Link href="/account" />}
+              className="hidden text-muted-foreground sm:inline-flex"
+            >
+              <WalletIcon className="size-3.5" />
+              <span className="tabular-nums">
+                可用 {credit.availableUnits}
+                {credit.reservedUnits > 0
+                  ? `（预占 ${credit.reservedUnits}）`
+                  : ""}
+              </span>
+            </Button>
+          ) : null}
+          {actions}
+        </div>
       ) : null}
     </header>
   );
