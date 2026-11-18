@@ -10,9 +10,9 @@ public interface CreditLedgerMapper extends BaseMapper<CreditLedger> {
 
     @Insert("""
             INSERT INTO credit_ledger
-                (id, user_id, reservation_id, entry_type, amount_units, business_key, created_at)
+                (id, user_id, reservation_id, entry_type, amount_units, business_key, remark, created_at)
             VALUES (#{id}, #{userId}, #{reservationId}, #{entryType}, #{amountUnits},
-                    #{businessKey}, #{createdAt})
+                    #{businessKey}, #{remark}, #{createdAt})
             ON CONFLICT (business_key) DO NOTHING
             """)
     int insertIfAbsent(CreditLedger ledger);

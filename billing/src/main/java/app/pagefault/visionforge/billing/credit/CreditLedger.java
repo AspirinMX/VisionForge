@@ -31,5 +31,7 @@ public class CreditLedger {
 
     private String businessKey;
 
+    private String remark;
+
     private Instant createdAt;
 }

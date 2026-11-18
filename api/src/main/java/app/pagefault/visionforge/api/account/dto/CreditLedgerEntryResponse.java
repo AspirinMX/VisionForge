@@ -20,5 +20,6 @@ public record CreditLedgerEntryResponse(
         UUID taskId,
         GenerationType taskType,
         GenerationStatus taskStatus,
+        String remark,
         Instant createdAt) {
 }

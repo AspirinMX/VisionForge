@@ -178,9 +178,21 @@
 | --- | --- | --- | --- |
 | `GET /api/v1/account/credit` | `200` | — | `CreditSummaryResponse { balanceUnits, reservedUnits, availableUnits, updatedAt }` |
 | `GET /api/v1/account/credit/ledger` | `200` | `?limit=50&before=<ledgerId>`（UUIDv7 倒序游标） | `CreditLedgerEntryResponse[]` |
+| `GET /api/v1/account/credit/ledger/export` | `200` | `?maxRows=2000`（最高 5000） | `text/csv; charset=UTF-8` 额度流水 CSV 下载 |
+| `POST /api/v1/account/credit/redeem` | `200` | `{ code }` | `RedeemCodeResponse { ledgerId, code, amountUnits, newBalanceUnits, newAvailableUnits }` |
 | `GET /api/v1/account/usage` | `200` | `?window=100` | `CreditUsageResponse { window, totalPriceUnits, buckets }` |
 
-### 6.4 管理员审计日志 (`AdminAuditLogController`, `/api/v1/admin/audit-logs`)
+### 6.4 管理端调账与兑换码 (`AdminBillingController`, `/api/v1/admin`)
+
+| 方法与路径 | 状态码 | 权限 | 请求体 / 查询参数 | 响应 `data` |
+| --- | --- | --- | --- | --- |
+| `POST /api/v1/admin/users/{id}/credit-adjust` | `200` | `ADMIN` | `{ deltaUnits (!=0), idempotencyKey (<=128), remark? }` | `AdminCreditLedgerResponse` |
+| `GET /api/v1/admin/billing/ledger` | `200` | `ADMIN` | `?page=1&size=50&userId=&entryType=` | `PageResult<AdminCreditLedgerResponse>` |
+| `GET /api/v1/admin/billing/redemptions` | `200` | `ADMIN` | `?page=1&size=50&batchName=&status=ACTIVE\|VOIDED` | `PageResult<RedemptionCodeResponse>` |
+| `POST /api/v1/admin/billing/redemptions` | `201` | `ADMIN` | `{ batchName, count (1..100), amountUnits, maxUsesPerCode, perUserLimit, customPrefix?, expiresAt? }` | `RedemptionCodeResponse[]` |
+| `POST /api/v1/admin/billing/redemptions/{id}/void` | `200` | `ADMIN` | 路径参数 `{id}` | `RedemptionCodeResponse` |
+
+### 6.5 管理员审计日志 (`AdminAuditLogController`, `/api/v1/admin/audit-logs`)
 
 | 方法与路径 | 状态码 | 权限 | 查询参数 | 响应 `data` / 内容 |
 | --- | --- | --- | --- | --- |
@@ -231,7 +243,13 @@
 | `BILLING_RESERVATION_NOT_FOUND` | 404 | 额度预占记录不存在 |
 | `BILLING_RESERVATION_STATE_CONFLICT` | 409 | 额度预占状态不允许该操作 |
 | `BILLING_SETTLE_CONFLICT` | 409 | 账户余额与预占不一致 |
-| `BILLING_AMOUNT_INVALID` | 400 | 额度金额不能为负数 |
+| `BILLING_AMOUNT_INVALID` | 400 | 额度金额不合法 |
+| `BILLING_IDEMPOTENCY_CONFLICT` | 409 | 幂等键对应了不同的操作参数 |
+| `BILLING_REDEMPTION_CODE_NOT_FOUND` | 404 | 兑换码不存在或格式无效 |
+| `BILLING_REDEMPTION_CODE_VOIDED` | 409 | 该兑换码已作废 |
+| `BILLING_REDEMPTION_CODE_EXPIRED` | 409 | 该兑换码已过期 |
+| `BILLING_REDEMPTION_CODE_EXHAUSTED` | 409 | 该兑换码已被领完 |
+| `BILLING_REDEMPTION_USER_LIMIT_REACHED` | 409 | 已达到该兑换码使用次数上限 |
 
 ### 7.4 `AssetErrorCode`
 

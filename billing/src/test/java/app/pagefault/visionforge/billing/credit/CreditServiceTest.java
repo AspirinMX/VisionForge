@@ -125,6 +125,31 @@ class CreditServiceTest {
                 .isInstanceOf(BusinessException.class);
     }
 
+    @Test
+    void adjustCreditSupportsGrantDeductAndIdempotencyChecks() {
+        when(ledgerMapper.selectOne(any())).thenReturn(null);
+        when(accountMapper.addBalance(USER_ID, 500L, NOW)).thenReturn(1);
+
+        CreditLedger granted = service.adjustCredit(USER_ID, 500L, "op-grant-1", "Compensation");
+        assertThat(granted.getEntryType()).isEqualTo(CreditLedgerEntryType.ADJUST);
+        assertThat(granted.getAmountUnits()).isEqualTo(500L);
+        assertThat(granted.getRemark()).isEqualTo("Compensation");
+        verify(ledgerMapper).insert(granted);
+
+        when(ledgerMapper.selectOne(any())).thenReturn(granted);
+        assertThat(service.adjustCredit(USER_ID, 500L, "op-grant-1", "Compensation")).isSameAs(granted);
+
+        assertThatThrownBy(() -> service.adjustCredit(USER_ID, 300L, "op-grant-1", "Mismatch"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(BillingErrorCode.IDEMPOTENCY_CONFLICT));
+
+        when(ledgerMapper.selectOne(any())).thenReturn(null);
+        when(accountMapper.deductAvailable(USER_ID, 200L, NOW)).thenReturn(0);
+        assertThatThrownBy(() -> service.adjustCredit(USER_ID, -200L, "op-deduct-1", "Penalty"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(BillingErrorCode.INSUFFICIENT_CREDIT));
+    }
+
     private CreditAccount account(long balance, long reserved) {
         CreditAccount account = new CreditAccount();
         account.setUserId(USER_ID);

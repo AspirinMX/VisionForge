@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 
@@ -25,5 +26,30 @@ public interface CreditAccountMapper extends BaseMapper<CreditAccount> {
     int insertIfAbsent(
             @Param("userId") UUID userId,
             @Param("balanceUnits") long balanceUnits,
+            @Param("now") Instant now);
+
+    @Update("""
+            UPDATE credit_account
+            SET balance_units = balance_units + #{deltaUnits},
+                version = version + 1,
+                updated_at = #{now}
+            WHERE user_id = #{userId}
+            """)
+    int addBalance(
+            @Param("userId") UUID userId,
+            @Param("deltaUnits") long deltaUnits,
+            @Param("now") Instant now);
+
+    @Update("""
+            UPDATE credit_account
+            SET balance_units = balance_units - #{deductUnits},
+                version = version + 1,
+                updated_at = #{now}
+            WHERE user_id = #{userId}
+              AND balance_units - reserved_units >= #{deductUnits}
+            """)
+    int deductAvailable(
+            @Param("userId") UUID userId,
+            @Param("deductUnits") long deductUnits,
             @Param("now") Instant now);
 }

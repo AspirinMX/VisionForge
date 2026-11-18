@@ -4,5 +4,7 @@ public enum CreditLedgerEntryType {
     RESERVE,
     SETTLE,
     RELEASE,
-    GRANT
+    GRANT,
+    ADJUST,
+    REDEEM
 }

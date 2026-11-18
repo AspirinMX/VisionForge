@@ -13,8 +13,11 @@ import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 
 import app.pagefault.visionforge.billing.credit.CreditAccountMapper;
 import app.pagefault.visionforge.billing.credit.CreditLedgerMapper;
+import app.pagefault.visionforge.billing.credit.CreditRedemptionCodeMapper;
+import app.pagefault.visionforge.billing.credit.CreditRedemptionRecordMapper;
 import app.pagefault.visionforge.billing.credit.CreditReservationMapper;
 import app.pagefault.visionforge.billing.credit.CreditService;
+import app.pagefault.visionforge.billing.credit.RedemptionService;
 import app.pagefault.visionforge.billing.persistence.BillingUuidTypeHandler;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -39,5 +42,15 @@ public class BillingConfiguration {
             BillingProperties properties) {
         return new CreditService(
                 accountMapper, reservationMapper, ledgerMapper, idGenerator, clock, properties);
+    }
+
+    @Bean
+    public RedemptionService redemptionService(
+            CreditRedemptionCodeMapper codeMapper,
+            CreditRedemptionRecordMapper recordMapper,
+            CreditService creditService,
+            IdGenerator idGenerator,
+            Clock clock) {
+        return new RedemptionService(codeMapper, recordMapper, creditService, idGenerator, clock);
     }
 }

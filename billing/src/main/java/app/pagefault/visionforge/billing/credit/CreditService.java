@@ -12,10 +12,14 @@ import java.util.stream.Collectors;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import app.pagefault.visionforge.billing.config.BillingProperties;
 import app.pagefault.visionforge.billing.error.BillingErrorCode;
+import app.pagefault.visionforge.common.api.PageResult;
+import app.pagefault.visionforge.common.audit.BizLog;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -61,6 +65,121 @@ public class CreditService {
                         .lt(beforeId != null, CreditLedger::getId, beforeId)
                         .orderByDesc(CreditLedger::getId)
                         .last("LIMIT " + safeLimit(limit)));
+    }
+
+    public List<CreditLedger> exportUserEntries(UUID userId, int maxRows) {
+        requireUser(userId);
+        int safeMax = Math.min(Math.max(maxRows, 1), 5_000);
+        List<CreditLedger> collected = new java.util.ArrayList<>();
+        UUID beforeId = null;
+        while (collected.size() < safeMax) {
+            int fetch = Math.min(200, safeMax - collected.size());
+            List<CreditLedger> batch = recentEntries(userId, fetch, beforeId);
+            if (batch.isEmpty()) {
+                break;
+            }
+            collected.addAll(batch);
+            if (batch.size() < fetch) {
+                break;
+            }
+            beforeId = batch.get(batch.size() - 1).getId();
+        }
+        return collected;
+    }
+
+    public PageResult<CreditLedger> listLedger(
+            long page, long size, UUID userId, CreditLedgerEntryType entryType) {
+        long safePage = Math.max(page, 1);
+        long safeSize = Math.min(Math.max(size, 1), 200);
+        LambdaQueryWrapper<CreditLedger> wrapper = Wrappers.<CreditLedger>lambdaQuery()
+                .eq(userId != null, CreditLedger::getUserId, userId)
+                .eq(entryType != null, CreditLedger::getEntryType, entryType)
+                .orderByDesc(CreditLedger::getId);
+        Page<CreditLedger> result = ledgerMapper.selectPage(new Page<>(safePage, safeSize), wrapper);
+        return PageResult.of(result.getRecords(), result.getCurrent(), result.getSize(), result.getTotal());
+    }
+
+    @Transactional
+    @BizLog(
+            type = "BILLING_CREDIT",
+            subType = "ADJUST",
+            bizNo = "#targetUserId",
+            success = "管理员调整用户 {{#targetUserId}} 额度 {{#deltaUnits}}（幂等键={{#idempotencyKey}}）",
+            fail = "调整用户 {{#targetUserId}} 额度失败：{{#errorMessage}}",
+            sync = true)
+    public CreditLedger adjustCredit(
+            UUID targetUserId, long deltaUnits, String idempotencyKey, String remark) {
+        requireUser(targetUserId);
+        if (deltaUnits == 0) {
+            throw new BusinessException(BillingErrorCode.AMOUNT_INVALID, "调账金额不能为 0");
+        }
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new BusinessException(BillingErrorCode.AMOUNT_INVALID, "幂等键不能为空");
+        }
+        String trimmedKey = idempotencyKey.trim();
+        if (trimmedKey.length() > 128) {
+            throw new BusinessException(BillingErrorCode.AMOUNT_INVALID, "幂等键长度不能超过 128 个字符");
+        }
+        String businessKey = "ADJUST:" + targetUserId + ":" + trimmedKey;
+        CreditLedger existing = ledgerMapper.selectOne(
+                Wrappers.<CreditLedger>lambdaQuery().eq(CreditLedger::getBusinessKey, businessKey));
+        if (existing != null) {
+            if (existing.getAmountUnits() != deltaUnits) {
+                throw new BusinessException(BillingErrorCode.IDEMPOTENCY_CONFLICT);
+            }
+            return existing;
+        }
+
+        ensureAccount(targetUserId);
+        Instant now = clock.instant();
+        if (deltaUnits > 0) {
+            int updated = accountMapper.addBalance(targetUserId, deltaUnits, now);
+            if (updated == 0) {
+                throw new BusinessException(BillingErrorCode.ACCOUNT_NOT_FOUND);
+            }
+        } else {
+            long deductUnits = Math.abs(deltaUnits);
+            int updated = accountMapper.deductAvailable(targetUserId, deductUnits, now);
+            if (updated == 0) {
+                throw new BusinessException(BillingErrorCode.INSUFFICIENT_CREDIT, "用户可用额度不足，无法扣减");
+            }
+        }
+
+        CreditLedger ledger = new CreditLedger();
+        ledger.setId(idGenerator.nextId());
+        ledger.setUserId(targetUserId);
+        ledger.setEntryType(CreditLedgerEntryType.ADJUST);
+        ledger.setAmountUnits(deltaUnits);
+        ledger.setBusinessKey(businessKey);
+        ledger.setRemark(normalizeRemark(remark));
+        ledger.setCreatedAt(now);
+        ledgerMapper.insert(ledger);
+        return ledger;
+    }
+
+    @Transactional
+    public CreditLedger creditForRedemption(
+            UUID userId, long amountUnits, String businessKey, String remark) {
+        requireUser(userId);
+        if (amountUnits <= 0) {
+            throw new BusinessException(BillingErrorCode.AMOUNT_INVALID, "兑换额度必须大于 0");
+        }
+        ensureAccount(userId);
+        Instant now = clock.instant();
+        int updated = accountMapper.addBalance(userId, amountUnits, now);
+        if (updated == 0) {
+            throw new BusinessException(BillingErrorCode.ACCOUNT_NOT_FOUND);
+        }
+        CreditLedger ledger = new CreditLedger();
+        ledger.setId(idGenerator.nextId());
+        ledger.setUserId(userId);
+        ledger.setEntryType(CreditLedgerEntryType.REDEEM);
+        ledger.setAmountUnits(amountUnits);
+        ledger.setBusinessKey(businessKey);
+        ledger.setRemark(normalizeRemark(remark));
+        ledger.setCreatedAt(now);
+        ledgerMapper.insert(ledger);
+        return ledger;
     }
 
     /**
@@ -259,6 +378,17 @@ public class CreditService {
             return 50;
         }
         return Math.min(limit, 200);
+    }
+
+    private String normalizeRemark(String remark) {
+        if (remark == null) {
+            return null;
+        }
+        String trimmed = remark.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500);
     }
 
     public record CreditBalance(long balanceUnits, long reservedUnits) {
