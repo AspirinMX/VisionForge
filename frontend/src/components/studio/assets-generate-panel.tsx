@@ -206,6 +206,25 @@ function QuickGenerateForm({
   }));
 
   const availableRoles = genType === "VIDEO" ? VIDEO_ROLES : IMAGE_ROLES;
+  const roleItems = Object.fromEntries(
+    availableRoles.map((role) => [role.value, role.label])
+  );
+  const assetSelectItems = Object.fromEntries(
+    localAssets.map((asset) => [asset.assetId, asset.label])
+  );
+  const modelItems: Record<string, string> = {
+    __default__: "使用系统默认启用模型（留空）",
+  };
+  for (const model of availableModels ?? []) {
+    modelItems[model.id] =
+      `${model.displayName} · ${model.modelId}` +
+      (model.defaultModel ? " · 默认" : "") +
+      (model.priceUnits > 0 ? ` · ${model.priceUnits} 单位/次` : "");
+  }
+  if (modelDefinitionId && !(modelDefinitionId in modelItems)) {
+    modelItems[modelDefinitionId] = modelDefinitionId;
+  }
+
   const hasMaskRole =
     genType === "IMAGE" && inputs.some((item) => item.role === "MASK");
 
@@ -361,6 +380,7 @@ function QuickGenerateForm({
           <Label className="text-xs text-muted-foreground">模型路由</Label>
           <Select
             value={modelDefinitionId || "__default__"}
+            items={modelItems}
             onValueChange={(value) =>
               setModelDefinitionId(
                 !value || value === "__default__" ? "" : value
@@ -424,6 +444,7 @@ function QuickGenerateForm({
             <div className="flex items-center gap-1.5">
               <Select
                 value={selectedAssetToAdd || null}
+                items={assetSelectItems}
                 onValueChange={(val) => setSelectedAssetToAdd(val ?? "")}
               >
                 <SelectTrigger size="sm" className="h-7 w-44 text-xs">
@@ -498,6 +519,7 @@ function QuickGenerateForm({
                 <div className="flex items-center gap-1.5">
                   <Select
                     value={inp.role ?? availableRoles[0].value}
+                    items={roleItems}
                     onValueChange={(val) => {
                       if (!val) {
                         return;

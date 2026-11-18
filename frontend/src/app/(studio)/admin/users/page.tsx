@@ -165,6 +165,7 @@ function UsersAdminContent() {
                             <div className="inline-flex justify-end">
                               <Select
                                 value={item.role}
+                                items={USER_ROLE_LABEL}
                                 onValueChange={(value) => {
                                   if (value && value !== item.role) {
                                     setPendingChange({

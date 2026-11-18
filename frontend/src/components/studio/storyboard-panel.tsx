@@ -674,6 +674,12 @@ export function StoryboardPanel() {
           {storyboardFiles.length > 1 ? (
             <Select
               value={activeFile?.id ?? null}
+              items={Object.fromEntries(
+                storyboardFiles.map((file) => [
+                  file.id,
+                  `${file.title} (v${file.currentVersion})`,
+                ])
+              )}
               onValueChange={(val) => {
                 if (val) {
                   setSelectedFileId(val);
@@ -989,6 +995,7 @@ export function StoryboardPanel() {
                         <Select
                           disabled={isLocked}
                           value={shot.shotSize}
+                          items={SHOT_SIZE_LABEL}
                           onValueChange={(val) => {
                             if (val) {
                               updateShot(shot.id, (s) => ({
@@ -1018,6 +1025,7 @@ export function StoryboardPanel() {
                         <Select
                           disabled={isLocked}
                           value={shot.camera}
+                          items={CAMERA_LABEL}
                           onValueChange={(val) => {
                             if (val) {
                               updateShot(shot.id, (s) => ({

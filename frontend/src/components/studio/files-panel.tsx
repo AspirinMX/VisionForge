@@ -409,6 +409,7 @@ export function FilesPanel() {
 
         <Select
           value={kindFilter}
+          items={{ ALL: "全部类型", ...FILE_KIND_LABEL }}
           onValueChange={(val) => {
             if (val) {
               setKindFilter(val as ConversationFileKind | "ALL");
@@ -716,6 +717,7 @@ export function FilesPanel() {
                 <Label>文件类型</Label>
                 <Select
                   value={createKind}
+                  items={FILE_KIND_LABEL}
                   onValueChange={(val) => {
                     if (!val) {
                       return;

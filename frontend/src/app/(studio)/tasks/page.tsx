@@ -238,6 +238,11 @@ export default function GlobalTasksPage() {
 
             <Select
               value={typeFilter}
+              items={{
+                ALL: "全部类型",
+                IMAGE: "图片 (IMAGE)",
+                VIDEO: "视频 (VIDEO)",
+              }}
               onValueChange={(v) => {
                 if (v) {
                   setTypeFilter(v as GenerationType | "ALL");

@@ -133,6 +133,14 @@ interface ModelFormSheetProps {
   onSaved: (model: ModelResponse) => void;
 }
 
+function defaultExecutionModeForProtocol(protocol: MediaProtocol): ExecutionMode {
+  return protocol === "ARK_VIDEO_TASKS" ||
+    protocol === "DASHSCOPE_VIDEO" ||
+    protocol === "DASHSCOPE_T2I"
+    ? "REMOTE_TASK"
+    : "INLINE_RESULT";
+}
+
 function ModelFormContent({
   editingModel,
   onClose,
@@ -155,14 +163,7 @@ function ModelFormContent({
     const nextProtocol = allowedProtocols.includes(form.protocol)
       ? form.protocol
       : allowedProtocols[0];
-    const nextExecutionMode: ExecutionMode =
-      nextCapability === "CHAT"
-        ? "INLINE_RESULT"
-        : nextProtocol === "ARK_VIDEO_TASKS" ||
-            nextProtocol === "DASHSCOPE_VIDEO" ||
-            nextProtocol === "DASHSCOPE_T2I"
-          ? "REMOTE_TASK"
-          : form.executionMode;
+    const nextExecutionMode = defaultExecutionModeForProtocol(nextProtocol);
 
     setForm((prev) => ({
       ...prev,
@@ -177,6 +178,14 @@ function ModelFormContent({
         nextCapability === "CHAT" && !prev.maxOutputTokens
           ? "4096"
           : prev.maxOutputTokens,
+    }));
+  };
+
+  const handleProtocolChange = (nextProtocol: MediaProtocol) => {
+    setForm((prev) => ({
+      ...prev,
+      protocol: nextProtocol,
+      executionMode: defaultExecutionModeForProtocol(nextProtocol),
     }));
   };
 
@@ -328,6 +337,11 @@ function ModelFormContent({
             <Label>能力类型</Label>
             <Select
               value={form.capabilityType}
+              items={{
+                CHAT: `${MODEL_CAPABILITY_LABEL.CHAT} (CHAT)`,
+                IMAGE: `${MODEL_CAPABILITY_LABEL.IMAGE} (IMAGE)`,
+                VIDEO: `${MODEL_CAPABILITY_LABEL.VIDEO} (VIDEO)`,
+              }}
               onValueChange={(value) => {
                 if (value) {
                   handleCapabilityChange(value as ModelCapabilityType);
@@ -356,12 +370,10 @@ function ModelFormContent({
             <Label>接入协议</Label>
             <Select
               value={form.protocol}
+              items={MEDIA_PROTOCOL_LABEL}
               onValueChange={(value) => {
                 if (value) {
-                  setForm((prev) => ({
-                    ...prev,
-                    protocol: value as MediaProtocol,
-                  }));
+                  handleProtocolChange(value as MediaProtocol);
                 }
               }}
               disabled={submitting || form.capabilityType === "CHAT"}
@@ -421,6 +433,7 @@ function ModelFormContent({
             <Label>执行方式</Label>
             <Select
               value={form.executionMode}
+              items={EXECUTION_MODE_LABEL}
               onValueChange={(value) => {
                 if (value) {
                   setForm((prev) => ({
@@ -546,6 +559,7 @@ function ModelFormContent({
                 <Label>推理强度</Label>
                 <Select
                   value={form.reasoningEffort}
+                  items={{ UNSET: "不指定", ...REASONING_EFFORT_LABEL }}
                   onValueChange={(value) => {
                     if (value) {
                       setForm((prev) => ({
@@ -574,6 +588,7 @@ function ModelFormContent({
                 <Label>推理回放策略</Label>
                 <Select
                   value={form.reasoningReplay}
+                  items={REASONING_REPLAY_LABEL}
                   onValueChange={(value) => {
                     if (value) {
                       setForm((prev) => ({
