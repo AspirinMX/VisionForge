@@ -10,6 +10,8 @@ import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.common.error.BusinessException;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -59,16 +61,44 @@ public class StoryboardValidator {
             throw invalid("分镜内容不能为空");
         }
         try {
-            StoryboardDocument document =
-                    objectMapper.readValue(content, StoryboardDocument.class);
-            if (document == null) {
-                throw invalid("分镜内容不能为空");
+            JsonNode root = objectMapper.readTree(content);
+            if (!root.isObject()) {
+                throw invalid("分镜必须是 JSON 对象");
             }
-            return document;
+            requireInteger(root, "schemaVersion", "schemaVersion");
+            if (!root.path("shots").isArray()) {
+                throw invalid("shots 必须是镜头数组");
+            }
+            for (int index = 0; index < root.path("shots").size(); index++) {
+                JsonNode shot = root.path("shots").get(index);
+                String field = "shots[" + index + "]";
+                if (!shot.isObject()) {
+                    throw invalid(field + " 必须是镜头对象");
+                }
+                requireInteger(shot, "order", field + ".order");
+                requireInteger(shot, "durationSeconds", field + ".durationSeconds");
+                if (!shot.path("id").isTextual() || shot.path("id").asText().isBlank()) {
+                    throw invalid(field + ".id 必须是非空字符串");
+                }
+            }
+            return objectMapper.treeToValue(root, StoryboardDocument.class);
         } catch (BusinessException exception) {
             throw exception;
+        } catch (DatabindException exception) {
+            StringBuilder path = new StringBuilder();
+            for (var reference : exception.getPath()) {
+                if (reference.getPropertyName() != null) {
+                    if (!path.isEmpty()) {
+                        path.append('.');
+                    }
+                    path.append(reference.getPropertyName());
+                } else if (reference.getIndex() >= 0) {
+                    path.append('[').append(reference.getIndex()).append(']');
+                }
+            }
+            throw invalid(path.isEmpty() ? "分镜字段类型不合法" : path + " 的字段值不合法");
         } catch (RuntimeException exception) {
-            throw invalid("分镜 JSON 无法解析：" + shortMessage(exception));
+            throw invalid("分镜 JSON 无法解析");
         }
     }
 
@@ -167,11 +197,13 @@ public class StoryboardValidator {
         return new BusinessException(AgentErrorCode.STORYBOARD_INVALID, message);
     }
 
-    private String shortMessage(RuntimeException exception) {
-        String message = exception.getMessage();
-        if (message == null || message.isBlank()) {
-            return exception.getClass().getSimpleName();
+    private void requireInteger(JsonNode object, String field, String path) {
+        JsonNode value = object.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            throw invalid(path + " 缺失");
         }
-        return message.length() <= 300 ? message : message.substring(0, 300);
+        if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+            throw invalid(path + " 必须是整数");
+        }
     }
 }

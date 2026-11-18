@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "visionforge.composition")
 public record CompositionProperties(
         String ffmpegPath,
+        String ffprobePath,
         Long partSizeBytes,
         Duration timeout,
         Duration presignTtl) {
@@ -17,6 +18,10 @@ public record CompositionProperties(
 
     public String ffmpegPathOrDefault() {
         return ffmpegPath == null || ffmpegPath.isBlank() ? "ffmpeg" : ffmpegPath;
+    }
+
+    public String ffprobePathOrDefault() {
+        return ffprobePath == null || ffprobePath.isBlank() ? "ffprobe" : ffprobePath;
     }
 
     public long partSizeBytesOrDefault() {

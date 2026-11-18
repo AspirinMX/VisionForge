@@ -33,6 +33,7 @@ import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
+import app.pagefault.visionforge.agent.skill.SkillRegistry;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
 import app.pagefault.visionforge.agent.tool.ToolInvocation;
 import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
@@ -65,7 +66,7 @@ class AgentRunServiceTest {
     private AgentRunService service;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         agentRunMapper = mock(AgentRunMapper.class);
         ModelInvocationRecorder invocationRecorder = mock(ModelInvocationRecorder.class);
         agentRunTurnMapper = mock(AgentRunTurnMapper.class);
@@ -93,6 +94,7 @@ class AgentRunServiceTest {
                 assetService,
                 modelDefinitionService,
                 contextCompactor,
+                new SkillRegistry(),
                 new ObjectMapper(),
                 idGenerator,
                 clock);

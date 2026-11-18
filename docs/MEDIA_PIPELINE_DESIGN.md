@@ -1,6 +1,6 @@
 # 图片、视频生成与媒体资产方案
 
-调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；生成任务、额度预占、Temporal 工作流、媒体工具、归档发布均已实现。分镜校验、shotId 关联、`await_generation`、成片合成（FFmpeg S3→S3）以及 OpenAI Images、Ark Images、Ark Seedance、万相图片与视频适配器已实现；真实网关联调、FFmpeg 真实运行和媒体处理（ffprobe/封面/转码）尚未验证。
+调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；生成任务、额度预占、Temporal 工作流、媒体工具、归档发布均已实现。分镜校验、shotId 关联、`await_generation`、成片合成（FFmpeg S3→S3）以及 OpenAI Images、Ark Images、Ark Seedance、万相图片与视频适配器已实现；本地 mock 已验证 FFmpeg 合成和 ffprobe 输入时长检查。真实媒体网关联调、资产元数据探测、封面和转码仍待验证或实现。
 
 依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、会话工作区存储服务和 V1–V14 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
@@ -547,7 +547,7 @@ bucket/key 只在服务端，客户端使用业务 ID。数据库不把对象公
 2. **输入按需读取**：Worker 只传资产 ID、版本和区间给内部解析层，由解析层校验对象归属并从 S3 以只读、支持 HTTP Range 的方式提供输入。FFmpeg 可按需读取 MP4 索引和媒体数据，不要求先把完整片段下载到本地，也不使用浏览器预签名 URL。
 3. **输出边编码边上传**：顺序输出优先采用 fragmented MP4，让 FFmpeg 写到标准输出。Worker 用有界缓冲和背压读取 stdout，按固定分片大小上传 S3 multipart；FFmpeg 成功退出且所有分片上传成功后执行 `CompleteMultipartUpload`，再创建成片资产和会话文件。任一步失败执行 `AbortMultipartUpload`，不发布半成品。
 4. **分片完成需要真实 ETag**：`ObjectStorage.uploadPart` 必须返回分片编号和实际 ETag，`completeMultipart` 使用这些值；不能只返回 `void` 后假设完成步骤能自行取得 ETag。
-5. **规格统一**：成片规格来自分镜的画幅、时长和输出配置；固定 recipe 负责统一分辨率、帧率、像素格式、编码和音轨。首版不做调色、复杂转场、混音、旁白或字幕。
+5. **规格统一**：分镜关联的视频任务冻结镜头时长和画幅，图片任务按协议为缺省 `size` 选择尺寸。OpenAI Images 使用方形、横向或纵向档位。成片默认按分镜画幅输出。Worker 用 ffprobe 检查每个视频流的实际时长，允许 50 毫秒的边界误差，片段过短或时长不可读时在上传成片前失败。FFmpeg 统一分辨率、帧率、像素格式和编码。
 6. **成片发布与追溯**：输出作为新的 asset 和会话文件版本，不覆盖任何镜头片段或旧成片。`composition_input` 保留 `shot_id`、生成任务 ID、资产/版本和剪辑区间，成片可追溯到所用镜头。
 7. **失败恢复**：FFmpeg 失败、超时、输出解析失败或分片上传失败时终止进程、回收临时资源并撤销 multipart；旧成片不受影响。重试复用同一 `composition_task` 和冻结输入，不重新生成镜头。
 
@@ -674,7 +674,7 @@ vf-media-process    解码、缩略图、转码
 
 不接受 body 中的 userId、任意来源 URL、供应商 task ID、callbackUrl 或对象键。API/工具显式引用素材；外部 URL 导入若未来开放，应作为独立受控导入任务。
 
-工具新增 `generate_image`、`generate_video`、`await_generation`、`get_generation`、`cancel_generation`、`inspect_asset`、`validate_storyboard`、`compose_video`。生成工具一次调用只创建一个候选；依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL/WAITING 等明确状态及 task/file/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。用户本轮消息附带的图片通过消息附件参与输入，历史消息默认只回放文本。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
+内置 `short-film` 通过 `load_skill` 提供短片创作与分镜步骤。模型用 `save_storyboard` 保存结构化分镜或用 `validate_storyboard` 校验已有版本，再调用 `generate_image`、`generate_video`、`await_generation`、`get_generation`、`cancel_generation`、`inspect_asset`、`compose_video`。生成工具一次调用只创建一个候选；依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL/WAITING 等明确状态及 task/file/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。用户本轮消息附带的图片通过消息附件参与输入，历史消息默认只回放文本。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
 
 任务通知先落库再经 Redis 推送小型状态事件，使用 stateVersion 去重。断线后 GET 恢复状态；首版不承诺事件重放。新增 SSE 按 `STANDARDS.md` 包含 type/code/message/data/traceId/timestamp，终态明确；现有聊天 SSE 的旧简化格式需要兼容迁移，不借本次媒体功能直接破坏旧客户端。
 
@@ -684,7 +684,7 @@ vf-media-process    解码、缩略图、转码
 
 产品范围以 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 为准。下面 A–G 是第一阶段“成片创作闭环（单镜头 + 多镜头顺序合成）”的工程拆分；剧本、分镜、首帧图、分镜视频、顺序成片、前端、归档、版本和费用共同构成第一阶段验收，不能仅完成图片接口就标记该阶段完成。主对话与 compact 保留 Responses SSE，媒体协议适配边界已由产品路线采纳。
 
-截至 2026-11-19 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地；E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片已实现。媒体协议适配器已覆盖 OpenAI Images、Ark Images、Ark Seedance、万相 Messages 图片、万相 T2I 和万相视频；`STUB` 仅保留为测试替身，不再注册为模型路由。A 的真实网关联调、`GATEWAY_CUSTOM`、ffprobe/封面/转码、FFmpeg 真实运行、G 的上线准备仍未完成。离线契约测试通过不等于网关联调通过。
+截至 2026-11-19 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地；E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片已实现。媒体协议适配器已覆盖 OpenAI Images、Ark Images、Ark Seedance、万相 Messages 图片、万相 T2I 和万相视频；`STUB` 仅保留为测试替身，不再注册为模型路由。A 的真实网关联调、`GATEWAY_CUSTOM`、资产入库元数据探测、封面、转码和 G 的上线准备仍未完成。本地 mock 已验证 FFmpeg 和 ffprobe 合成链路。离线契约测试通过不等于网关联调通过。
 
 | 阶段 | 交付 | 验收重点 |
 | --- | --- | --- |

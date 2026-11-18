@@ -31,7 +31,9 @@ import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
+import app.pagefault.visionforge.agent.storyboard.StoryboardDocument;
 import app.pagefault.visionforge.agent.storyboard.StoryboardService;
+import app.pagefault.visionforge.agent.storyboard.StoryboardShot;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
@@ -59,6 +61,7 @@ class GenerationTaskServiceTest {
     private CreditService creditService;
     private MediaProviderRegistry providerRegistry;
     private GenerationTaskService service;
+    private StoryboardService storyboardService;
 
     @BeforeEach
     void setUp() {
@@ -73,7 +76,7 @@ class GenerationTaskServiceTest {
         ConversationReferenceChecker checker = mock(ConversationReferenceChecker.class);
         AssetService assetService = mock(AssetService.class);
         ConversationFileService fileService = mock(ConversationFileService.class);
-        StoryboardService storyboardService = mock(StoryboardService.class);
+        storyboardService = mock(StoryboardService.class);
         creditService = mock(CreditService.class);
         providerRegistry = mock(MediaProviderRegistry.class);
         AtomicLong sequence = new AtomicLong();
@@ -123,6 +126,34 @@ class GenerationTaskServiceTest {
         assertThat(startCaptor.getValue().getWorkflowType())
                 .isEqualTo(WorkflowStartType.MEDIA_GENERATION);
         assertThat(startCaptor.getValue().getBusinessId()).isEqualTo(task.getId());
+    }
+
+    @Test
+    void linkedVideoFreezesStoryboardDurationAndRatio() {
+        ModelDefinition model = imageModel(0);
+        model.setProtocol(MediaProtocol.DASHSCOPE_VIDEO);
+        model.setExecutionMode(ExecutionMode.REMOTE_TASK);
+        when(modelDefinitionService.requireEnabled(MODEL_ID, ModelCapabilityType.VIDEO)).thenReturn(model);
+        UUID storyboardId = UUID.randomUUID();
+        StoryboardShot shot = mock(StoryboardShot.class);
+        when(shot.durationSeconds()).thenReturn(5);
+        StoryboardDocument document = new StoryboardDocument(1, "Test", "16:9", null, null, List.of(shot));
+        when(storyboardService.resolveShot(USER_ID, CONVERSATION_ID, storyboardId, null, "shot-1"))
+                .thenReturn(new StoryboardService.ResolvedShot(shot, 3, document));
+
+        GenerationTask task = service.submit(USER_ID, new SubmitGenerationCommand(
+                CONVERSATION_ID, null, null, GenerationType.VIDEO, MODEL_ID, "Camera pushes in",
+                """
+                {"duration":2,"ratio":"1:1","resolution":"720P"}
+                """,
+                List.of(), null, null, "shot-1", storyboardId, null)).task();
+
+        assertThat(task.getStoryboardVersion()).isEqualTo(3);
+        var parameters = new ObjectMapper().readTree(task.getParameters());
+        assertThat(parameters.path("durationSeconds").asInt()).isEqualTo(5);
+        assertThat(parameters.path("ratio").asText()).isEqualTo("16:9");
+        assertThat(parameters.path("resolution").asText()).isEqualTo("720P");
+        assertThat(parameters.has("duration")).isFalse();
     }
 
     @Test

@@ -9,6 +9,7 @@ import app.pagefault.visionforge.asset.library.ConversationFileKind;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationFileSource;
 import app.pagefault.visionforge.asset.library.ConversationFileVersion;
+import app.pagefault.visionforge.asset.library.CreateConversationFileCommand;
 import app.pagefault.visionforge.asset.library.UpdateConversationFileCommand;
 import app.pagefault.visionforge.common.error.BusinessException;
 
@@ -30,6 +31,25 @@ public class StoryboardService {
     private final ConversationFileService fileService;
     private final StoryboardValidator validator;
     private final ObjectMapper objectMapper;
+
+    public ConversationFile saveDraft(
+            UUID userId, UUID conversationId, UUID fileId, Integer baseVersion,
+            String path, JsonNode storyboard) {
+        if ((fileId == null) != (baseVersion == null) || (baseVersion != null && baseVersion < 1)) {
+            throw new BusinessException(AgentErrorCode.TOOL_ARGUMENTS_INVALID,
+                    "更新分镜时必须同时提供 fileId 和正整数 baseVersion");
+        }
+        String content = objectMapper.writeValueAsString(storyboard);
+        validator.validate(content);
+        String title = storyboard.path("title").asText();
+        if (fileId == null) {
+            return fileService.create(userId, conversationId, new CreateConversationFileCommand(
+                    ConversationFileKind.STORYBOARD, title, path, content, ConversationFileSource.AGENT));
+        }
+        requireStoryboard(userId, conversationId, fileId);
+        return fileService.update(userId, conversationId, fileId, new UpdateConversationFileCommand(
+                baseVersion, content, title, ConversationFileSource.AGENT));
+    }
 
     public StoryboardSummary validateFile(
             UUID userId, UUID conversationId, UUID fileId, Integer version) {

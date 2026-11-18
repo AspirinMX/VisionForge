@@ -293,6 +293,8 @@ flowchart TD
 | create_file | 在当前会话工作区创建文件 |
 | update_file | 基于 base_version 修改文件，产生新版本 |
 | list_file_versions | 列出文件的版本历史 |
+| load_skill | 按名读取内置创作指南，工具结果随当前执行重放 |
+| save_storyboard | 保存结构化分镜并返回文件 ID 与版本，更新需要 `fileId` 和 `baseVersion` |
 | validate_storyboard | 校验 `STORYBOARD` JSON 的 schema、镜头 id、顺序和引用字段；不写入 |
 | search_assets | 查询当前用户可访问的素材 |
 | inspect_asset | 获取媒体信息和可供模型使用的内容 |
@@ -913,7 +915,7 @@ billing 独立于 Agent 的自然语言判断。
 - `GATEWAY_CUSTOM` 自定义协议适配；OpenAI Images 多图编辑的 MIME/文件名兼容性尚未实测。
 - 真实网关联调、真实计费样例和 `REMOTE_TASK` 的真实取消语义验证。
 - 真实 FFmpeg 运行验证与目标播放器兼容性；当前成片输出为无音轨视频，声音、字幕、转场属于第二阶段。
-- ffprobe 探测、封面、播放转码、缩略图等媒体处理；当前归档直接发布原文件。
+- 资产入库元数据探测、封面、播放转码和缩略图仍待实现。合成前用 ffprobe 检查输入视频时长。
 - 前端生成入口、任务卡片、候选比较、成片播放页面。
 - 批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
 - 真实额度充值/管理接口；当前新账户按 `BILLING_INITIAL_CREDIT_UNITS` 初始化。

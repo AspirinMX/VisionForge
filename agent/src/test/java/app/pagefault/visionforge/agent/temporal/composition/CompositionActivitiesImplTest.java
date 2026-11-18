@@ -1,11 +1,13 @@
 package app.pagefault.visionforge.agent.temporal.composition;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,7 +21,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 
 import app.pagefault.visionforge.agent.composition.CompositionInput;
@@ -55,8 +58,9 @@ class CompositionActivitiesImplTest {
     private static final UUID ASSET_ID = UUID.randomUUID();
     private static final byte[] OUTPUT = "fake-mp4".getBytes(StandardCharsets.UTF_8);
 
-    @Test
-    void streamsFfmpegOutputToMultipartAndPublishesFinalAsset() {
+    @ParameterizedTest
+    @ValueSource(strings = {"1.000", "0.400"})
+    void validatesSourceDurationBeforePublishingFinalAsset(String sourceDuration) {
         CompositionTaskService taskService = mock(CompositionTaskService.class);
         AssetService assetService = mock(AssetService.class);
         ConversationFileService fileService = mock(ConversationFileService.class);
@@ -101,7 +105,8 @@ class CompositionActivitiesImplTest {
                 any(), eq(ASSET_ID), any(), anyLong(), any()))
                 .thenReturn(new PublishedMediaFile(file, version));
 
-        FfmpegRunner runner = command -> new FakeProcess(OUTPUT);
+        FfmpegRunner runner = command -> new FakeProcess(command.getFirst().equals("ffprobe")
+                ? sourceDuration.getBytes(StandardCharsets.UTF_8) : OUTPUT);
         CompositionActivitiesImpl activities = new CompositionActivitiesImpl(
                 taskService,
                 assetService,
@@ -110,8 +115,16 @@ class CompositionActivitiesImplTest {
                 new FfmpegCommandBuilder(),
                 runner,
                 new CompositionProperties(
-                        "ffmpeg", 5L * 1024 * 1024, Duration.ofSeconds(30), Duration.ofHours(1)),
+                        "ffmpeg", "ffprobe", 5L * 1024 * 1024, Duration.ofSeconds(30), Duration.ofHours(1)),
                 new ObjectMapper());
+
+        if (sourceDuration.equals("0.400")) {
+            assertThatThrownBy(() -> activities.compose(TASK_ID))
+                    .hasMessageContaining("镜头 shot-1 的片段时长为 0.400 秒，无法覆盖剪辑区间 0–1 秒");
+            verify(storage, never()).initiateMultipart(any(), any());
+            verify(taskService).markFailed(eq(TASK_ID), any());
+            return;
+        }
 
         activities.compose(TASK_ID);
 

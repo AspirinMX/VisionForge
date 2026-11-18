@@ -120,6 +120,10 @@ event: error             data: {"type":"error","message":"..."}
 
 浏览器应使用 `fetch` 的流式 reader 消费，因为 `EventSource` 不能携带 `Authorization` 头。该接口需要 Redis；非流式消息接口在 Redis 不可用时仍可使用。Redis pub/sub 只负责实时投递；连接中断后以已持久化的助手消息为准。
 
+### 内置创作 skill
+
+Agent 在系统提示里看到内置 skill 的名称和用途，调用 `load_skill` 后才收到完整正文。同一轮重放时复用工具调用记录中的正文。首个 skill [`short-film`](agent/src/main/resources/visionforge/skills/short-film/SKILL.md) 用于剧本、分镜和短片制作。`save_storyboard` 接收结构化分镜对象，更新时使用 `fileId` 和 `baseVersion`。新增内置 skill 时，在 `agent/src/main/resources/visionforge/skills/<name>/SKILL.md` 提供与目录同名的 `name`、一行 `description` 和正文。
+
 ### 会话工作区
 
 每个会话拥有自己的工作区。这次对话中创建的脚本、分镜、提示词、图片和视频都属于它，不与其他会话或用户共享。更新文件会创建不可变版本，并必须携带 `baseVersion` 以检测并发修改。
@@ -186,7 +190,7 @@ POST /api/v1/composition-tasks/{taskId}/retry
 
 生成任务可携带 `shotId`、`storyboardFileId` 和 `storyboardVersion`。首帧图完成后写回分镜的 `firstFrame`，视频完成后追加 `videoCandidates` 并默认选中第一个候选。`STORYBOARD` 文件在创建、更新和 `validate_storyboard` 工具中都会校验 schema。
 
-依赖产物时调用 `await_generation`：当前 AgentRun 持久化等待任务终态，完成后把结果交回同一模型。`compose_video` 按分镜顺序冻结 `selectedVideo`、资产和 `usedRange`，由 `VideoCompositionWorkflow` 从 S3 读取片段、FFmpeg 裁剪拼接、multipart 流式写回并发布成片。Worker 需要可执行的 FFmpeg；可通过 `FFMPEG_PATH`、`COMPOSITION_PART_SIZE_BYTES`、`COMPOSITION_TIMEOUT` 配置。
+依赖产物时调用 `await_generation`：当前 AgentRun 持久化等待任务终态，完成后把结果交回同一模型。`compose_video` 按分镜顺序冻结 `selectedVideo`、资产和 `usedRange`，由 `VideoCompositionWorkflow` 从 S3 读取片段、FFmpeg 裁剪拼接、multipart 流式写回并发布成片。合成前用 ffprobe 核对源片能否覆盖剪辑区间。Worker 可通过 `FFMPEG_PATH`、`FFPROBE_PATH`、`COMPOSITION_PART_SIZE_BYTES`、`COMPOSITION_TIMEOUT` 配置。
 
 媒体协议当前注册：
 
@@ -197,7 +201,7 @@ POST /api/v1/composition-tasks/{taskId}/retry
 - `DASHSCOPE_T2I`：万相文生图异步任务提交与查询。
 - `DASHSCOPE_VIDEO`：万相视频异步任务提交与查询，支持首帧和参考素材。
 
-GPT Image、Seedream、Seedance 和万相适配器均已实现，但**尚未进行真实网关联调**；`GATEWAY_CUSTOM` 尚无适配器，ffprobe/封面/转码仍未实现。`STUB` 仅保留为测试替身，不再作为可选或已注册的模型路由。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
+GPT Image、Seedream、Seedance 和万相适配器均已实现，但**尚未进行真实网关联调**；`GATEWAY_CUSTOM` 尚无适配器，资产入库探测、封面和转码仍待实现。`STUB` 仅保留为测试替身，不再作为可选或已注册的模型路由。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
 
 ### 本地媒体 mock
 
@@ -216,7 +220,7 @@ DASHSCOPE_*                       http://127.0.0.1:8000/api/v1
 MEDIA_ALLOW_HTTP=true
 ```
 
-视频端点需要 `PATH` 中有 `ffmpeg`；也可以传 `--video-file <path>` 使用已有 MP4。`compose_video` 同样依赖这个 FFmpeg。`MEDIA_ALLOW_HTTP` 仅用于本地开发，生产环境不得开启。
+视频端点需要 `PATH` 中有 `ffmpeg`；默认 mock 片段长 2 秒。测试每镜 5 秒的成片时，用 `--video-file <path>` 传入至少 5 秒的 MP4。`MEDIA_ALLOW_HTTP` 仅用于本地开发，生产环境不得开启。
 
 ## 部署
 

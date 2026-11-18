@@ -120,6 +120,10 @@ event: error             data: {"type":"error","message":"..."}
 
 Browsers should consume it with `fetch` and a streaming reader because `EventSource` cannot send the `Authorization` header. Redis is required for this endpoint; the non-streaming message endpoint still works without it. Redis pub/sub is best-effort for live delivery; the persisted assistant message remains the source of truth if the stream disconnects.
 
+### Built-in creative skills
+
+The system prompt advertises each bundled skill by name and description. The agent calls `load_skill` to read the full instructions and reuses the recorded tool output on later model turns in the same run. The first skill, [`short-film`](agent/src/main/resources/visionforge/skills/short-film/SKILL.md), covers scripts, storyboards, and short-film production. `save_storyboard` takes a structured storyboard and requires `fileId` and `baseVersion` for updates. Add bundled skills under `agent/src/main/resources/visionforge/skills/<name>/SKILL.md` with a matching `name`, a single-line `description`, and Markdown instructions.
+
 ### Conversation work area
 
 Every conversation has its own work area. Scripts, storyboards, prompts, images and videos created in that conversation belong to it and are not shared with other conversations or users. File updates create immutable versions and require `baseVersion` to detect concurrent edits.
@@ -186,7 +190,7 @@ Acceptance writes the task, frozen inputs, output placeholder, credit reservatio
 
 A generation may carry `shotId`, `storyboardFileId` and `storyboardVersion`. Completed first frames are written back to the shot's `firstFrame`; completed videos are appended to `videoCandidates` and the first candidate is selected by default. `STORYBOARD` files are validated on create, update and by the `validate_storyboard` tool.
 
-`await_generation` makes the current AgentRun wait durably for a task terminal state and then hands the result back to the same model. `compose_video` freezes `selectedVideo`, assets and `usedRange` in storyboard order; `VideoCompositionWorkflow` reads clips from S3, runs FFmpeg, streams a multipart upload and publishes the final asset. The worker needs an executable FFmpeg, configurable with `FFMPEG_PATH`, `COMPOSITION_PART_SIZE_BYTES` and `COMPOSITION_TIMEOUT`.
+`await_generation` makes the current AgentRun wait durably for a task terminal state and then hands the result back to the same model. `compose_video` freezes `selectedVideo`, assets and `usedRange` in storyboard order; `VideoCompositionWorkflow` reads clips from S3, runs FFmpeg, streams a multipart upload and publishes the final asset. Before composing, the worker uses ffprobe to check that each source covers its edit range. Configure the executables with `FFMPEG_PATH` and `FFPROBE_PATH`. Use `COMPOSITION_PART_SIZE_BYTES` and `COMPOSITION_TIMEOUT` to configure the composition job.
 
 Registered media protocols:
 
@@ -197,7 +201,7 @@ Registered media protocols:
 - `DASHSCOPE_T2I`: Wanxiang text-to-image async task submit/query.
 - `DASHSCOPE_VIDEO`: Wanxiang video async task submit/query with first-frame/reference media.
 
-The GPT Image, Seedream, Seedance and Wanxiang adapters are implemented but have **not been verified against a live gateway**. `GATEWAY_CUSTOM` has no adapter yet, and ffprobe/cover/transcoding are still pending. `STUB` remains only as a test double and is not a selectable or registered model route. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
+The GPT Image, Seedream, Seedance and Wanxiang adapters are implemented but have **not been verified against a live gateway**. `GATEWAY_CUSTOM` has no adapter yet, and asset metadata probing, covers, and transcoding are still pending. `STUB` remains only as a test double and is not a selectable or registered model route. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
 
 ### Local media mock
 
@@ -216,7 +220,7 @@ DASHSCOPE_*                       http://127.0.0.1:8000/api/v1
 MEDIA_ALLOW_HTTP=true
 ```
 
-Video endpoints need `ffmpeg` on `PATH`; alternatively pass `--video-file <path>` with an existing MP4. The same FFmpeg binary is required by `compose_video`. `MEDIA_ALLOW_HTTP` is for local development only and must stay unset in production.
+Video endpoints need `ffmpeg` on `PATH`; the default mock clip lasts 2 seconds. To test a five-second shot, pass an MP4 of at least that duration with `--video-file <path>`. `MEDIA_ALLOW_HTTP` is for local development only and must stay unset in production.
 
 ## Deployment
 

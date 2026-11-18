@@ -21,6 +21,7 @@ import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartStatus;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.agent.storyboard.StoryboardRange;
+import app.pagefault.visionforge.agent.storyboard.StoryboardAspectRatio;
 import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.storyboard.StoryboardShot;
 import app.pagefault.visionforge.agent.storyboard.StoryboardVideoSelection;
@@ -32,7 +33,7 @@ import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import lombok.RequiredArgsConstructor;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
@@ -76,7 +77,7 @@ public class CompositionTaskService {
         Instant now = clock.instant();
         UUID taskId = idGenerator.nextId();
         String workflowId = workflowId(taskId);
-        String outputSpec = normalizeOutputSpec(command.outputSpec());
+        String outputSpec = normalizeOutputSpec(command.outputSpec(), resolved.document().aspectRatio());
 
         CompositionTask task = new CompositionTask();
         task.setId(taskId);
@@ -343,14 +344,18 @@ public class CompositionTaskService {
                         .eq(WorkflowStartRequest::getWorkflowId, workflowId));
     }
 
-    private String normalizeOutputSpec(String outputSpec) {
-        String raw = outputSpec == null || outputSpec.isBlank()
-                ? DEFAULT_OUTPUT_SPEC
-                : outputSpec.trim();
+    private String normalizeOutputSpec(String outputSpec, String aspectRatio) {
+        boolean usesDefault = outputSpec == null || outputSpec.isBlank();
+        String raw = usesDefault ? DEFAULT_OUTPUT_SPEC : outputSpec.trim();
         try {
-            JsonNode node = objectMapper.readTree(raw);
-            if (node == null || !node.isObject()) {
+            if (!(objectMapper.readTree(raw) instanceof ObjectNode node)) {
                 throw invalid("成片输出规格必须是 JSON 对象");
+            }
+            StoryboardAspectRatio ratio = StoryboardAspectRatio.parse(aspectRatio);
+            if (ratio != null && (usesDefault || (!node.hasNonNull("width") && !node.hasNonNull("height")))) {
+                var dimensions = ratio.fit(1280, 2);
+                node.put("width", dimensions.width());
+                node.put("height", dimensions.height());
             }
             return objectMapper.writeValueAsString(node);
         } catch (BusinessException exception) {

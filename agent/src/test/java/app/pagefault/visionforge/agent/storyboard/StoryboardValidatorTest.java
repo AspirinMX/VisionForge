@@ -27,6 +27,22 @@ class StoryboardValidatorTest {
     }
 
     @Test
+    void reportsMissingSchemaVersionByFieldName() {
+        assertThatThrownBy(() -> validator.validate("{\"title\":\"分镜\",\"shots\":[]}"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("schemaVersion 缺失");
+    }
+
+    @Test
+    void reportsMissingShotOrderByIndexedFieldName() {
+        assertThatThrownBy(() -> validator.validate("""
+                {"schemaVersion":1,"title":"分镜","shots":[{"id":"shot-1","durationSeconds":5}]}
+                """))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("shots[0].order 缺失");
+    }
+
+    @Test
     void rejectsDuplicateShotIds() {
         String json = """
                 {

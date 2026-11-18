@@ -26,6 +26,7 @@ import app.pagefault.visionforge.agent.provider.media.MediaProviderReceipt;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRequest;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
+import app.pagefault.visionforge.agent.storyboard.StoryboardAspectRatio;
 import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartStatus;
@@ -44,6 +45,7 @@ import app.pagefault.visionforge.common.id.IdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -94,7 +96,7 @@ public class GenerationTaskService {
         providerRegistry.require(model.getProtocol());
 
         String prompt = normalizePrompt(command.prompt());
-        String parameters = normalizeParameters(command.parameters());
+        StoryboardService.ResolvedShot resolvedShot = null;
         List<ValidatedInput> inputs = validateInputs(
                 userId, conversationId, command.type(), command.inputs());
         UUID sourceTaskId = validateSourceTask(userId, command.sourceTaskId());
@@ -107,19 +109,17 @@ public class GenerationTaskService {
                     "shotId 与 storyboardFileId 必须同时提供");
         }
         if (shotId != null) {
-            storyboardVersion = storyboardService.resolveShot(
-                    userId,
-                    conversationId,
-                    storyboardFileId,
-                    storyboardVersion,
-                    shotId).storyboardVersion();
+            resolvedShot = storyboardService.resolveShot(
+                    userId, conversationId, storyboardFileId, storyboardVersion, shotId);
+            storyboardVersion = resolvedShot.storyboardVersion();
         } else if (storyboardVersion != null) {
             throw new BusinessException(
                     AgentErrorCode.GENERATION_INPUT_INVALID,
                     "未指定镜头时不能提供分镜版本");
         }
+        ObjectNode parameters = parseParameters(command.parameters());
         String fingerprint = fingerprint(
-                conversationId, command.type(), model.getId(), prompt, parameters,
+                conversationId, command.type(), model.getId(), prompt, checkedParameters(parameters),
                 inputs, sourceTaskId, shotId, storyboardFileId, storyboardVersion);
 
         String idempotencyKey = normalizeKey(command.idempotencyKey());
@@ -133,6 +133,10 @@ public class GenerationTaskService {
             }
         }
 
+        if (resolvedShot != null) {
+            applyShotParameters(parameters, model, command.type(), resolvedShot);
+        }
+        String effectiveParameters = checkedParameters(parameters);
         UUID taskId = idGenerator.nextId();
         String workflowId = workflowId(taskId);
         Instant now = clock.instant();
@@ -150,7 +154,7 @@ public class GenerationTaskService {
         task.setProtocol(model.getProtocol());
         task.setExecutionMode(model.getExecutionMode());
         task.setPrompt(prompt);
-        task.setParameters(parameters);
+        task.setParameters(effectiveParameters);
         task.setStatus(GenerationStatus.PENDING);
         task.setDeliveryStatus(GenerationDeliveryStatus.PENDING);
         task.setBillingStatus(GenerationBillingStatus.RESERVED);
@@ -872,25 +876,58 @@ public class GenerationTaskService {
         return value;
     }
 
-    private String normalizeParameters(String parameters) {
+    private ObjectNode parseParameters(String parameters) {
         String raw = parameters == null || parameters.isBlank() ? "{}" : parameters.trim();
         try {
-            JsonNode node = objectMapper.readTree(raw);
-            if (node == null || !node.isObject()) {
+            if (!(objectMapper.readTree(raw) instanceof ObjectNode node)) {
                 throw new BusinessException(
                         AgentErrorCode.GENERATION_INPUT_INVALID, "生成参数必须是 JSON 对象");
             }
-            String normalized = objectMapper.writeValueAsString(node);
-            if (normalized.length() > MAX_PARAMETERS_LENGTH) {
-                throw new BusinessException(
-                        AgentErrorCode.GENERATION_INPUT_INVALID, "生成参数超过最大长度");
-            }
-            return normalized;
+            return node;
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw new BusinessException(
                     AgentErrorCode.GENERATION_INPUT_INVALID, "生成参数必须是合法 JSON");
+        }
+    }
+
+    private String checkedParameters(ObjectNode parameters) {
+        String normalized = objectMapper.writeValueAsString(parameters);
+        if (normalized.length() > MAX_PARAMETERS_LENGTH) {
+            throw new BusinessException(
+                    AgentErrorCode.GENERATION_INPUT_INVALID, "生成参数超过最大长度");
+        }
+        return normalized;
+    }
+
+    private void applyShotParameters(ObjectNode parameters, ModelDefinition model,
+            GenerationType type, StoryboardService.ResolvedShot resolvedShot) {
+        StoryboardAspectRatio aspectRatio = StoryboardAspectRatio.parse(resolvedShot.document().aspectRatio());
+        if (type == GenerationType.VIDEO) {
+            parameters.remove("duration");
+            parameters.put("durationSeconds", resolvedShot.shot().durationSeconds());
+            if (aspectRatio != null) {
+                parameters.put("ratio", aspectRatio.text());
+            }
+            return;
+        }
+        if (aspectRatio == null || parameters.hasNonNull("size")) {
+            return;
+        }
+        String size = switch (model.getProtocol()) {
+            case OPENAI_IMAGES -> {
+                if (aspectRatio.horizontal() == aspectRatio.vertical()) {
+                    yield "1024x1024";
+                }
+                yield aspectRatio.horizontal() > aspectRatio.vertical() ? "1536x1024" : "1024x1536";
+            }
+            case ARK_IMAGES -> aspectRatio.fit(2560, 16).text("x");
+            case DASHSCOPE_IMAGE_MESSAGES, DASHSCOPE_T2I -> aspectRatio.fit(1280, 16).text("*");
+            default -> null;
+        };
+        if (size != null) {
+            parameters.put("size", size);
         }
     }
 

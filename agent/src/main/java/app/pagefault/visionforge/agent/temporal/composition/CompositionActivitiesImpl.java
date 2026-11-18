@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import app.pagefault.visionforge.agent.composition.CompositionTaskService;
 import app.pagefault.visionforge.agent.composition.FfmpegCommandBuilder;
 import app.pagefault.visionforge.agent.composition.FfmpegCommandBuilder.CompositionClip;
 import app.pagefault.visionforge.agent.composition.FfmpegRunner;
+import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.PublishedMediaFile;
 import app.pagefault.visionforge.asset.media.Asset;
@@ -45,6 +47,8 @@ import tools.jackson.databind.ObjectMapper;
 public class CompositionActivitiesImpl implements CompositionActivities {
 
     private static final int STDERR_LIMIT = 16 * 1024;
+    private static final int PROBE_TIMEOUT_SECONDS = 15;
+    private static final BigDecimal FRAME_TOLERANCE_SECONDS = new BigDecimal("0.05");
 
     private final CompositionTaskService taskService;
     private final AssetService assetService;
@@ -73,15 +77,20 @@ public class CompositionActivitiesImpl implements CompositionActivities {
             List<CompositionInput> inputs = taskService.inputs(taskId);
             List<CompositionClip> clips = new ArrayList<>(inputs.size());
             for (CompositionInput input : inputs) {
+                if (taskService.cancelled(taskId)) {
+                    return;
+                }
                 Asset asset = assetService.get(task.getUserId(), input.getAssetId());
                 if (!task.getConversationId().equals(asset.getConversationId())
                         || asset.getStatus() != AssetStatus.READY) {
                     throw new BusinessException(
-                            app.pagefault.visionforge.agent.error.AgentErrorCode.GENERATION_INPUT_INVALID,
+                            AgentErrorCode.GENERATION_INPUT_INVALID,
                             "成片输入资产不可用");
                 }
                 String url = storage.presignInternalGet(
                         asset.getObjectKey(), properties.presignTtlOrDefault()).url().toString();
+                validateClipDuration(input, url);
+                heartbeat(0);
                 clips.add(new CompositionClip(
                         url, input.getStartSeconds(), input.getEndSeconds()));
             }
@@ -126,7 +135,7 @@ public class CompositionActivitiesImpl implements CompositionActivities {
                 process.destroyForcibly();
                 stderrThread.join(1_000);
                 throw new BusinessException(
-                        app.pagefault.visionforge.agent.error.AgentErrorCode.GENERATION_ARCHIVE_FAILED,
+                        AgentErrorCode.GENERATION_ARCHIVE_FAILED,
                         "FFmpeg 合成超时");
             }
             stderrThread.join(1_000);
@@ -134,7 +143,7 @@ public class CompositionActivitiesImpl implements CompositionActivities {
             if (exit != 0 || parts.isEmpty()) {
                 String detail = stderr.toString(StandardCharsets.UTF_8);
                 throw new BusinessException(
-                        app.pagefault.visionforge.agent.error.AgentErrorCode.GENERATION_ARCHIVE_FAILED,
+                        AgentErrorCode.GENERATION_ARCHIVE_FAILED,
                         "FFmpeg 合成失败（exit=" + exit + "）：" + tail(detail));
             }
 
@@ -181,13 +190,51 @@ public class CompositionActivitiesImpl implements CompositionActivities {
             taskService.markFailed(taskId, message);
             throw ApplicationFailure.newNonRetryableFailure(
                     message,
-                    app.pagefault.visionforge.agent.error.AgentErrorCode.GENERATION_ARCHIVE_FAILED.code());
+                    AgentErrorCode.GENERATION_ARCHIVE_FAILED.code());
         }
     }
 
     @Override
     public void fail(UUID taskId, String errorMessage) {
         taskService.markFailed(taskId, errorMessage);
+    }
+
+    private void validateClipDuration(CompositionInput input, String url) throws IOException, InterruptedException {
+        Process probe = ffmpegRunner.start(List.of(
+                properties.ffprobePathOrDefault(), "-v", "error", "-rw_timeout", "10000000",
+                "-select_streams", "v:0", "-show_entries", "stream=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", "-i", url));
+        try {
+            if (!probe.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS) || probe.exitValue() != 0) {
+                throw unreadableDuration(input);
+            }
+            BigDecimal duration;
+            try (InputStream stdout = probe.getInputStream()) {
+                String value = new String(stdout.readNBytes(128), StandardCharsets.UTF_8).trim();
+                duration = new BigDecimal(value);
+            } catch (NumberFormatException exception) {
+                throw unreadableDuration(input);
+            }
+            if (duration.signum() <= 0) {
+                throw unreadableDuration(input);
+            }
+            if (duration.compareTo(input.getStartSeconds()) <= 0
+                    || duration.add(FRAME_TOLERANCE_SECONDS).compareTo(input.getEndSeconds()) < 0) {
+                throw new BusinessException(AgentErrorCode.GENERATION_INPUT_INVALID,
+                        "镜头 " + input.getShotId() + " 的片段时长为 " + duration.toPlainString()
+                                + " 秒，无法覆盖剪辑区间 " + input.getStartSeconds().toPlainString()
+                                + "–" + input.getEndSeconds().toPlainString() + " 秒");
+            }
+        } finally {
+            if (probe.isAlive()) {
+                probe.destroyForcibly();
+            }
+        }
+    }
+
+    private BusinessException unreadableDuration(CompositionInput input) {
+        return new BusinessException(AgentErrorCode.GENERATION_INPUT_INVALID,
+                "无法读取镜头 " + input.getShotId() + " 的视频时长");
     }
 
     private void heartbeat(long bytes) {

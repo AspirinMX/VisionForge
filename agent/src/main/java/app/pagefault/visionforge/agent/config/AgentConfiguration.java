@@ -34,6 +34,7 @@ import app.pagefault.visionforge.agent.provider.media.DashScopeVideoProvider;
 import app.pagefault.visionforge.agent.provider.media.HttpMediaDownloader;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.provider.media.OpenAiImagesProvider;
+import app.pagefault.visionforge.agent.skill.SkillRegistry;
 import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationActivitiesImpl;
@@ -173,6 +174,7 @@ public class AgentConfiguration {
             AssetService assetService,
             ModelDefinitionService modelDefinitionService,
             ContextCompactor contextCompactor,
+            SkillRegistry skillRegistry,
             ObjectMapper objectMapper,
             IdGenerator idGenerator,
             Clock clock) {
@@ -188,6 +190,7 @@ public class AgentConfiguration {
                 assetService,
                 modelDefinitionService,
                 contextCompactor,
+                skillRegistry,
                 objectMapper,
                 idGenerator,
                 clock);
