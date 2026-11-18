@@ -1,29 +1,33 @@
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+import { useAuth } from "@/components/providers/auth-provider";
+import { Skeleton } from "@/components/ui/skeleton";
+
+/**
+ * Root entry temporarily gates traffic by authentication state (/login or /conversations)
+ * until a dedicated landing page is introduced.
+ */
 export default function HomePage() {
+  const { status } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/conversations");
+    } else if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [status, router]);
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle>VisionForge · 幻影工坊</CardTitle>
-            <Badge variant="secondary">Phase 0 就绪</Badge>
-          </div>
-          <CardDescription>
-            前端基础底座已完成初始化，等待进入 Phase 1 鉴权与工作台壳层建设。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          已接入 shadcn（preset b27GcrRo）、同源 API 代理、令牌刷新队列、SSE 流式读取器及统一错误处理。
-        </CardContent>
-      </Card>
+    <main className="flex min-h-svh items-center justify-center bg-background p-6">
+      <div className="w-full max-w-sm space-y-3">
+        <Skeleton className="mx-auto h-7 w-40" />
+        <Skeleton className="h-4 w-full" />
+      </div>
     </main>
   );
 }
