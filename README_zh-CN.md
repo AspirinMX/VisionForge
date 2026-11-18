@@ -93,6 +93,8 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
 
 API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用通过 OpenAI 官方 Java SDK 以流式方式请求 `POST {baseUrl}/responses`（`responses().createStreaming()`），显式提交 `input` 数组，并使用 `store: false`、`max_output_tokens`，配置了 reasoning effort 时提交 `reasoning.effort`。不使用 Chat Completions。每次请求还携带由会话派生的稳定 `prompt_cache_key`（会话调用为 `vf-chat:<conversationId>`，压缩调用为 `vf-compact:<conversationId>`），让重复前缀复用上游提示词缓存；不覆盖 `prompt_cache_retention`。AgentRun 由 Worker 执行，Worker 必须保持运行。
 
+普通用户通过 `GET /api/v1/models?capabilityType=IMAGE|VIDEO|CHAT` 读取已启用的模型目录，响应不包含上游 baseUrl 或密钥。生成请求可以省略 `modelDefinitionId`，由服务端按能力类型选择默认启用模型。
+
 会话接口：
 
 ```text
@@ -102,8 +104,11 @@ GET  /api/v1/conversations/{conversationId}
 GET  /api/v1/conversations/{conversationId}/messages
 POST /api/v1/conversations/{conversationId}/messages
 POST /api/v1/conversations/{conversationId}/messages/stream
+GET  /api/v1/agent-runs?conversationId=&status=&limit=
 GET  /api/v1/agent-runs/{runId}
 ```
+
+`MessageResponse` 新增 `assetIds` 与 `generationTaskIds`，由 `message_part` 一次性查询得到，刷新页面后附件不再依赖客户端缓存。
 
 发送消息返回 `202 Accepted` 和 `runId`；助手回复由 Workflow 异步写入，客户端轮询 AgentRun，直到状态为 `COMPLETED` 或 `FAILED`。如果 Temporal 暂时不可用，AgentRun 会保持 `PENDING`，由 Worker 的启动补偿任务重试启动 Workflow。
 
@@ -119,6 +124,16 @@ event: error             data: {"type":"error","message":"..."}
 ```
 
 浏览器应使用 `fetch` 的流式 reader 消费，因为 `EventSource` 不能携带 `Authorization` 头。该接口需要 Redis；非流式消息接口在 Redis 不可用时仍可使用。Redis pub/sub 只负责实时投递；连接中断后以已持久化的助手消息为准。
+
+### 额度与用量
+
+```text
+GET /api/v1/account/credit
+GET /api/v1/account/credit/ledger?limit=50&before=<ledgerId>
+GET /api/v1/account/usage?window=100
+```
+
+`credit` 返回 `balanceUnits`、`reservedUnits` 与 `availableUnits`。流水按 UUIDv7 账本 id 倒序并使用 keyset 游标；每行包含类型（GRANT/RESERVE/SETTLE/RELEASE）、数量，以及经预占记录反查到的生成任务。`usage` 汇总最近 `window` 条任务的 `priceUnits`，按账务状态分组。首次读取会按 `BILLING_INITIAL_CREDIT_UNITS` 创建账户并记录初始授予，与生成路径一致。
 
 ### 内置创作 skill
 
@@ -136,9 +151,12 @@ GET   /api/v1/conversations/{conversationId}/files/{fileId}
 PATCH /api/v1/conversations/{conversationId}/files/{fileId}
 GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions
 GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
+
+GET   /api/v1/conversations/{conversationId}/assets?kind=&source=&limit=
+GET   /api/v1/conversations/{conversationId}/assets/{assetId}
 ```
 
-首版将文本类文件（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。
+首版将文本类文件（`SCRIPT`、`STORYBOARD`、`PROMPT`、`OTHER`）存入 PostgreSQL，单条内容上限为 1 MB。V12 迁移创建 `conversation_file` 和 `conversation_file_version`。媒体文件版本会返回关联的 `assetId`；版本行缺失时依次回退到生成任务输出与合成任务输出，并且只返回属于该会话的资产。
 
 模型可用的会话文件工具是 `list_files`、`search_files`、`read_file`、`create_file`、`update_file`、`list_file_versions`；会话和用户始终来自服务端执行上下文。媒体工具为 `generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset`。
 
@@ -181,10 +199,13 @@ POST /api/v1/generation-tasks/{taskId}/cancel
 POST /api/v1/generation-tasks/{taskId}/retry-archive
 
 POST /api/v1/composition-tasks               202 + Location
+GET  /api/v1/composition-tasks?conversationId=&status=&limit=
 GET  /api/v1/composition-tasks/{taskId}
 POST /api/v1/composition-tasks/{taskId}/cancel
 POST /api/v1/composition-tasks/{taskId}/retry
 ```
+
+两类任务列表都按当前用户过滤；传入会话时先校验归属，他人会话按不存在处理。合成任务列表会一次性批量查询各任务的输入。
 
 生成受理在单个事务内完成任务、输入冻结、输出占位、额度预占和启动请求；`MediaGenerationWorkflow` 独立于 AgentRun，负责提交、等待、归档、发布与结算。归档失败只允许 `retry-archive`，不会重新生成或重复扣费。
 

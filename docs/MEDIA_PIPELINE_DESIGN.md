@@ -633,6 +633,8 @@ vf-media-process    解码、缩略图、转码
 
 持久化 billing reservation ID；`reserve/settle/release/refund` 分别有唯一业务键。并发预占在数据库锁/条件更新下检查余额；Redis 限流不能代替额度约束。增加单任务、单 run 和会话预算上限，在工具侧强制执行，避免当前无轮数上限的 Agent Loop 连续生成超预算媒体。
 
+账本读接口只暴露当前用户的余额与流水：`GET /api/v1/account/credit`、`/credit/ledger?limit=&before=`、`/usage?window=`。流水以 UUIDv7 账本 id 做 keyset 分页，经 `credit_reservation.task_id` 关联生成任务，不暴露内部业务键；`usage` 只统计最近 N 条任务的 `priceUnits`。读取余额会在首次访问时惰性创建账户并记录初始授予，与生成受理路径的账户初始化保持一致。
+
 ## 9. API、工具与前端衔接
 
 业务路径按资源归属划分：上传和会话文件挂在会话下，生成/成片任务与资产使用顶层资源路径。
@@ -646,11 +648,17 @@ vf-media-process    解码、缩略图、转码
 | `POST /api/v1/generation-tasks/{id}/cancel` | 202 接收取消命令；已终态重复请求可返回 200 当前结果 |
 | `POST /api/v1/generation-tasks/{id}/retry-archive` | 202，只恢复归档，不重新生成；支持幂等 |
 | `POST /api/v1/composition-tasks` | 202 + Location，按分镜冻结镜头选片并创建成片任务 |
+| `GET /api/v1/composition-tasks` | 按会话/状态列出成片任务，输入一次性批量返回 |
 | `GET /api/v1/composition-tasks/{id}` | 成片任务状态、所用镜头和成片引用 |
 | `POST /api/v1/composition-tasks/{id}/cancel` | 请求取消成片合成 |
 | `POST /api/v1/composition-tasks/{id}/retry` | 使用同一冻结输入重试合成，不重新生成镜头 |
 | `GET /api/v1/assets/{id}` | 鉴权后返回元数据及可用变体 |
 | `GET /api/v1/assets/{id}/download-url` | 返回指定用途的短时 URL 与 expiresAt |
+| `GET /api/v1/conversations/{id}/assets` | 会话资产列表，支持 kind/source/limit，排除已删除 |
+| `GET /api/v1/conversations/{id}/assets/{assetId}` | 会话内校验并返回单个资产，用于手动 id 恢复 |
+| `GET /api/v1/agent-runs?conversationId=&status=` | 恢复运行中 AgentRun，按用户与会话隔离 |
+| `GET /api/v1/models?capabilityType=` | 普通用户可见的已启用模型目录，不含 baseUrl/密钥 |
+| `GET /api/v1/account/credit`、`/credit/ledger`、`/usage` | 余额、UUIDv7 keyset 流水与最近任务 priceUnits 汇总 |
 | `GET /api/v1/generation-tasks/{id}/events` | 可选任务 SSE，避免依赖已经关闭的 AgentRun SSE |
 
 “再生成”使用新的 `POST /generation-tasks` 请求和新幂等键，携带 `sourceTaskId`，保留原任务。同一镜头重做时新增一个候选并写回分镜的 `videoCandidates`，不覆盖其他镜头。UNKNOWN 任务不能被 UI 自动重试为新付费请求。

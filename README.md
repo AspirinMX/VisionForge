@@ -93,6 +93,8 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
 
 API keys are never returned; responses expose only `apiKeyConfigured`. The provider uses the official OpenAI Java SDK to stream `POST {baseUrl}/responses` (`responses().createStreaming()`) with an explicit `input` array, `store: false`, `max_output_tokens` and `reasoning.effort` when configured. Chat Completions is not used. Each request also carries a stable `prompt_cache_key` derived from the conversation (`vf-chat:<conversationId>`; compaction uses `vf-compact:<conversationId>`) so repeated prefixes can reuse the provider prompt cache. No `prompt_cache_retention` override is sent. The worker must be running to execute AgentRun workflows.
 
+Regular users read the enabled model catalog from `GET /api/v1/models?capabilityType=IMAGE|VIDEO|CHAT`. The response never includes provider base URLs or key material. Generation requests may omit `modelDefinitionId`; the server then routes to the default enabled model of the requested capability.
+
 Conversation endpoints:
 
 ```text
@@ -102,8 +104,11 @@ GET  /api/v1/conversations/{conversationId}
 GET  /api/v1/conversations/{conversationId}/messages
 POST /api/v1/conversations/{conversationId}/messages
 POST /api/v1/conversations/{conversationId}/messages/stream
+GET  /api/v1/agent-runs?conversationId=&status=&limit=
 GET  /api/v1/agent-runs/{runId}
 ```
+
+`MessageResponse` carries `assetIds` and `generationTaskIds`, resolved from `message_part`, so attached images survive a reload without client-side state.
 
 Sending a message returns `202 Accepted` with a `runId`. The workflow persists the assistant reply asynchronously; poll the AgentRun endpoint until its status is `COMPLETED` or `FAILED`. If Temporal is temporarily unavailable, the AgentRun stays `PENDING` and the worker's start compensator retries the workflow start.
 
@@ -119,6 +124,16 @@ event: error             data: {"type":"error","message":"..."}
 ```
 
 Browsers should consume it with `fetch` and a streaming reader because `EventSource` cannot send the `Authorization` header. Redis is required for this endpoint; the non-streaming message endpoint still works without it. Redis pub/sub is best-effort for live delivery; the persisted assistant message remains the source of truth if the stream disconnects.
+
+### Credits and usage
+
+```text
+GET /api/v1/account/credit
+GET /api/v1/account/credit/ledger?limit=50&before=<ledgerId>
+GET /api/v1/account/usage?window=100
+```
+
+`credit` returns `balanceUnits`, `reservedUnits` and `availableUnits`. The ledger is newest-first and uses the UUIDv7 ledger id as a keyset cursor; each row exposes the entry type (GRANT/RESERVE/SETTLE/RELEASE), the amount, and the generation task reached through its reservation. `usage` aggregates `priceUnits` of the newest `window` tasks by billing status. Reading the account creates it with `BILLING_INITIAL_CREDIT_UNITS` on first access, matching the generation path.
 
 ### Built-in creative skills
 
@@ -136,9 +151,12 @@ GET   /api/v1/conversations/{conversationId}/files/{fileId}
 PATCH /api/v1/conversations/{conversationId}/files/{fileId}
 GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions
 GET   /api/v1/conversations/{conversationId}/files/{fileId}/versions/{version}
+
+GET   /api/v1/conversations/{conversationId}/assets?kind=&source=&limit=
+GET   /api/v1/conversations/{conversationId}/assets/{assetId}
 ```
 
-The first version stores text files (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. V12 creates `conversation_file` and `conversation_file_version`.
+The first version stores text files (`SCRIPT`, `STORYBOARD`, `PROMPT`, `OTHER`) in PostgreSQL with a 1 MB limit. V12 creates `conversation_file` and `conversation_file_version`. Media file versions report the backing `assetId`; when the version row is missing it the server falls back to the generation output and then the composition output, and only returns assets owned by that conversation.
 
 The model uses the conversation-file tools `list_files`, `search_files`, `read_file`, `create_file`, `update_file` and `list_file_versions`; the conversation and user always come from the server-side execution context. Media tools are `generate_image`, `generate_video`, `get_generation`, `cancel_generation` and `inspect_asset`.
 
@@ -181,10 +199,13 @@ POST /api/v1/generation-tasks/{taskId}/cancel
 POST /api/v1/generation-tasks/{taskId}/retry-archive
 
 POST /api/v1/composition-tasks               202 + Location
+GET  /api/v1/composition-tasks?conversationId=&status=&limit=
 GET  /api/v1/composition-tasks/{taskId}
 POST /api/v1/composition-tasks/{taskId}/cancel
 POST /api/v1/composition-tasks/{taskId}/retry
 ```
+
+Both task lists are scoped to the caller; supplying a conversation validates ownership first, so a foreign id is reported as not found. Composition list responses batch their inputs in one query.
 
 Acceptance writes the task, frozen inputs, output placeholder, credit reservation and workflow start request in one local transaction. `MediaGenerationWorkflow` is independent of the AgentRun and owns submit, wait, archive, publish and settlement. An archive failure can only be repaired with `retry-archive`; it never regenerates or double-charges.
 

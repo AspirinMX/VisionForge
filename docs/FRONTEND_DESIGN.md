@@ -12,7 +12,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 ### 1.1 已确认的前端决策
 
-1. **后端不改、缺失读接口前端占位**：本次专注前端交付，不修改后端 Java 代码。对尚未暴露 HTTP 接口的只读能力（普通用户模型列表、额度余额流水、会话资产列表、成片任务列表、消息附图记录、活跃 AgentRun 查询），前端采用**本地隔离缓存 + 明确占位提示**兜底，并预留清晰接口适配层。
+1. **只读能力全部走服务端**：普通用户模型目录、额度余额流水、会话资产列表、成片任务列表、消息附图记录和活跃 AgentRun 查询均已提供 HTTP 接口，前端不再使用本地占位缓存；仅在列表被截断时保留手动输入 id 的恢复入口。
 2. **根路径 `/` 留空待用，直接按鉴权分流**：`/` 暂不建设 Landing Page（预留给后续营销落地页），当前访问 `/` 时未登录重定向至 `/login`，已登录重定向至 `/conversations`。
 3. **登录 / 注册采用单卡居中布局**：`/login` 与 `/register` 使用纯正居中的单张卡片表单，不采用左右分栏介绍布局。
 4. **对话页面采用 Gemini / ChatGPT 风格交互拓扑**：
@@ -42,18 +42,26 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 ---
 
-## 3. 后端现状核对与前端占位策略（重要）
+## 3. 后端读接口与前端接入（已完成）
 
-经逐一核对 `api/` 现有控制器、DTO 与服务实现，以下 6 项在本次**不修改后端**的前提下采用明确的占位与兼容方案：
+原先靠 localStorage 占位的能力已由服务端接口提供，前端不再保存跨会话读缓存：
 
-| 编号 | 后端代码现状 | 前端占位 / 兼容方案 | 真实联调边界说明 |
-| --- | --- | --- | --- |
-| 1 | `AdminModelController`（`/api/v1/admin/models`）仅限 `ROLE_ADMIN`，暂无普通用户的模型列表接口 | 快捷生成表单提交 `POST /api/v1/generation-tasks` 时不强制传 `modelDefinitionId`（后端自动选用该能力类型的默认启用模型）；界面展示「使用系统默认启用模型」说明与可选高级「指定模型 UUID」输入框；价格预估区标明“待接入公开模型定价接口，实际扣费以服务端预占为准” | 管理员账号在 `/admin/models` 可正常调用全量模型接口；普通用户切勿调用 `/api/v1/admin/**` |
-| 2 | `CreditService.balance(userId)` 尚未暴露 HTTP 查询接口 | 侧栏底部与 `/account` 页面展示**额度占位卡片**（说明新账户初始额度按服务端 `BILLING_INITIAL_CREDIT_UNITS` 配置，默认 `10000` 单位，当前前端展示“实时余额查询待接口接入”占位态）；当提交生成任务返回额度不足错误（如 `BILLING_INSUFFICIENT_CREDIT`）时如实拦截提示 | 不虚构实时扣减数字或假流水账单，仅在本地记录本次浏览器会话已发起的任务 `priceUnits` 作为参考 |
-| 3 | 无 `GET /api/v1/conversations/{id}/assets` 列表接口；`ConversationFileVersionResponse` 暂未包含 `assetId` | 1) 直传 `complete` 成功后将 `AssetResponse` 写入本地隔离缓存 `vf_assets:{userId}:{conversationId}`，保证同浏览器刷新不丢；2) 通过 `GET /api/v1/generation-tasks?conversationId=` 收集所有 `SUCCEEDED` 产物的 `assetId` 与 `fileId` 映射；3) 预览文件库中的 `IMAGE`/`VIDEO` 文件时优先匹配任务产物中的 `assetId` 获取 `download-url`，同时提供手动输入 `assetId` 挂载预览的兜底入口 | 跨设备刷新后，仅上传过但未关联任何生成任务的原始文件无法从服务端重新列举（待后端补接口后无缝替换） |
-| 4 | `CompositionTaskController` 缺少 `GET /api/v1/composition-tasks?conversationId=` 列表接口；`ConversationController` 缺少 `DELETE` 删除接口 | 1) 发起成片或重试成片时将 `taskId` 持久化到本地缓存 `vf_compositions:{userId}:{conversationId}`，进入工作台时自动并发拉取 `GET /api/v1/composition-tasks/{id}` 刷新最新阶段，并提供粘贴 `taskId` 手动恢复追踪；2) 侧栏不渲染虚假的会话删除按钮 | 已提交过的成片任务可通过 `taskId` 查询、取消与重试，全部真实调用后端 |
-| 5 | `MessageResponse` 暂不返回 `message_part`；缺少按会话查活跃 `AgentRun` 的列表接口 | 1) 发送带附图消息成功后，本地按 `userMessageId` 记录附带的 `assetIds` 以便刷新时回显附件缩略图；2) 发送消息获得 `runId` 后写入本地活跃运行表，刷新页面若发现未终态 `runId` 则继续轮询 `GET /api/v1/agent-runs/{runId}` 至 `COMPLETED`/`FAILED` 后刷新消息列表；3) 若发送时触发 `409 AGENT_CONVERSATION_BUSY`，提示用户当前会话仍在后台推进中并提供一键刷新轮询 | 跨设备登录无法自动看到历史消息上的附件角标（占位局限明确标注） |
-| 6 | `AgentRunStreamService` 当前推送 `accepted` / `reasoning` / `reasoning_summary` / `delta` / `done` / `error`，不含工具调用进度事件 | 对话流实时呈现思考过程与正文；在流式结束后及右侧操作期间，按受控间隔轮询会话文件列表、`GenerationTask` 列表与 `CompositionTask` 详情，确保工具后台创建的剧本、分镜和生成任务能自动刷新上屏 | 不伪造虚构的工具进度条，以真实持久化的文件版本与任务状态为准 |
+| 能力 | 服务端接口 | 前端接入 |
+| --- | --- | --- |
+| 普通用户模型目录 | `GET /api/v1/models?capabilityType=` | 快捷生成模型下拉；留空仍由服务端按能力路由默认启用模型，同时保留手动 UUID 输入 |
+| 额度余额 | `GET /api/v1/account/credit` | `/account` 展示可用余额、总余额与预占 |
+| 额度流水 | `GET /api/v1/account/credit/ledger?limit=&before=` | `/account` 消费流水，UUIDv7 keyset 游标 |
+| 近任务额度汇总 | `GET /api/v1/account/usage?window=` | `/account` 按 billingStatus 展示 `priceUnits` 汇总 |
+| 会话资产 | `GET /api/v1/conversations/{id}/assets`、`GET .../assets/{assetId}` | 素材池与服务端校验后的手动 assetId 预览 |
+| 消息附图 | `GET /api/v1/conversations/{id}/messages` 返回 `assetIds` | 历史消息附件角标，刷新和跨设备一致 |
+| 运行中 AgentRun | `GET /api/v1/agent-runs?conversationId=&status=` | 刷新后恢复活跃运行状态 |
+| 合成任务列表 | `GET /api/v1/composition-tasks?conversationId=&status=` | 成片任务追踪；手动 taskId 仅作列表截断后的兜底 |
+| 文件版本资产 | 文件版本响应中的 `assetId` | 媒体文件直接预览；版本行缺失时服务端回退到生成/合成输出 |
+
+仍然存在的边界：
+
+- `AgentRunStreamService` 仍只推送 `accepted` / `reasoning` / `reasoning_summary` / `delta` / `done` / `error`，不含工具调用进度事件；界面以轮询持久化任务状态为准。
+- 会话删除与跨设备草稿同步尚未实现，侧栏不渲染虚假的删除入口。
 
 ---
 
@@ -69,7 +77,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 | `/conversations` | 对话起始页（Gemini 新对话首页） | 已登录 | 共享左侧边栏 + 中央空白起始对话台（问候语、起手式提示芯片、居中多模态输入框） |
 | `/conversations/[conversationId]` | **核心对话工作台（Chat + Canvas）** | 已登录（会话本人） | **核心主页面**：左侧共享历史侧栏 + 中央 Gemini/ChatGPT 对话流 + 右侧按需展开的 Studio Canvas 四合一面版（分镜与成片 / 剧本与文件 / 素材与生成 / 任务中心） |
 | `/tasks` | 全局任务中心 | 已登录 | 共享左侧边栏 + 跨会话生成任务管理台（筛选、取消、重试归档、跳回所属会话） |
-| `/account` | 账户与额度信息页 | 已登录 | 共享左侧边栏 + 个人资料（`/auth/me`）、额度占位与本地统计卡片、退出登录 |
+| `/account` | 账户与额度信息页 | 已登录 | 共享左侧边栏 + 个人资料（`/auth/me`）、真实额度余额、消费流水与近任务额度汇总、退出登录 |
 | `/admin/models` | 模型配置运维台 | 仅 `ADMIN` | 共享左侧边栏 + 按 `CHAT`/`IMAGE`/`VIDEO` 分类管理模型、协议、执行模式、单价与默认模型 |
 | `/admin/users` | 用户与角色管理台 | 仅 `ADMIN` | 共享左侧边栏 + 分页用户列表与 `USER`/`ADMIN` 角色切换 |
 | `not-found.tsx` | 404 资源不可达页 | 全局 | 会话/任务不存在或无权访问（404）时展示统一安全提示与返回入口 |
@@ -153,7 +161,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 
 ```text
 +------------------+--------------------------------------------------------------------------+
-| Sidebar (264px)  | Top Bar: [≡]  新对话                           [额度占位] [个人菜单]    |
+| Sidebar (264px)  | Top Bar: [≡]  新对话                           [额度余额] [个人菜单]    |
 |                  |--------------------------------------------------------------------------|
 |                  |                                                                          |
 |                  |                     你好，准备创作什么作品？                                |
@@ -311,7 +319,7 @@ VisionForge（幻影工坊）是以**对话为主入口、以分镜为组织核�
 - **`/account` 个人账户与额度信息**：
   - 布局：继承共享 `AppShell`，右侧居中单列卡片流（`max-w-3xl`）：
     1. 基本信息卡（`/api/v1/auth/me`：`displayName`、`email`、`role`、`status`、`createdAt`）。
-    2. 额度与用量占位卡（明确标注待后端补充 `/billing/balance` 后展示真实可用/冻结额度与账本流水；附带当前前端会话已知任务的 `priceUnits` 汇总视图）。
+    2. 额度与用量卡（`GET /api/v1/account/credit`、`/credit/ledger`、`/usage`：可用/冻结额度、账本流水与最近任务 `priceUnits` 汇总）。
     3. 会话安全卡（调用 `POST /api/v1/auth/logout` 安全退出当前登录态）。
 
 ---
