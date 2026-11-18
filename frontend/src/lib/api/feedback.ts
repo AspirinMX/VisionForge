@@ -16,6 +16,18 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+export function notifySuccess(title: string, description?: string): void {
+  toast.success(title, description ? { description } : undefined);
+}
+
+export function notifyInfo(title: string, description?: string): void {
+  toast.info(title, description ? { description } : undefined);
+}
+
+export function notifyError(title: string, description?: string): void {
+  toast.error(title, description ? { description } : undefined);
+}
+
 export function notifyApiError(
   error: unknown,
   fallbackTitle = "操作未能完成"
