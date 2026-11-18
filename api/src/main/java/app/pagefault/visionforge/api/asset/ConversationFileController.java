@@ -1,6 +1,7 @@
 package app.pagefault.visionforge.api.asset;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -20,12 +21,14 @@ import app.pagefault.visionforge.api.asset.dto.ConversationFileResponse;
 import app.pagefault.visionforge.api.asset.dto.ConversationFileVersionResponse;
 import app.pagefault.visionforge.api.asset.dto.CreateConversationFileRequest;
 import app.pagefault.visionforge.api.asset.dto.UpdateConversationFileRequest;
+import app.pagefault.visionforge.agent.assetlink.ConversationFileAssetResolver;
 import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.asset.library.ConversationFile;
 import app.pagefault.visionforge.asset.library.ConversationFileKind;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationFileSource;
+import app.pagefault.visionforge.asset.library.ConversationFileVersion;
 import app.pagefault.visionforge.asset.library.CreateConversationFileCommand;
 import app.pagefault.visionforge.asset.library.UpdateConversationFileCommand;
 import app.pagefault.visionforge.common.api.ApiResponse;
@@ -46,6 +49,7 @@ public class ConversationFileController {
 
     private final ConversationFileService conversationFileService;
     private final StoryboardValidator storyboardValidator;
+    private final ConversationFileAssetResolver assetResolver;
 
     @GetMapping
     public ApiResponse<List<ConversationFileResponse>> list(
@@ -144,16 +148,18 @@ public class ConversationFileController {
             @PathVariable UUID fileId,
             @RequestParam(required = false) Integer limit,
             @AuthenticationPrincipal Jwt jwt) {
-        List<ConversationFileVersionResponse> versions = conversationFileService
-                .listVersions(
-                        AuthenticatedUser.id(jwt),
-                        conversationId,
-                        fileId,
-                        limit == null ? DEFAULT_LIMIT : limit)
-                .stream()
-                .map(ConversationFileVersionResponse::from)
-                .toList();
-        return ApiResponse.success(versions);
+        UUID userId = AuthenticatedUser.id(jwt);
+        List<ConversationFileVersion> versions = conversationFileService.listVersions(
+                userId,
+                conversationId,
+                fileId,
+                limit == null ? DEFAULT_LIMIT : limit);
+        Map<UUID, UUID> assetIds =
+                assetResolver.resolve(userId, conversationId, versions);
+        return ApiResponse.success(versions.stream()
+                .map(version -> ConversationFileVersionResponse.from(
+                        version, assetIds.get(version.getId())))
+                .toList());
     }
 
     @GetMapping("/{fileId}/versions/{version}")
@@ -162,8 +168,12 @@ public class ConversationFileController {
             @PathVariable UUID fileId,
             @PathVariable int version,
             @AuthenticationPrincipal Jwt jwt) {
+        UUID userId = AuthenticatedUser.id(jwt);
+        ConversationFileVersion versionEntity = conversationFileService.readVersion(
+                userId, conversationId, fileId, version);
+        Map<UUID, UUID> assetIds = assetResolver.resolve(
+                userId, conversationId, List.of(versionEntity));
         return ApiResponse.success(ConversationFileVersionResponse.from(
-                conversationFileService.readVersion(
-                        AuthenticatedUser.id(jwt), conversationId, fileId, version)));
+                versionEntity, assetIds.get(versionEntity.getId())));
     }
 }

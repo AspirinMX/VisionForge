@@ -13,6 +13,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 
+import app.pagefault.visionforge.agent.assetlink.ConversationFileAssetResolver;
+import app.pagefault.visionforge.agent.composition.CompositionTaskMapper;
 import app.pagefault.visionforge.agent.conversation.AgentConversationReferenceChecker;
 import app.pagefault.visionforge.agent.conversation.ConversationMapper;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
@@ -105,6 +107,15 @@ public class AgentConfiguration {
     public ConversationReferenceChecker conversationReferenceChecker(
             ConversationMapper conversationMapper) {
         return new AgentConversationReferenceChecker(conversationMapper);
+    }
+
+    @Bean
+    public ConversationFileAssetResolver conversationFileAssetResolver(
+            GenerationOutputMapper generationOutputMapper,
+            CompositionTaskMapper compositionTaskMapper,
+            AssetService assetService) {
+        return new ConversationFileAssetResolver(
+                generationOutputMapper, compositionTaskMapper, assetService);
     }
 
     @Bean
