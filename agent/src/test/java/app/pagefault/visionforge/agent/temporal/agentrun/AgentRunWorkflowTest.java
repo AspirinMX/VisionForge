@@ -57,6 +57,26 @@ class AgentRunWorkflowTest {
     }
 
     @Test
+    void waitsForAwaitedGenerationBeforeContinuing() {
+        TestWorkflowEnvironment environment = TestWorkflowEnvironment.newInstance();
+        try {
+            CapturingActivities activities = new CapturingActivities();
+            activities.toolCallOnFirstTurn = true;
+            activities.waitingTool = true;
+            startWorker(environment, activities);
+
+            workflow(environment).run(UUID.randomUUID());
+
+            assertThat(activities.executedTools).containsExactly("call_1");
+            assertThat(activities.awaitedTasks).hasSize(1);
+            assertThat(activities.completedAwaits).isEqualTo(1);
+            assertThat(activities.completedTurn).isEqualTo(1);
+        } finally {
+            environment.close();
+        }
+    }
+
+    @Test
     void marksRunFailedWhenModelActivityFails() {
         TestWorkflowEnvironment environment = TestWorkflowEnvironment.newInstance();
         try {
@@ -95,6 +115,9 @@ class AgentRunWorkflowTest {
         private int completedTurn = -1;
         private boolean failed;
         private boolean failModel;
+        private boolean waitingTool;
+        private final List<UUID> awaitedTasks = new ArrayList<>();
+        private int completedAwaits;
 
         @Override
         public AgentPrompt loadPrompt(UUID runId) {
@@ -114,8 +137,24 @@ class AgentRunWorkflowTest {
         }
 
         @Override
-        public void executeTool(UUID runId, String toolCallId) {
+        public ToolExecution executeTool(UUID runId, String toolCallId) {
             executedTools.add(toolCallId);
+            if (waitingTool) {
+                UUID taskId = UUID.randomUUID();
+                awaitedTasks.add(taskId);
+                return ToolExecution.waiting(taskId);
+            }
+            return ToolExecution.completed();
+        }
+
+        @Override
+        public boolean isGenerationTerminal(UUID taskId) {
+            return true;
+        }
+
+        @Override
+        public void completeAwait(UUID runId, String toolCallId, UUID taskId) {
+            completedAwaits++;
         }
 
         @Override

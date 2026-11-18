@@ -25,8 +25,12 @@ import app.pagefault.visionforge.agent.generation.GenerationInputMapper;
 import app.pagefault.visionforge.agent.generation.GenerationOutputMapper;
 import app.pagefault.visionforge.agent.generation.GenerationTaskMapper;
 import app.pagefault.visionforge.agent.generation.GenerationTaskService;
+import app.pagefault.visionforge.agent.provider.media.ArkVideoProvider;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
+import app.pagefault.visionforge.agent.provider.media.OpenAiImagesProvider;
 import app.pagefault.visionforge.agent.provider.media.StubMediaProvider;
+import app.pagefault.visionforge.agent.storyboard.StoryboardService;
+import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationActivitiesImpl;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
@@ -184,8 +188,25 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public MediaProviderRegistry mediaProviderRegistry() {
-        return new MediaProviderRegistry(List.of(new StubMediaProvider()));
+    public StoryboardValidator storyboardValidator(ObjectMapper objectMapper) {
+        return new StoryboardValidator(objectMapper);
+    }
+
+    @Bean
+    public StoryboardService storyboardService(
+            ConversationFileService conversationFileService,
+            StoryboardValidator storyboardValidator,
+            ObjectMapper objectMapper) {
+        return new StoryboardService(
+                conversationFileService, storyboardValidator, objectMapper);
+    }
+
+    @Bean
+    public MediaProviderRegistry mediaProviderRegistry(ObjectMapper objectMapper) {
+        return new MediaProviderRegistry(List.of(
+                new StubMediaProvider(),
+                new OpenAiImagesProvider(objectMapper),
+                new ArkVideoProvider(objectMapper)));
     }
 
     @Bean
@@ -199,6 +220,7 @@ public class AgentConfiguration {
             ConversationReferenceChecker conversationReferenceChecker,
             AssetService assetService,
             ConversationFileService conversationFileService,
+            StoryboardService storyboardService,
             CreditService creditService,
             MediaProviderRegistry mediaProviderRegistry,
             ObjectMapper objectMapper,
@@ -214,6 +236,7 @@ public class AgentConfiguration {
                 conversationReferenceChecker,
                 assetService,
                 conversationFileService,
+                storyboardService,
                 creditService,
                 mediaProviderRegistry,
                 objectMapper,
@@ -236,6 +259,7 @@ public class AgentConfiguration {
             ResponsesModelClient responsesModelClient,
             ToolRegistry toolRegistry,
             AgentToolExecutor agentToolExecutor,
+            GenerationTaskService generationTaskService,
             AgentRunStreamPublisher streamPublisher) {
         return new AgentActivitiesImpl(
                 agentRunService,
@@ -243,6 +267,7 @@ public class AgentConfiguration {
                 responsesModelClient,
                 toolRegistry,
                 agentToolExecutor,
+                generationTaskService,
                 streamPublisher);
     }
 }

@@ -112,7 +112,7 @@ class AgentRunServiceTest {
 
         assertThat(prompt.runId()).isEqualTo(RUN_ID);
         assertThat(prompt.modelDefinitionId()).isEqualTo(MODEL_ID);
-        assertThat(prompt.maxInputTokens()).isEqualTo(1_000);
+        assertThat(prompt.maxInputTokens()).isEqualTo(100_000);
         assertThat(run.getStatus()).isEqualTo(AgentRunStatus.RUNNING);
         assertThat(run.getModelDefinitionId()).isEqualTo(MODEL_ID);
         verify(agentRunMapper).updateById(run);
@@ -334,7 +334,7 @@ class AgentRunServiceTest {
         model.setBaseUrl("https://api.example.com/v1");
         model.setModelId("mock-model");
         model.setReasoningReplay(ReasoningReplayPolicy.ENCRYPTED);
-        model.setMaxInputTokens(1_000);
+        model.setMaxInputTokens(100_000);
         model.setMaxOutputTokens(100);
         model.setEnabled(true);
         return model;

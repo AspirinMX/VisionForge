@@ -27,5 +27,9 @@ public record CreateGenerationTaskRequest(
         JsonNode parameters,
         @Size(max = 8, message = "单个任务最多引用 8 个输入素材")
         List<@Valid GenerationInputRequest> inputs,
-        UUID sourceTaskId) {
+        UUID sourceTaskId,
+        @Size(max = 64, message = "shotId 不能超过 64 个字符")
+        String shotId,
+        UUID storyboardFileId,
+        Integer storyboardVersion) {
 }

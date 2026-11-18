@@ -49,6 +49,30 @@ public class S3StorageConfiguration {
                         ? properties.endpoint()
                         : publicEndpoint,
                 "public-endpoint");
+        return presigner(properties, endpoint);
+    }
+
+    @Bean(destroyMethod = "close")
+    public S3Presigner s3InternalPresigner(StorageProperties properties) {
+        return presigner(properties, uri(properties.endpoint(), "endpoint"));
+    }
+
+    @Bean
+    public ObjectStorage objectStorage(
+            S3Client s3Client,
+            S3Presigner s3Presigner,
+            S3Presigner s3InternalPresigner,
+            StorageProperties properties,
+            Clock clock) {
+        return new S3ObjectStorage(
+                s3Client,
+                s3Presigner,
+                s3InternalPresigner,
+                require(properties.bucket(), "bucket"),
+                clock);
+    }
+
+    private static S3Presigner presigner(StorageProperties properties, URI endpoint) {
         return S3Presigner.builder()
                 .region(Region.of(properties.regionOrDefault()))
                 .endpointOverride(endpoint)
@@ -57,13 +81,6 @@ public class S3StorageConfiguration {
                         .build())
                 .credentialsProvider(credentials(properties))
                 .build();
-    }
-
-    @Bean
-    public ObjectStorage objectStorage(
-            S3Client s3Client, S3Presigner s3Presigner, StorageProperties properties, Clock clock) {
-        return new S3ObjectStorage(
-                s3Client, s3Presigner, require(properties.bucket(), "bucket"), clock);
     }
 
     private static AwsCredentialsProvider credentials(StorageProperties properties) {

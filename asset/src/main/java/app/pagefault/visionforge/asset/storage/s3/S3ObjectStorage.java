@@ -57,12 +57,19 @@ public class S3ObjectStorage implements ObjectStorage {
 
     private final S3Client client;
     private final S3Presigner presigner;
+    private final S3Presigner internalPresigner;
     private final String bucket;
     private final Clock clock;
 
-    public S3ObjectStorage(S3Client client, S3Presigner presigner, String bucket, Clock clock) {
+    public S3ObjectStorage(
+            S3Client client,
+            S3Presigner presigner,
+            S3Presigner internalPresigner,
+            String bucket,
+            Clock clock) {
         this.client = client;
         this.presigner = presigner;
+        this.internalPresigner = internalPresigner;
         this.bucket = bucket;
         this.clock = clock;
     }
@@ -170,6 +177,24 @@ public class S3ObjectStorage implements ObjectStorage {
     }
 
     @Override
+    public PresignedUrl presignInternalGet(String objectKey, Duration ttl) {
+        return execute(() -> {
+            PresignedGetObjectRequest presigned = internalPresigner.presignGetObject(
+                    GetObjectPresignRequest.builder()
+                            .signatureDuration(ttl)
+                            .getObjectRequest(GetObjectRequest.builder()
+                                    .bucket(bucket)
+                                    .key(objectKey)
+                                    .build())
+                            .build());
+            return new PresignedUrl(
+                    URI.create(presigned.url().toString()),
+                    clock.instant().plus(ttl),
+                    Map.of());
+        });
+    }
+
+    @Override
     public PresignedUrl presignPut(String objectKey, Duration ttl, String contentType) {
         return execute(() -> {
             PutObjectRequest awsRequest = PutObjectRequest.builder()
@@ -207,13 +232,13 @@ public class S3ObjectStorage implements ObjectStorage {
     }
 
     @Override
-    public void uploadPart(
+    public UploadedPart uploadPart(
             StorageMultipartUpload upload,
             int partNumber,
             InputStream content,
             long contentLength) {
-        execute(() -> {
-            client.uploadPart(
+        return execute(() -> {
+            var response = client.uploadPart(
                     UploadPartRequest.builder()
                             .bucket(upload.bucket())
                             .key(upload.objectKey())
@@ -222,7 +247,7 @@ public class S3ObjectStorage implements ObjectStorage {
                             .contentLength(contentLength)
                             .build(),
                     RequestBody.fromInputStream(content, contentLength));
-            return null;
+            return new UploadedPart(partNumber, response.eTag());
         });
     }
 

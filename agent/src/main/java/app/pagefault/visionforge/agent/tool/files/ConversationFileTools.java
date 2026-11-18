@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
+import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.agent.tool.AgentTool;
 import app.pagefault.visionforge.agent.tool.ToolArguments;
 import app.pagefault.visionforge.agent.tool.ToolDefinition;
@@ -36,6 +37,7 @@ public class ConversationFileTools {
     private static final int MAX_LIMIT = 200;
 
     private final ConversationFileService fileService;
+    private final StoryboardValidator storyboardValidator;
     private final ObjectMapper objectMapper;
 
     public List<AgentTool> all() {
@@ -171,15 +173,20 @@ public class ConversationFileTools {
 
         @Override
         public ToolResult execute(ToolExecutionContext context, JsonNode arguments) {
+            ConversationFileKind kind = ToolArguments.optionalEnum(
+                    arguments, "kind", ConversationFileKind.class);
+            String content = ToolArguments.requiredText(arguments, "content");
+            if (kind == ConversationFileKind.STORYBOARD) {
+                storyboardValidator.validate(content);
+            }
             ConversationFile file = fileService.create(
                     context.userId(),
                     requireConversation(context),
                     new CreateConversationFileCommand(
-                            ToolArguments.optionalEnum(
-                                    arguments, "kind", ConversationFileKind.class),
+                            kind,
                             ToolArguments.requiredText(arguments, "title"),
                             ToolArguments.optionalText(arguments, "path"),
-                            ToolArguments.requiredText(arguments, "content"),
+                            content,
                             ConversationFileSource.AGENT));
             return ToolResult.success(write(Map.of("file", fileSummary(file))));
         }
@@ -210,13 +217,19 @@ public class ConversationFileTools {
                 throw new BusinessException(
                         AgentErrorCode.TOOL_ARGUMENTS_INVALID, "缺少参数 baseVersion");
             }
+            ConversationFile existing = fileService.get(
+                    context.userId(), requireConversation(context), fileId);
+            String content = ToolArguments.requiredText(arguments, "content");
+            if (existing.getKind() == ConversationFileKind.STORYBOARD) {
+                storyboardValidator.validate(content);
+            }
             ConversationFile file = fileService.update(
                     context.userId(),
                     requireConversation(context),
                     fileId,
                     new UpdateConversationFileCommand(
                             baseVersion,
-                            ToolArguments.requiredText(arguments, "content"),
+                            content,
                             ToolArguments.optionalText(arguments, "title"),
                             ConversationFileSource.AGENT));
             return ToolResult.success(write(Map.of("file", fileSummary(file))));

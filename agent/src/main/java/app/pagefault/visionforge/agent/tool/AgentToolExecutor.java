@@ -90,18 +90,57 @@ public class AgentToolExecutor {
                     AgentErrorCode.TOOL_EXECUTION_FAILED.code(),
                     AgentErrorCode.TOOL_EXECUTION_FAILED.message());
         }
+        if (result.waiting()) {
+            invocation.setStatus(ToolInvocationStatus.WAITING);
+            invocation.setResult(result.content());
+            invocation.setErrorCode(null);
+            invocation.setErrorMessage(null);
+            invocation.setCompletedAt(null);
+            invocationMapper.updateById(invocation);
+            return result;
+        }
         complete(invocation, result);
         return result;
+    }
+
+    /**
+     * Completes a waiting invocation with the final durable result. The same tool call is not
+     * executed again; the model receives the waited-on payload as this call's output.
+     */
+    public void completeWaiting(ToolExecutionContext context, String content) {
+        ToolInvocation invocation = find(context);
+        if (invocation == null) {
+            throw new BusinessException(AgentErrorCode.TOOL_NOT_FOUND);
+        }
+        invocation.setStatus(ToolInvocationStatus.SUCCEEDED);
+        invocation.setResult(content);
+        invocation.setErrorCode(null);
+        invocation.setErrorMessage(null);
+        invocation.setCompletedAt(clock.instant());
+        invocationMapper.updateById(invocation);
     }
 
     private ToolResult replay(ToolInvocation invocation) {
         if (invocation.getStatus() == ToolInvocationStatus.RUNNING) {
             throw new BusinessException(AgentErrorCode.TOOL_INVOCATION_IN_PROGRESS);
         }
+        if (invocation.getStatus() == ToolInvocationStatus.WAITING) {
+            return ToolResult.waiting(waitTaskId(invocation.getResult()));
+        }
         if (invocation.getStatus() == ToolInvocationStatus.SUCCEEDED) {
             return ToolResult.success(invocation.getResult());
         }
         return ToolResult.failure(invocation.getErrorCode(), invocation.getErrorMessage());
+    }
+
+    private String waitTaskId(String content) {
+        try {
+            JsonNode node = objectMapper.readTree(content == null ? "{}" : content);
+            return node.path("taskId").asText();
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.AGENT_RUN_INVALID_STATE, "等待中的工具调用记录无法解析");
+        }
     }
 
     private void complete(ToolInvocation invocation, ToolResult result) {

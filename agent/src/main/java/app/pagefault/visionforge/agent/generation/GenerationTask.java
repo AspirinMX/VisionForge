@@ -35,6 +35,12 @@ public class GenerationTask {
 
     private UUID toolInvocationId;
 
+    private String shotId;
+
+    private UUID storyboardFileId;
+
+    private Integer storyboardVersion;
+
     private GenerationType type;
 
     private UUID modelDefinitionId;

@@ -13,5 +13,6 @@ public record MediaProviderInput(
         UUID assetId,
         GenerationInputRole role,
         String mimeType,
-        String url) {
+        String url,
+        byte[] content) {
 }

@@ -7,7 +7,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ import app.pagefault.visionforge.agent.provider.media.MediaProviderReceipt;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRequest;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
+import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartStatus;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
@@ -39,6 +42,7 @@ import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -48,6 +52,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Acceptance is one local transaction: task, frozen inputs, output placeholder, credit
  * reservation and workflow start request. Provider calls happen only in workflow activities.
  */
+@Slf4j
 @RequiredArgsConstructor
 public class GenerationTaskService {
 
@@ -66,6 +71,7 @@ public class GenerationTaskService {
     private final ConversationReferenceChecker conversationReferenceChecker;
     private final AssetService assetService;
     private final ConversationFileService conversationFileService;
+    private final StoryboardService storyboardService;
     private final CreditService creditService;
     private final MediaProviderRegistry providerRegistry;
     private final ObjectMapper objectMapper;
@@ -92,9 +98,29 @@ public class GenerationTaskService {
         List<ValidatedInput> inputs = validateInputs(
                 userId, conversationId, command.type(), command.inputs());
         UUID sourceTaskId = validateSourceTask(userId, command.sourceTaskId());
+        String shotId = normalizeShotId(command.shotId());
+        UUID storyboardFileId = command.storyboardFileId();
+        Integer storyboardVersion = command.storyboardVersion();
+        if ((shotId == null) != (storyboardFileId == null)) {
+            throw new BusinessException(
+                    AgentErrorCode.GENERATION_INPUT_INVALID,
+                    "shotId 与 storyboardFileId 必须同时提供");
+        }
+        if (shotId != null) {
+            storyboardVersion = storyboardService.resolveShot(
+                    userId,
+                    conversationId,
+                    storyboardFileId,
+                    storyboardVersion,
+                    shotId).storyboardVersion();
+        } else if (storyboardVersion != null) {
+            throw new BusinessException(
+                    AgentErrorCode.GENERATION_INPUT_INVALID,
+                    "未指定镜头时不能提供分镜版本");
+        }
         String fingerprint = fingerprint(
                 conversationId, command.type(), model.getId(), prompt, parameters,
-                inputs, sourceTaskId);
+                inputs, sourceTaskId, shotId, storyboardFileId, storyboardVersion);
 
         String idempotencyKey = normalizeKey(command.idempotencyKey());
         if (idempotencyKey != null) {
@@ -116,6 +142,9 @@ public class GenerationTaskService {
         task.setConversationId(conversationId);
         task.setAgentRunId(command.agentRunId());
         task.setToolInvocationId(command.toolInvocationId());
+        task.setShotId(shotId);
+        task.setStoryboardFileId(storyboardFileId);
+        task.setStoryboardVersion(storyboardVersion);
         task.setType(command.type());
         task.setModelDefinitionId(model.getId());
         task.setProtocol(model.getProtocol());
@@ -215,6 +244,55 @@ public class GenerationTaskService {
                         .orderByAsc(GenerationOutput::getOutputIndex));
     }
 
+    public boolean isTerminal(UUID taskId) {
+        GenerationStatus status = get(taskId).getStatus();
+        return status.terminal() || status == GenerationStatus.ARCHIVE_FAILED;
+    }
+
+    public Map<String, Object> resultPayload(UUID taskId) {
+        GenerationTask task = get(taskId);
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("taskId", task.getId().toString());
+        result.put("type", task.getType());
+        result.put("status", task.getStatus());
+        result.put("providerStatus", task.getProviderStatus());
+        result.put("deliveryStatus", task.getDeliveryStatus());
+        result.put("billingStatus", task.getBillingStatus());
+        result.put("cancelStatus", task.getCancelStatus());
+        result.put("modelDefinitionId", task.getModelDefinitionId().toString());
+        result.put("shotId", task.getShotId());
+        result.put("priceUnits", task.getPriceUnits());
+        result.put("createdAt", task.getCreatedAt());
+        result.put("completedAt", task.getCompletedAt());
+        result.put("errorMessage", task.getErrorMessage());
+        result.put("outputs", outputs(taskId).stream()
+                .map(this::outputPayload)
+                .toList());
+        return result;
+    }
+
+    public String resultJson(UUID taskId) {
+        try {
+            return objectMapper.writeValueAsString(resultPayload(taskId));
+        } catch (RuntimeException exception) {
+            throw new BusinessException(
+                    AgentErrorCode.GENERATION_STATE_CONFLICT, "生成任务结果无法序列化");
+        }
+    }
+
+    private Map<String, Object> outputPayload(GenerationOutput output) {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("outputIndex", output.getOutputIndex());
+        result.put("status", output.getStatus());
+        result.put("assetId", output.getAssetId() == null ? null : output.getAssetId().toString());
+        result.put("fileId", output.getFileId() == null ? null : output.getFileId().toString());
+        result.put("fileVersionId", output.getFileVersionId() == null
+                ? null
+                : output.getFileVersionId().toString());
+        result.put("errorMessage", output.getErrorMessage());
+        return result;
+    }
+
     public GenerationAttempt findAttempt(UUID taskId, int attemptNo) {
         return attemptMapper.selectOne(
                 Wrappers.<GenerationAttempt>lambdaQuery()
@@ -224,15 +302,26 @@ public class GenerationTaskService {
 
     public MediaProviderRequest providerRequest(GenerationTask task, List<GenerationInput> inputs) {
         ModelDefinition model = modelDefinitionService.get(task.getModelDefinitionId());
+        var settings = modelDefinitionService.settings(model);
         List<MediaProviderInput> providerInputs = new ArrayList<>(inputs.size());
         for (GenerationInput input : inputs) {
             Asset asset = assetService.get(task.getUserId(), input.getAssetId());
+            String url = assetService.createDownloadUrl(task.getUserId(), input.getAssetId())
+                    .downloadUrl()
+                    .toString();
+            byte[] content = task.getType() == GenerationType.IMAGE
+                            && asset.getKind() == AssetKind.IMAGE
+                            && asset.getSizeBytes() <= 20L * 1024 * 1024
+                    ? assetService.readBytes(task.getUserId(), input.getAssetId(), 20L * 1024 * 1024)
+                    : null;
             providerInputs.add(new MediaProviderInput(
-                    input.getAssetId(), input.getRole(), asset.getMimeType(), null));
+                    input.getAssetId(), input.getRole(), asset.getMimeType(), url, content));
         }
         return new MediaProviderRequest(
                 task.getId(),
                 task.getType(),
+                settings.baseUrl(),
+                settings.apiKey(),
                 model.getModelId(),
                 task.getPrompt(),
                 task.getParameters(),
@@ -383,6 +472,7 @@ public class GenerationTaskService {
             output.setUpdatedAt(clock.instant());
             outputMapper.updateById(output);
             lastFileId = published.file().getId();
+            updateStoryboard(task, asset, published);
         }
 
         GenerationAttempt attempt = attemptMapper.selectById(attemptId);
@@ -401,6 +491,44 @@ public class GenerationTaskService {
         task.setStateVersion(task.getStateVersion() + 1);
         task.setUpdatedAt(clock.instant());
         taskMapper.updateById(task);
+    }
+
+    private void updateStoryboard(
+            GenerationTask task, Asset asset, PublishedMediaFile published) {
+        if (task.getStoryboardFileId() == null || task.getShotId() == null) {
+            return;
+        }
+        try {
+            if (task.getType() == GenerationType.IMAGE) {
+                storyboardService.recordFirstFrame(
+                        task.getUserId(),
+                        task.getConversationId(),
+                        task.getStoryboardFileId(),
+                        task.getShotId(),
+                        asset.getId(),
+                        published.file().getId(),
+                        published.version().getVersion());
+            } else {
+                storyboardService.recordVideoCandidate(
+                        task.getUserId(),
+                        task.getConversationId(),
+                        task.getStoryboardFileId(),
+                        task.getShotId(),
+                        task.getId(),
+                        asset.getId(),
+                        published.file().getId(),
+                        published.version().getVersion());
+            }
+        } catch (RuntimeException exception) {
+            // The media result is already valid. A storyboard write conflict is reported to the
+            // caller through the task result, but must not turn a delivered asset into a failure.
+            log.warn(
+                    "Could not write generation {} back to storyboard {} shot {}",
+                    task.getId(),
+                    task.getStoryboardFileId(),
+                    task.getShotId(),
+                    exception);
+        }
     }
 
     @Transactional
@@ -536,6 +664,33 @@ public class GenerationTaskService {
         task.setDeliveryStatus(GenerationDeliveryStatus.FAILED);
         task.setBillingStatus(GenerationBillingStatus.RELEASED);
         task.setErrorMessage(truncate(errorMessage));
+        task.setStateVersion(task.getStateVersion() + 1);
+        task.setUpdatedAt(now);
+        task.setCompletedAt(now);
+        taskMapper.updateById(task);
+        creditService.release(task.getUserId(), creditBusinessKey(taskId));
+    }
+
+    @Transactional
+    public void markCancelled(UUID taskId, UUID attemptId, String message) {
+        GenerationTask task = get(taskId);
+        if (task.getStatus().terminal()) {
+            return;
+        }
+        Instant now = clock.instant();
+        if (attemptId != null) {
+            GenerationAttempt attempt = attemptMapper.selectById(attemptId);
+            if (attempt != null) {
+                attempt.setStatus(GenerationAttemptStatus.CANCELLED);
+                attempt.setErrorMessage(message);
+                attempt.setCompletedAt(now);
+                attemptMapper.updateById(attempt);
+            }
+        }
+        task.setStatus(GenerationStatus.CANCELLED);
+        task.setCancelStatus(GenerationCancelStatus.CONFIRMED);
+        task.setBillingStatus(GenerationBillingStatus.RELEASED);
+        task.setErrorMessage(truncate(message));
         task.setStateVersion(task.getStateVersion() + 1);
         task.setUpdatedAt(now);
         task.setCompletedAt(now);
@@ -739,6 +894,18 @@ public class GenerationTaskService {
         }
     }
 
+    private String normalizeShotId(String shotId) {
+        if (shotId == null || shotId.isBlank()) {
+            return null;
+        }
+        String value = shotId.trim();
+        if (value.length() > 64) {
+            throw new BusinessException(
+                    AgentErrorCode.GENERATION_INPUT_INVALID, "shotId 不能超过 64 个字符");
+        }
+        return value;
+    }
+
     private String normalizeKey(String key) {
         if (key == null || key.isBlank()) {
             return null;
@@ -758,14 +925,20 @@ public class GenerationTaskService {
             String prompt,
             String parameters,
             List<ValidatedInput> inputs,
-            UUID sourceTaskId) {
+            UUID sourceTaskId,
+            String shotId,
+            UUID storyboardFileId,
+            Integer storyboardVersion) {
         StringBuilder value = new StringBuilder()
                 .append(conversationId).append('|')
                 .append(type).append('|')
                 .append(modelDefinitionId).append('|')
                 .append(prompt).append('|')
                 .append(parameters).append('|')
-                .append(sourceTaskId == null ? "" : sourceTaskId).append('|');
+                .append(sourceTaskId == null ? "" : sourceTaskId).append('|')
+                .append(shotId == null ? "" : shotId).append('|')
+                .append(storyboardFileId == null ? "" : storyboardFileId).append('|')
+                .append(storyboardVersion == null ? "" : storyboardVersion).append('|');
         for (ValidatedInput input : inputs) {
             value.append(input.assetId()).append(':')
                     .append(input.fileVersionId() == null ? "" : input.fileVersionId())

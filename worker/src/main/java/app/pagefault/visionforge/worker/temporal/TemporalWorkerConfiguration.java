@@ -11,6 +11,8 @@ import org.springframework.context.annotation.Configuration;
 
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentActivitiesImpl;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflowImpl;
+import app.pagefault.visionforge.agent.temporal.composition.CompositionActivitiesImpl;
+import app.pagefault.visionforge.agent.temporal.composition.VideoCompositionWorkflowImpl;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationActivitiesImpl;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationWorkflowImpl;
 import app.pagefault.visionforge.agent.temporal.selfcheck.SelfCheckActivitiesImpl;
@@ -80,6 +82,7 @@ public class TemporalWorkerConfiguration {
             WorkflowClient workflowClient,
             AgentActivitiesImpl agentActivities,
             MediaGenerationActivitiesImpl mediaGenerationActivities,
+            CompositionActivitiesImpl compositionActivities,
             WorkerProperties properties,
             @Value("${visionforge.temporal.task-queue}") String taskQueue) {
         WorkerFactoryOptions factoryOptions = WorkerFactoryOptions.newBuilder()
@@ -105,9 +108,13 @@ public class TemporalWorkerConfiguration {
         worker.registerWorkflowImplementationTypes(
                 SelfCheckWorkflowImpl.class,
                 AgentRunWorkflowImpl.class,
-                MediaGenerationWorkflowImpl.class);
+                MediaGenerationWorkflowImpl.class,
+                VideoCompositionWorkflowImpl.class);
         worker.registerActivitiesImplementations(
-                new SelfCheckActivitiesImpl(), agentActivities, mediaGenerationActivities);
+                new SelfCheckActivitiesImpl(),
+                agentActivities,
+                mediaGenerationActivities,
+                compositionActivities);
         factory.start();
         log.info(
                 "Temporal worker started on task queue '{}' (activities={}, workflowTasks={}, "

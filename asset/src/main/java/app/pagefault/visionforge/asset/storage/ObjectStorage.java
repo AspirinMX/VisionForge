@@ -27,11 +27,17 @@ public interface ObjectStorage {
 
     PresignedUrl presignGet(String objectKey, Duration ttl, String downloadName);
 
+    /**
+     * Short-lived GET URL signed for the server-side/internal endpoint, used by worker processes
+     * (for example FFmpeg) that must read an object without browser access.
+     */
+    PresignedUrl presignInternalGet(String objectKey, Duration ttl);
+
     PresignedUrl presignPut(String objectKey, Duration ttl, String contentType);
 
     StorageMultipartUpload initiateMultipart(String objectKey, String contentType);
 
-    void uploadPart(
+    UploadedPart uploadPart(
             StorageMultipartUpload upload,
             int partNumber,
             InputStream content,

@@ -47,6 +47,7 @@ public class GenerationTools {
         return List.of(
                 new GenerateImageTool(),
                 new GenerateVideoTool(),
+                new AwaitGenerationTool(),
                 new GetGenerationTool(),
                 new CancelGenerationTool(),
                 new InspectAssetTool());
@@ -85,6 +86,9 @@ public class GenerationTools {
                           "fileVersionId":{"type":"string","format":"uuid"},
                           "role":{"type":"string","enum":["REFERENCE","INIT_IMAGE","MASK"]}
                         },"required":["assetId"],"additionalProperties":false}},
+                      "shotId":{"type":"string","maxLength":64},
+                      "storyboardFileId":{"type":"string","format":"uuid"},
+                      "storyboardVersion":{"type":"integer","minimum":1},
                       "sourceTaskId":{"type":"string","format":"uuid"}
                     },"required":["prompt"],"additionalProperties":false}
                     """,
@@ -115,6 +119,9 @@ public class GenerationTools {
                           "fileVersionId":{"type":"string","format":"uuid"},
                           "role":{"type":"string","enum":["FIRST_FRAME","LAST_FRAME","REFERENCE"]}
                         },"required":["assetId"],"additionalProperties":false}},
+                      "shotId":{"type":"string","maxLength":64},
+                      "storyboardFileId":{"type":"string","format":"uuid"},
+                      "storyboardVersion":{"type":"integer","minimum":1},
                       "sourceTaskId":{"type":"string","format":"uuid"}
                     },"required":["prompt"],"additionalProperties":false}
                     """,
@@ -124,6 +131,32 @@ public class GenerationTools {
         @Override
         public ToolResult execute(ToolExecutionContext context, JsonNode arguments) {
             return submit(context, arguments, GenerationType.VIDEO);
+        }
+    }
+
+    private final class AwaitGenerationTool extends BaseTool {
+
+        private AwaitGenerationTool() {
+            super(
+                    "await_generation",
+                    "等待生成任务交付。任务未完成时工具进入持久化等待；完成后返回最终状态和产物，"
+                            + "并把结果交回同一轮模型。",
+                    """
+                    {"type":"object","properties":{
+                      "taskId":{"type":"string","format":"uuid"}
+                    },"required":["taskId"],"additionalProperties":false}
+                    """,
+                    false);
+        }
+
+        @Override
+        public ToolResult execute(ToolExecutionContext context, JsonNode arguments) {
+            UUID taskId = ToolArguments.requiredUuid(arguments, "taskId");
+            GenerationTask task = taskService.getForUser(context.userId(), taskId);
+            if (taskService.isTerminal(taskId)) {
+                return ToolResult.success(write(taskSummary(task)));
+            }
+            return ToolResult.waiting(taskId.toString());
         }
     }
 
@@ -222,6 +255,9 @@ public class GenerationTools {
                         : arguments.path("parameters").toString();
         List<SubmitInput> inputs = parseInputs(arguments, type);
         UUID sourceTaskId = ToolArguments.optionalUuid(arguments, "sourceTaskId");
+        String shotId = ToolArguments.optionalText(arguments, "shotId");
+        UUID storyboardFileId = ToolArguments.optionalUuid(arguments, "storyboardFileId");
+        Integer storyboardVersion = ToolArguments.optionalInt(arguments, "storyboardVersion");
         String idempotencyKey = "tool:" + context.agentRunId() + ':' + context.toolCallId();
 
         GenerationSubmission submission = taskService.submit(
@@ -236,7 +272,10 @@ public class GenerationTools {
                         parameters,
                         inputs,
                         idempotencyKey,
-                        sourceTaskId));
+                        sourceTaskId,
+                        shotId,
+                        storyboardFileId,
+                        storyboardVersion));
         Map<String, Object> result = taskSummary(submission.task());
         result.put("accepted", submission.task().getStatus() == GenerationStatus.PENDING);
         return ToolResult.success(write(result));

@@ -42,6 +42,15 @@ public final class ObjectKeys {
                 userId, conversationId, generationTaskId, outputId, sanitizeExtension(extension));
     }
 
+    public static String composition(
+            UUID userId,
+            UUID conversationId,
+            UUID compositionTaskId,
+            String extension) {
+        return "users/%s/conversations/%s/compositions/%s/final.%s".formatted(
+                userId, conversationId, compositionTaskId, sanitizeExtension(extension));
+    }
+
     public static String variant(
             UUID userId,
             UUID conversationId,

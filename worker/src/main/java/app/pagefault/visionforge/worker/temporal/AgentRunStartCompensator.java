@@ -9,11 +9,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import app.pagefault.visionforge.agent.composition.CompositionTaskService;
 import app.pagefault.visionforge.agent.generation.GenerationTaskService;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflow;
+import app.pagefault.visionforge.agent.temporal.composition.VideoCompositionWorkflow;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationWorkflow;
 import app.pagefault.visionforge.worker.config.WorkerProperties;
 
@@ -38,6 +40,7 @@ public class AgentRunStartCompensator {
     private final WorkflowClient workflowClient;
     private final AgentRunService agentRunService;
     private final GenerationTaskService generationTaskService;
+    private final CompositionTaskService compositionTaskService;
     private final WorkerProperties properties;
     private final String taskQueue;
 
@@ -45,11 +48,13 @@ public class AgentRunStartCompensator {
             WorkflowClient workflowClient,
             AgentRunService agentRunService,
             GenerationTaskService generationTaskService,
+            CompositionTaskService compositionTaskService,
             WorkerProperties properties,
             @Value("${visionforge.temporal.task-queue}") String taskQueue) {
         this.workflowClient = workflowClient;
         this.agentRunService = agentRunService;
         this.generationTaskService = generationTaskService;
+        this.compositionTaskService = compositionTaskService;
         this.properties = properties;
         this.taskQueue = taskQueue;
     }
@@ -68,6 +73,11 @@ public class AgentRunStartCompensator {
                 generationTaskService.pendingStartRequests(config.batchSize());
         for (WorkflowStartRequest request : mediaRequests) {
             compensateMedia(request, config);
+        }
+        List<WorkflowStartRequest> compositionRequests =
+                compositionTaskService.pendingStartRequests(config.batchSize());
+        for (WorkflowStartRequest request : compositionRequests) {
+            compensateComposition(request, config);
         }
     }
 
@@ -122,6 +132,32 @@ public class AgentRunStartCompensator {
                     request.getAttempts() + 1,
                     exception);
             generationTaskService.recordWorkflowStartFailure(
+                    request, message, config.maxAttempts());
+        }
+    }
+
+    private void compensateComposition(
+            WorkflowStartRequest request, WorkerProperties.StartCompensation config) {
+        try {
+            VideoCompositionWorkflow workflow = workflowClient.newWorkflowStub(
+                    VideoCompositionWorkflow.class,
+                    WorkflowOptions.newBuilder()
+                            .setWorkflowId(request.getWorkflowId())
+                            .setTaskQueue(taskQueue)
+                            .build());
+            WorkflowClient.start(workflow::run, request.getBusinessId());
+            compositionTaskService.markWorkflowStarted(request.getWorkflowId());
+            log.info("Compensated composition workflow start {}", request.getWorkflowId());
+        } catch (WorkflowExecutionAlreadyStarted exception) {
+            compositionTaskService.markWorkflowStarted(request.getWorkflowId());
+        } catch (RuntimeException exception) {
+            String message = message(exception);
+            log.warn(
+                    "Could not compensate composition workflow start {} (attempt {})",
+                    request.getWorkflowId(),
+                    request.getAttempts() + 1,
+                    exception);
+            compositionTaskService.recordWorkflowStartFailure(
                     request, message, config.maxAttempts());
         }
     }

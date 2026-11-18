@@ -12,6 +12,8 @@ import app.pagefault.visionforge.agent.model.ExecutionMode;
 public record MediaProviderRequest(
         UUID taskId,
         GenerationType type,
+        String baseUrl,
+        String apiKey,
         String modelId,
         String prompt,
         String parameters,

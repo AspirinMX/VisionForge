@@ -15,4 +15,10 @@ public sealed interface MediaProviderOutcome {
     record Pending(MediaProviderReceipt receipt, String remoteTaskId)
             implements MediaProviderOutcome {
     }
+
+    record Failed(String providerStatus, String message) implements MediaProviderOutcome {
+    }
+
+    record Cancelled(String message) implements MediaProviderOutcome {
+    }
 }

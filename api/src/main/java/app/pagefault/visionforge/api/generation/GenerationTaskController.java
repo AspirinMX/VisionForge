@@ -57,7 +57,10 @@ public class GenerationTaskController {
                         request.parameters() == null ? "{}" : request.parameters().toString(),
                         inputs(request.inputs()),
                         idempotencyKey,
-                        request.sourceTaskId()));
+                        request.sourceTaskId(),
+                        request.shotId(),
+                        request.storyboardFileId(),
+                        request.storyboardVersion()));
         if (submission.created()) {
             taskStarter.start(submission.task().getId(), submission.workflowId());
         }

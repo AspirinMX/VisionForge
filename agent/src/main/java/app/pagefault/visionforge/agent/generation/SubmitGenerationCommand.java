@@ -13,7 +13,10 @@ public record SubmitGenerationCommand(
         String parameters,
         List<SubmitInput> inputs,
         String idempotencyKey,
-        UUID sourceTaskId) {
+        UUID sourceTaskId,
+        String shotId,
+        UUID storyboardFileId,
+        Integer storyboardVersion) {
 
     public SubmitGenerationCommand {
         inputs = inputs == null ? List.of() : List.copyOf(inputs);

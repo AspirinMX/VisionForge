@@ -11,7 +11,11 @@ public interface AgentActivities {
 
     ModelTurn invokeModel(UUID runId, int turnNo);
 
-    void executeTool(UUID runId, String toolCallId);
+    ToolExecution executeTool(UUID runId, String toolCallId);
+
+    boolean isGenerationTerminal(UUID taskId);
+
+    void completeAwait(UUID runId, String toolCallId, UUID taskId);
 
     void completeRun(UUID runId, int turnNo);
 

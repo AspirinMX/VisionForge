@@ -15,6 +15,9 @@ import io.temporal.workflow.Workflow;
  */
 public class AgentRunWorkflowImpl implements AgentRunWorkflow {
 
+    private static final Duration AWAIT_POLL_INTERVAL = Duration.ofSeconds(5);
+    private static final int MAX_AWAIT_POLLS = 1_440;
+
     private final AgentActivities modelActivities = Workflow.newActivityStub(
             AgentActivities.class,
             ActivityOptions.newBuilder()
@@ -37,6 +40,13 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
                     .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(3).build())
                     .build());
 
+    private final AgentActivities awaitActivities = Workflow.newActivityStub(
+            AgentActivities.class,
+            ActivityOptions.newBuilder()
+                    .setStartToCloseTimeout(Duration.ofSeconds(30))
+                    .setRetryOptions(RetryOptions.newBuilder().setMaximumAttempts(3).build())
+                    .build());
+
     @Override
     public void run(UUID runId) {
         try {
@@ -49,7 +59,10 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
                     return;
                 }
                 for (String toolCallId : turn.toolCallIds()) {
-                    toolActivities.executeTool(runId, toolCallId);
+                    ToolExecution execution = toolActivities.executeTool(runId, toolCallId);
+                    if (execution.waiting()) {
+                        awaitGeneration(runId, toolCallId, execution.taskId());
+                    }
                 }
                 turnNo++;
             }
@@ -57,6 +70,18 @@ public class AgentRunWorkflowImpl implements AgentRunWorkflow {
             finalizeActivities.failRun(runId, failureMessage(failure));
             throw failure;
         }
+    }
+
+    /**
+     * Waits for a generation task without blocking an Activity. The model does not poll; the
+     * completed task payload becomes the final result of the same tool call.
+     */
+    private void awaitGeneration(UUID runId, String toolCallId, UUID taskId) {
+        int polls = 0;
+        while (!awaitActivities.isGenerationTerminal(taskId) && polls++ < MAX_AWAIT_POLLS) {
+            Workflow.sleep(AWAIT_POLL_INTERVAL);
+        }
+        awaitActivities.completeAwait(runId, toolCallId, taskId);
     }
 
     private String failureMessage(ActivityFailure failure) {

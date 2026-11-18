@@ -3,6 +3,7 @@ package app.pagefault.visionforge.agent.temporal.generation;
 import java.util.UUID;
 
 import io.temporal.activity.ActivityInterface;
+import io.temporal.activity.ActivityMethod;
 
 @ActivityInterface
 public interface MediaGenerationActivities {
@@ -13,5 +14,6 @@ public interface MediaGenerationActivities {
 
     void settle(UUID taskId);
 
+    @ActivityMethod(name = "FailMediaGeneration")
     void fail(UUID taskId, String errorMessage);
 }

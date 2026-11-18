@@ -45,6 +45,11 @@ visionforge:
     config-secret: ${MODEL_CONFIG_SECRET:}
   billing:
     initial-credit-units: ${BILLING_INITIAL_CREDIT_UNITS:10000}
+  composition:
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+    part-size-bytes: ${COMPOSITION_PART_SIZE_BYTES:8388608}
+    timeout: ${COMPOSITION_TIMEOUT:30m}
+    presign-ttl: ${COMPOSITION_PRESIGN_TTL:2h}
   storage:
     backend: ${STORAGE_BACKEND:s3}
     endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}

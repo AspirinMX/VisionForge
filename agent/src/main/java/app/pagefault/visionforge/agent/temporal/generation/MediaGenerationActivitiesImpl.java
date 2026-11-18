@@ -49,10 +49,18 @@ public class MediaGenerationActivitiesImpl implements MediaGenerationActivities 
                         taskId, attemptId, completed.receipt(), completed.artifacts());
                 return new GenerationSubmitResult(false, false);
             }
-            MediaProviderOutcome.Pending pending = (MediaProviderOutcome.Pending) outcome;
-            taskService.recordPending(
-                    taskId, attemptId, pending.receipt(), pending.remoteTaskId());
-            return new GenerationSubmitResult(true, false);
+            if (outcome instanceof MediaProviderOutcome.Pending pending) {
+                taskService.recordPending(
+                        taskId, attemptId, pending.receipt(), pending.remoteTaskId());
+                return new GenerationSubmitResult(true, false);
+            }
+            if (outcome instanceof MediaProviderOutcome.Cancelled cancelled) {
+                taskService.markCancelled(taskId, attemptId, cancelled.message());
+                return new GenerationSubmitResult(false, true);
+            }
+            MediaProviderOutcome.Failed failed = (MediaProviderOutcome.Failed) outcome;
+            taskService.markFailed(taskId, attemptId, failed.message());
+            return new GenerationSubmitResult(false, true);
         } catch (BusinessException exception) {
             failUnlessArchiveFailed(taskId, attemptId, exception.getMessage());
             throw ApplicationFailure.newNonRetryableFailure(
@@ -100,7 +108,7 @@ public class MediaGenerationActivitiesImpl implements MediaGenerationActivities 
         }
         try {
             MediaProviderRequest request =
-                    taskService.providerRequest(task, taskService.inputs(taskId));
+                    taskService.providerRequest(task, java.util.List.of());
             MediaProviderOutcome outcome =
                     remoteProvider.query(request, attempt.getRemoteTaskId());
             if (outcome instanceof MediaProviderOutcome.Completed completed) {
@@ -108,10 +116,18 @@ public class MediaGenerationActivitiesImpl implements MediaGenerationActivities 
                         taskId, attempt.getId(), completed.receipt(), completed.artifacts());
                 return new GenerationSubmitResult(false, false);
             }
-            MediaProviderOutcome.Pending pending = (MediaProviderOutcome.Pending) outcome;
-            taskService.recordPending(
-                    taskId, attempt.getId(), pending.receipt(), pending.remoteTaskId());
-            return new GenerationSubmitResult(true, false);
+            if (outcome instanceof MediaProviderOutcome.Pending pending) {
+                taskService.recordPending(
+                        taskId, attempt.getId(), pending.receipt(), pending.remoteTaskId());
+                return new GenerationSubmitResult(true, false);
+            }
+            if (outcome instanceof MediaProviderOutcome.Cancelled cancelled) {
+                taskService.markCancelled(taskId, attempt.getId(), cancelled.message());
+                return new GenerationSubmitResult(false, true);
+            }
+            MediaProviderOutcome.Failed failed = (MediaProviderOutcome.Failed) outcome;
+            taskService.markFailed(taskId, attempt.getId(), failed.message());
+            return new GenerationSubmitResult(false, true);
         } catch (BusinessException exception) {
             taskService.markUnknown(taskId, attempt.getId(), exception.getMessage());
             return new GenerationSubmitResult(false, true);

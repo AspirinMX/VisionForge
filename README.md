@@ -165,7 +165,7 @@ GET  /api/v1/assets/{assetId}/download-url
 
 ### Media generation tasks
 
-V14 creates `generation_task`, `generation_attempt`, `generation_input`, `generation_output`, `message_part` and the credit ledger. Model definitions gain `capabilityType` (`CHAT`/`IMAGE`/`VIDEO`), `protocol`, `executionMode` and `priceUnits`; one default model exists per capability type.
+V14 creates `generation_task`, `generation_attempt`, `generation_input`, `generation_output`, `message_part` and the credit ledger; V15 adds `shotId`/storyboard linkage, the `WAITING` tool state and `composition_task`/`composition_input`. Model definitions gain `capabilityType` (`CHAT`/`IMAGE`/`VIDEO`), `protocol`, `executionMode` and `priceUnits`; one default model exists per capability type.
 
 ```text
 POST /api/v1/generation-tasks                202 + Location, honors Idempotency-Key
@@ -173,11 +173,26 @@ GET  /api/v1/generation-tasks?conversationId=
 GET  /api/v1/generation-tasks/{taskId}
 POST /api/v1/generation-tasks/{taskId}/cancel
 POST /api/v1/generation-tasks/{taskId}/retry-archive
+
+POST /api/v1/composition-tasks               202 + Location
+GET  /api/v1/composition-tasks/{taskId}
+POST /api/v1/composition-tasks/{taskId}/cancel
+POST /api/v1/composition-tasks/{taskId}/retry
 ```
 
 Acceptance writes the task, frozen inputs, output placeholder, credit reservation and workflow start request in one local transaction. `MediaGenerationWorkflow` is independent of the AgentRun and owns submit, wait, archive, publish and settlement. An archive failure can only be repaired with `retry-archive`; it never regenerates or double-charges.
 
-Only the offline `STUB` protocol is implemented: images are real PNGs, video output is placeholder bytes. It validates tasks, archiving, delivery and billing; it is **not playable video and does not mean a real gateway has been integrated**. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000). Real gateway adapters, ffprobe/cover/transcoding and the frontend generation UI are still pending.
+A generation may carry `shotId`, `storyboardFileId` and `storyboardVersion`. Completed first frames are written back to the shot's `firstFrame`; completed videos are appended to `videoCandidates` and the first candidate is selected by default. `STORYBOARD` files are validated on create, update and by the `validate_storyboard` tool.
+
+`await_generation` makes the current AgentRun wait durably for a task terminal state and then hands the result back to the same model. `compose_video` freezes `selectedVideo`, assets and `usedRange` in storyboard order; `VideoCompositionWorkflow` reads clips from S3, runs FFmpeg, streams a multipart upload and publishes the final asset. The worker needs an executable FFmpeg, configurable with `FFMPEG_PATH`, `COMPOSITION_PART_SIZE_BYTES` and `COMPOSITION_TIMEOUT`.
+
+Registered media protocols:
+
+- `STUB`: real PNG images, placeholder video bytes that are **not playable**.
+- `OPENAI_IMAGES`: GPT Image generation and reference-image editing via `openai-java`.
+- `ARK_VIDEO_TASKS`: Seedance submit/query/video download via `ark-runtime`.
+
+The OpenAI Images and Ark Seedance adapters are implemented but have **not been verified against a live gateway**. Ark images, DashScope/Wanxiang, ffprobe/cover/transcoding and the frontend generation UI are still pending. A new credit account is initialized with `BILLING_INITIAL_CREDIT_UNITS` (default 10000).
 
 ## Deployment
 

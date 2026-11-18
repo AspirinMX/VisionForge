@@ -16,6 +16,9 @@ import app.pagefault.visionforge.agent.generation.GenerationType;
 public record GenerationTaskResponse(
         UUID taskId,
         UUID conversationId,
+        String shotId,
+        UUID storyboardFileId,
+        Integer storyboardVersion,
         GenerationType type,
         UUID modelDefinitionId,
         String prompt,
@@ -42,6 +45,9 @@ public record GenerationTaskResponse(
         return new GenerationTaskResponse(
                 task.getId(),
                 task.getConversationId(),
+                task.getShotId(),
+                task.getStoryboardFileId(),
+                task.getStoryboardVersion(),
                 task.getType(),
                 task.getModelDefinitionId(),
                 task.getPrompt(),

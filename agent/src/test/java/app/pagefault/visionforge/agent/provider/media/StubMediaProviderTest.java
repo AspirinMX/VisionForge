@@ -40,6 +40,8 @@ class StubMediaProviderTest {
         return new MediaProviderRequest(
                 UUID.randomUUID(),
                 type,
+                "https://stub.local/v1",
+                "stub-key",
                 "stub-model",
                 "coffee poster",
                 "{}",

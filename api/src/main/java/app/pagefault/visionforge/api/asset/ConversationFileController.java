@@ -20,6 +20,7 @@ import app.pagefault.visionforge.api.asset.dto.ConversationFileResponse;
 import app.pagefault.visionforge.api.asset.dto.ConversationFileVersionResponse;
 import app.pagefault.visionforge.api.asset.dto.CreateConversationFileRequest;
 import app.pagefault.visionforge.api.asset.dto.UpdateConversationFileRequest;
+import app.pagefault.visionforge.agent.storyboard.StoryboardValidator;
 import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.asset.library.ConversationFile;
 import app.pagefault.visionforge.asset.library.ConversationFileKind;
@@ -44,6 +45,7 @@ public class ConversationFileController {
     private static final int DEFAULT_LIMIT = 50;
 
     private final ConversationFileService conversationFileService;
+    private final StoryboardValidator storyboardValidator;
 
     @GetMapping
     public ApiResponse<List<ConversationFileResponse>> list(
@@ -89,6 +91,9 @@ public class ConversationFileController {
             @PathVariable UUID conversationId,
             @Valid @RequestBody CreateConversationFileRequest request,
             @AuthenticationPrincipal Jwt jwt) {
+        if (request.kind() == ConversationFileKind.STORYBOARD) {
+            storyboardValidator.validate(request.content());
+        }
         ConversationFile file = conversationFileService.create(
                 AuthenticatedUser.id(jwt),
                 conversationId,
@@ -116,6 +121,11 @@ public class ConversationFileController {
             @PathVariable UUID fileId,
             @Valid @RequestBody UpdateConversationFileRequest request,
             @AuthenticationPrincipal Jwt jwt) {
+        ConversationFile existing = conversationFileService.get(
+                AuthenticatedUser.id(jwt), conversationId, fileId);
+        if (existing.getKind() == ConversationFileKind.STORYBOARD) {
+            storyboardValidator.validate(request.content());
+        }
         ConversationFile file = conversationFileService.update(
                 AuthenticatedUser.id(jwt),
                 conversationId,

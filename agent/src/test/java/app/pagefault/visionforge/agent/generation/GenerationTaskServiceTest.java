@@ -31,6 +31,7 @@ import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.provider.media.MediaProviderRegistry;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequest;
+import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
@@ -72,6 +73,7 @@ class GenerationTaskServiceTest {
         ConversationReferenceChecker checker = mock(ConversationReferenceChecker.class);
         AssetService assetService = mock(AssetService.class);
         ConversationFileService fileService = mock(ConversationFileService.class);
+        StoryboardService storyboardService = mock(StoryboardService.class);
         creditService = mock(CreditService.class);
         providerRegistry = mock(MediaProviderRegistry.class);
         AtomicLong sequence = new AtomicLong();
@@ -87,6 +89,7 @@ class GenerationTaskServiceTest {
                 checker,
                 assetService,
                 fileService,
+                storyboardService,
                 creditService,
                 providerRegistry,
                 new ObjectMapper(),
@@ -150,6 +153,9 @@ class GenerationTaskServiceTest {
                 "{}",
                 List.of(),
                 idempotencyKey,
+                null,
+                null,
+                null,
                 null);
     }
 

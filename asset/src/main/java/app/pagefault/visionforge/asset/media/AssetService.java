@@ -241,6 +241,76 @@ public class AssetService {
         return asset;
     }
 
+    /**
+     * Registers an object that was written by a controlled worker pipeline (for example FFmpeg
+     * multipart composition). The caller is responsible for the object having been completed and
+     * verified; this method only creates the durable READY asset row.
+     */
+    public Asset registerStoredAsset(
+            UUID userId,
+            UUID conversationId,
+            AssetKind kind,
+            String mimeType,
+            String objectKey,
+            long sizeBytes,
+            String checksum) {
+        requireConversation(userId, conversationId);
+        if (kind == null || !kind.supports(mimeType)) {
+            throw new BusinessException(AssetErrorCode.ASSET_MIME_UNSUPPORTED);
+        }
+        if (objectKey == null || objectKey.isBlank() || sizeBytes <= 0) {
+            throw new BusinessException(AssetErrorCode.ASSET_NOT_READY);
+        }
+        ObjectStorage storage = storage();
+        Instant now = clock.instant();
+        Asset asset = new Asset();
+        asset.setId(idGenerator.nextId());
+        asset.setUserId(userId);
+        asset.setConversationId(conversationId);
+        asset.setKind(kind);
+        asset.setStorageBackend(storage.backend());
+        asset.setBucket(storageProperties.bucket());
+        asset.setObjectKey(objectKey);
+        asset.setMimeType(AssetKind.normalizeMimeType(mimeType));
+        asset.setSizeBytes(sizeBytes);
+        asset.setChecksum(checksum);
+        asset.setSource(AssetSource.DERIVED);
+        asset.setStatus(AssetStatus.READY);
+        asset.setCreatedAt(now);
+        asset.setUpdatedAt(now);
+        assetMapper.insert(asset);
+        return asset;
+    }
+
+    /**
+     * Reads a bounded copy of an asset for a server-side provider adapter. The caller must not
+     * expose the bytes or the object key to the model or client.
+     */
+    public byte[] readBytes(UUID userId, UUID assetId, long maxBytes) {
+        Asset asset = requireAsset(userId, assetId);
+        if (asset.getStatus() != AssetStatus.READY) {
+            throw new BusinessException(AssetErrorCode.ASSET_NOT_READY);
+        }
+        try (java.io.InputStream input = storage().get(asset.getObjectKey(), null)) {
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) > 0) {
+                if (output.size() + read > maxBytes) {
+                    throw new BusinessException(
+                            AssetErrorCode.ASSET_SIZE_TOO_LARGE, "资产超过允许读取的大小");
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
+        } catch (java.io.IOException exception) {
+            throw storageFailure(
+                    new ObjectStorageException(false, exception.getMessage(), exception));
+        } catch (ObjectStorageException exception) {
+            throw storageFailure(exception);
+        }
+    }
+
     public AssetDownloadTicket createDownloadUrl(UUID userId, UUID assetId) {
         Asset asset = requireAsset(userId, assetId);
         if (asset.getStatus() != AssetStatus.READY) {

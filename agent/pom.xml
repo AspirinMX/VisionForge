@@ -49,6 +49,10 @@
             <groupId>com.openai</groupId>
             <artifactId>openai-java</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.volcengine</groupId>
+            <artifactId>ark-runtime</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>io.temporal</groupId>

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
+import app.pagefault.visionforge.agent.generation.GenerationTaskService;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.model.ModelProviderSettings;
@@ -24,6 +25,7 @@ import app.pagefault.visionforge.agent.tool.AgentToolExecutor;
 import app.pagefault.visionforge.agent.tool.ToolDefinition;
 import app.pagefault.visionforge.agent.tool.ToolExecutionContext;
 import app.pagefault.visionforge.agent.tool.ToolRegistry;
+import app.pagefault.visionforge.agent.tool.ToolResult;
 import app.pagefault.visionforge.common.error.BusinessException;
 
 import io.temporal.failure.ApplicationFailure;
@@ -37,6 +39,7 @@ public class AgentActivitiesImpl implements AgentActivities {
     private final ResponsesModelClient responsesModelClient;
     private final ToolRegistry toolRegistry;
     private final AgentToolExecutor toolExecutor;
+    private final GenerationTaskService generationTaskService;
     private final AgentRunStreamPublisher streamPublisher;
 
     @Override
@@ -114,14 +117,29 @@ public class AgentActivitiesImpl implements AgentActivities {
     }
 
     @Override
-    public void executeTool(UUID runId, String toolCallId) {
+    public ToolExecution executeTool(UUID runId, String toolCallId) {
         ModelToolCall call = agentRunService.findToolCall(runId, toolCallId);
         if (call == null) {
             throw ApplicationFailure.newNonRetryableFailure(
                     "工具调用记录不存在", AgentErrorCode.TOOL_NOT_FOUND.code());
         }
         ToolExecutionContext context = agentRunService.toolContext(runId, toolCallId);
-        toolExecutor.execute(context, call.name(), call.arguments());
+        ToolResult result = toolExecutor.execute(context, call.name(), call.arguments());
+        if (result.waiting()) {
+            return ToolExecution.waiting(UUID.fromString(result.waitTaskId()));
+        }
+        return ToolExecution.completed();
+    }
+
+    @Override
+    public boolean isGenerationTerminal(UUID taskId) {
+        return generationTaskService.isTerminal(taskId);
+    }
+
+    @Override
+    public void completeAwait(UUID runId, String toolCallId, UUID taskId) {
+        ToolExecutionContext context = agentRunService.toolContext(runId, toolCallId);
+        toolExecutor.completeWaiting(context, generationTaskService.resultJson(taskId));
     }
 
     @Override

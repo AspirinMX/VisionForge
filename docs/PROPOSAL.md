@@ -884,7 +884,7 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 18. 当前实现差距与后续决策
 
-截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已到 V14：identity 表为 user_account、refresh_token、audit_log，会话工作区为 conversation_file、conversation_file_version，V13 创建 asset/upload_session/asset_variant，V14 创建 generation_task/attempt/input/output、message_part 和额度账本；workspace 和 workspace_member 已在 V11 删除；Compose 提供 PostgreSQL、Redis 和 RustFS。
+截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已到 V15：identity 表为 user_account、refresh_token、audit_log，会话工作区为 conversation_file、conversation_file_version，V13 创建 asset/upload_session/asset_variant，V14 创建 generation_task/attempt/input/output、message_part 和额度账本，V15 增加分镜镜头关联、`WAITING` 工具状态和 composition_task/input；workspace 和 workspace_member 已在 V11 删除；Compose 提供 PostgreSQL、Redis 和 RustFS。
 
 已实现：
 
@@ -900,13 +900,16 @@ billing 独立于 Agent 的自然语言判断。
 - 媒体生成（第一阶段后端切片）：V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和最小额度账本；模型配置区分 CHAT/IMAGE/VIDEO、协议与执行方式，默认模型按能力类型唯一。生成受理在单个本地事务内完成任务、输入冻结、输出占位、额度预占与 `workflow_start_request`，`MediaGenerationWorkflow` 在独立生命周期内提交、等待、归档并结算；`generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset` 已注册为工具；`POST/GET /api/v1/generation-tasks`、取消和 `retry-archive` 已提供。
 - 多模态输入：用户消息可通过 `assetIds` 附带最多 8 张会话内图片，服务端写入 `message_part`；构建本轮输入时由 asset 服务签发短时 URL，provider 映射为 `input_image` 内容块；历史消息默认只回放文本。
 - 离线媒体桩：`STUB` 协议图片输出真实 PNG，视频输出仅用于验证受理、归档、交付与结算的占位字节，不代表可播放视频，也不代表真实网关已联调。
+- 分镜执行：`StoryboardValidator` 校验 `schemaVersion`、`shotId`、`order`、`firstFramePrompt`、`videoPrompt`、`usedRange`、候选和选中引用；文件创建/更新及 `validate_storyboard` 工具都会校验。生成任务可携带 `shotId`、`storyboardFileId` 和冻结的 `storyboardVersion`；首帧图完成后写回 `firstFrame`，视频完成后追加 `videoCandidates` 并默认选中第一个候选。
+- 同 run 等待：`await_generation` 工具返回 `WAITING`，`AgentRunWorkflow` 用持久化 Timer 加短状态查询等待终态，再把最终 payload 作为同一工具调用的结果继续模型；`tool_invocation` 支持 `WAITING` 状态。
+- 成片合成：V15 `composition_task`/`composition_input`，`POST/GET /api/v1/composition-tasks`、取消、重试，`compose_video`/`get_composition` 工具，`VideoCompositionWorkflow` 和 `CompositionActivitiesImpl` 已实现。输入按分镜顺序冻结 `selectedVideo`、资产和 `usedRange`；输出通过内部预签名 GET 输入、FFmpeg fragmented MP4 stdout、S3 multipart 流式上传、Complete/Abort 和成片资产发布完成。`ObjectStorage.uploadPart` 已返回真实 ETag。
+- 实际协议适配（部分）：`OPENAI_IMAGES` 使用 `openai-java` 实现文生图与参考图编辑；`ARK_VIDEO_TASKS` 使用 `ark-runtime` 实现 Seedance 提交、查询和视频下载。两者均关闭自动重试；网关真实调用尚未验证。
 
 尚未实现：
 
-- 分镜执行语义：`STORYBOARD` 的 schema 校验、`shotId` 与生成任务的关联、`firstFrame` / `videoCandidates` / `selectedVideo` / `usedRange` 的读写和逐镜生产约束。
-- 同一 AgentRun 的持久化等待：`await_generation` 尚未注册；当前媒体工具只返回受理结果，依赖产物的成片流程还不能在同一轮继续。
-- 真实媒体网关适配器与联调（OpenAI Images、Ark、DashScope 等），以及 `REMOTE_TASK` 的真实轮询/取消实现。当前只注册离线 `STUB`。
-- FFmpeg 成片：`VideoCompositionWorkflow`、S3 多片段读取、裁剪/规格统一/拼接、multipart 流式写回和成片发布尚未实现。`ObjectStorage.uploadPart` 还没有返回分片 ETag。
+- DashScope/万相、Ark 图片等其他协议适配；OpenAI Images 多图编辑的 MIME/文件名兼容性尚未实测。
+- 真实网关联调、真实计费样例和 `REMOTE_TASK` 的真实取消语义验证。
+- 真实 FFmpeg 运行验证与目标播放器兼容性；当前成片输出为无音轨视频，声音、字幕、转场属于第二阶段。
 - ffprobe 探测、封面、播放转码、缩略图等媒体处理；当前归档直接发布原文件。
 - 前端生成入口、任务卡片、候选比较、成片播放页面。
 - 批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
@@ -926,9 +929,12 @@ billing 独立于 Agent 的自然语言判断。
 | --- | --- | --- | --- |
 | 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
 | 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
-| OpenAI Images / Ark / DashScope 图片与视频 | 未实现 | 未验证 | 未联调 |
-| `await_generation` 同 run 等待 | 未实现 | 未验证 | 不适用 |
-| FFmpeg S3→S3 成片 | 未实现 | 未验证 | 不适用 |
+| OpenAI Images（生成/编辑） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark Seedance 视频（提交/查询/下载） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark 图片 / DashScope 万相 | 未实现 | 未验证 | 未联调 |
+| 分镜校验、shotId 关联与候选写回 | 已实现 | 已通过 API 端到端验证首帧/视频写回 | 不适用 |
+| `await_generation` 同 run 等待 | 已实现 | 已通过 Workflow 测试 | 不适用 |
+| FFmpeg S3→S3 成片 | 已实现 | 已用伪 FFmpeg 进程验证 multipart/发布；真实 FFmpeg 未运行 | 不适用 |
 
 需要通过实现验证或产品决策确定的事项：
 

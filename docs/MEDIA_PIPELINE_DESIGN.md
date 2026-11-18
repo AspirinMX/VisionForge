@@ -1,6 +1,6 @@
 # 图片、视频生成与媒体资产方案
 
-调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；第一阶段后端切片已实现生成任务、额度预占、Temporal 工作流、媒体工具、归档发布和离线 `STUB` 协议。本次范围新增多镜头顺序成片、同一 AgentRun 持久化等待和实际图片/视频协议适配；这些能力目前仍为待实现设计，真实网关、FFmpeg 成片和媒体处理尚未联调。
+调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；生成任务、额度预占、Temporal 工作流、媒体工具、归档发布和离线 `STUB` 协议已实现。本次范围的分镜校验、shotId 关联、`await_generation`、成片合成（FFmpeg S3→S3）以及 OpenAI Images / Ark Seedance 适配器已实现；真实网关联调、FFmpeg 真实运行和媒体处理（ffprobe/封面/转码）尚未验证。
 
 依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、会话工作区存储服务和 V1–V14 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
@@ -683,7 +683,7 @@ vf-media-process    解码、缩略图、转码
 
 产品范围以 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 为准。下面 A–G 是第一阶段“成片创作闭环（单镜头 + 多镜头顺序合成）”的工程拆分；剧本、分镜、首帧图、分镜视频、顺序成片、前端、归档、版本和费用共同构成第一阶段验收，不能仅完成图片接口就标记该阶段完成。主对话与 compact 保留 Responses SSE，媒体协议适配边界已由产品路线采纳。
 
-截至 2026-11-18 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地离线切片（`STUB` 协议）；A 的真实网关契约与协议适配、D 的多协议与多模态扩展、E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片、G 的上线准备和前端入口仍未完成。离线通过不等于网关联调通过。
+截至 2026-11-18 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地离线切片（`STUB` 协议）；E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片、OpenAI Images 与 Ark Seedance 适配器已实现。A 的真实网关联调、D 的其余协议（Ark 图片、DashScope/万相）、FFmpeg 真实运行、G 的上线准备和前端入口仍未完成。离线通过不等于网关联调通过。
 
 | 阶段 | 交付 | 验收重点 |
 | --- | --- | --- |
@@ -703,9 +703,11 @@ SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream�
 | --- | --- | --- | --- |
 | 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
 | 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
-| OpenAI Images / Ark / DashScope | 未实现 | 未验证 | 未联调 |
-| `await_generation` 同 run 等待 | 未实现 | 未验证 | 不适用 |
-| FFmpeg S3→S3 成片 | 未实现 | 未验证 | 不适用 |
+| OpenAI Images（生成/编辑） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark Seedance 视频（提交/查询/下载） | 已实现 | 未做真实 HTTP 契约测试 | 未联调 |
+| Ark 图片 / DashScope 万相 | 未实现 | 未验证 | 未联调 |
+| `await_generation` 同 run 等待 | 已实现 | Workflow 测试通过 | 不适用 |
+| FFmpeg S3→S3 成片 | 已实现 | 伪 FFmpeg 进程验证 multipart/发布；真实 FFmpeg 未运行 | 不适用 |
 
 基础设施兼容测试必须覆盖实际部署版本的 PUT/GET/HEAD/DELETE、预签名外部域名、multipart Complete/Abort、分片 ETag 回传、Range/206、CORS、条件复制或替代不可变上传方案、checksum 与超时重试。生命周期规则不支持时用应用清理任务，不能阻断原始资产读写。
 

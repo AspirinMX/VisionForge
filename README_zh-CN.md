@@ -165,7 +165,7 @@ GET  /api/v1/assets/{assetId}/download-url
 
 ### 媒体生成任务
 
-V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和额度账本。模型配置增加 `capabilityType`（`CHAT`/`IMAGE`/`VIDEO`）、`protocol`、`executionMode` 和 `priceUnits`；默认模型按能力类型分别唯一。
+V14 创建 `generation_task`、`generation_attempt`、`generation_input`、`generation_output`、`message_part` 和额度账本；V15 增加 `shotId`/分镜关联、`WAITING` 工具状态和 `composition_task`/`composition_input`。模型配置增加 `capabilityType`（`CHAT`/`IMAGE`/`VIDEO`）、`protocol`、`executionMode` 和 `priceUnits`；默认模型按能力类型分别唯一。
 
 ```text
 POST /api/v1/generation-tasks                202 + Location，支持 Idempotency-Key
@@ -173,11 +173,26 @@ GET  /api/v1/generation-tasks?conversationId=
 GET  /api/v1/generation-tasks/{taskId}
 POST /api/v1/generation-tasks/{taskId}/cancel
 POST /api/v1/generation-tasks/{taskId}/retry-archive
+
+POST /api/v1/composition-tasks               202 + Location
+GET  /api/v1/composition-tasks/{taskId}
+POST /api/v1/composition-tasks/{taskId}/cancel
+POST /api/v1/composition-tasks/{taskId}/retry
 ```
 
 生成受理在单个事务内完成任务、输入冻结、输出占位、额度预占和启动请求；`MediaGenerationWorkflow` 独立于 AgentRun，负责提交、等待、归档、发布与结算。归档失败只允许 `retry-archive`，不会重新生成或重复扣费。
 
-当前只提供离线 `STUB` 协议：图片输出真实 PNG，视频输出占位字节，用于验证任务、归档、交付和账本，**不是可播放视频，也不代表真实网关已联调**。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。真实网关适配器、ffprobe/封面/转码、前端生成入口仍未实现。
+生成任务可携带 `shotId`、`storyboardFileId` 和 `storyboardVersion`。首帧图完成后写回分镜的 `firstFrame`，视频完成后追加 `videoCandidates` 并默认选中第一个候选。`STORYBOARD` 文件在创建、更新和 `validate_storyboard` 工具中都会校验 schema。
+
+依赖产物时调用 `await_generation`：当前 AgentRun 持久化等待任务终态，完成后把结果交回同一模型。`compose_video` 按分镜顺序冻结 `selectedVideo`、资产和 `usedRange`，由 `VideoCompositionWorkflow` 从 S3 读取片段、FFmpeg 裁剪拼接、multipart 流式写回并发布成片。Worker 需要可执行的 FFmpeg；可通过 `FFMPEG_PATH`、`COMPOSITION_PART_SIZE_BYTES`、`COMPOSITION_TIMEOUT` 配置。
+
+媒体协议当前注册：
+
+- `STUB`：图片为真实 PNG，视频为占位字节，**不可播放**。
+- `OPENAI_IMAGES`：GPT Image 文生图和参考图编辑，使用现有 `openai-java`。
+- `ARK_VIDEO_TASKS`：Seedance 提交、查询和视频下载，使用 `ark-runtime`。
+
+OpenAI Images 和 Ark Seedance 适配器已实现，但**尚未进行真实网关联调**；Ark 图片、DashScope/万相、ffprobe/封面/转码和前端生成入口仍未实现。密码/密钥、真实计费和播放器兼容性仍需单独验证。额度账户首次使用时按 `BILLING_INITIAL_CREDIT_UNITS`（默认 10000）初始化。
 
 ## 部署
 
