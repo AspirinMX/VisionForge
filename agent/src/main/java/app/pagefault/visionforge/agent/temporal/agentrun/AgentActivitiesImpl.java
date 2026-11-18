@@ -76,7 +76,8 @@ public class AgentActivitiesImpl implements AgentActivities {
                             settings.maxOutputTokens(),
                             input.instructions(),
                             input.input(),
-                            toolSpecs()),
+                            toolSpecs(),
+                            "vf-chat:" + run.getConversationId()),
                     new ModelStreamListener() {
                         @Override
                         public void onTextDelta(String delta) {

@@ -60,7 +60,8 @@ class OpenAiResponsesModelClientTest {
                             new ModelInputItem.FunctionCall("call_1", "read_item", "{\"a\":1}"),
                             new ModelInputItem.FunctionCallOutput("call_1", "{\"ok\":true}")),
                     List.of(new ModelToolSpec(
-                            "read_item", "read an item", toolSchema())));
+                            "read_item", "read an item", toolSchema())),
+                    "vf-chat:test-conversation");
 
             assertThatThrownBy(() -> client.stream(request, ModelStreamListener.NOOP))
                     .isInstanceOf(ModelProviderException.class);
@@ -73,6 +74,8 @@ class OpenAiResponsesModelClientTest {
             assertThat(body.path("max_output_tokens").asInt()).isEqualTo(128);
             assertThat(body.path("instructions").asText()).isEqualTo("system instructions");
             assertThat(body.path("reasoning").path("effort").asText()).isEqualTo("low");
+            assertThat(body.path("prompt_cache_key").asText())
+                    .isEqualTo("vf-chat:test-conversation");
 
             assertThat(body.path("include").get(0).asText())
                     .isEqualTo("reasoning.encrypted_content");

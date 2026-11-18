@@ -89,7 +89,7 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
   }'
 ```
 
-API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用通过 OpenAI 官方 Java SDK 以流式方式请求 `POST {baseUrl}/responses`（`responses().createStreaming()`），显式提交 `input` 数组，并使用 `store: false`、`max_output_tokens`，配置了 reasoning effort 时提交 `reasoning.effort`。不使用 Chat Completions。AgentRun 由 Worker 执行，Worker 必须保持运行。
+API Key 不会通过接口返回，响应中只有 `apiKeyConfigured`。模型调用通过 OpenAI 官方 Java SDK 以流式方式请求 `POST {baseUrl}/responses`（`responses().createStreaming()`），显式提交 `input` 数组，并使用 `store: false`、`max_output_tokens`，配置了 reasoning effort 时提交 `reasoning.effort`。不使用 Chat Completions。每次请求还携带由会话派生的稳定 `prompt_cache_key`（会话调用为 `vf-chat:<conversationId>`，压缩调用为 `vf-compact:<conversationId>`），让重复前缀复用上游提示词缓存；不覆盖 `prompt_cache_retention`。AgentRun 由 Worker 执行，Worker 必须保持运行。
 
 会话接口：
 

@@ -89,7 +89,7 @@ curl -X POST http://localhost:8080/api/v1/admin/models \
   }'
 ```
 
-API keys are never returned; responses expose only `apiKeyConfigured`. The provider uses the official OpenAI Java SDK to stream `POST {baseUrl}/responses` (`responses().createStreaming()`) with an explicit `input` array, `store: false`, `max_output_tokens` and `reasoning.effort` when configured. Chat Completions is not used. The worker must be running to execute AgentRun workflows.
+API keys are never returned; responses expose only `apiKeyConfigured`. The provider uses the official OpenAI Java SDK to stream `POST {baseUrl}/responses` (`responses().createStreaming()`) with an explicit `input` array, `store: false`, `max_output_tokens` and `reasoning.effort` when configured. Chat Completions is not used. Each request also carries a stable `prompt_cache_key` derived from the conversation (`vf-chat:<conversationId>`; compaction uses `vf-compact:<conversationId>`) so repeated prefixes can reuse the provider prompt cache. No `prompt_cache_retention` override is sent. The worker must be running to execute AgentRun workflows.
 
 Conversation endpoints:
 

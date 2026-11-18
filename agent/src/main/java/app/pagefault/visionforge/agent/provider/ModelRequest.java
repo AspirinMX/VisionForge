@@ -16,7 +16,8 @@ public record ModelRequest(
         int maxOutputTokens,
         String instructions,
         List<ModelInputItem> input,
-        List<ModelToolSpec> tools) {
+        List<ModelToolSpec> tools,
+        String promptCacheKey) {
 
     public ModelRequest {
         input = List.copyOf(input);

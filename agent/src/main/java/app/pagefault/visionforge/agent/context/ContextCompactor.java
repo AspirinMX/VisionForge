@@ -177,7 +177,8 @@ public class ContextCompactor {
                             summaryMaxOutputTokens,
                             SUMMARY_PROMPT,
                             List.of(new ModelInputItem.Message("user", transcript(range))),
-                            List.of()),
+                            List.of(),
+                            "vf-compact:" + run.getConversationId()),
                     ModelStreamListener.NOOP);
             invocationRecorder.record(
                     run.getId(),

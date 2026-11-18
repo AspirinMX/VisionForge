@@ -120,6 +120,10 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                     .strict(false)
                     .build());
         }
+        String cacheKey = request.promptCacheKey();
+        if (cacheKey != null && !cacheKey.isBlank()) {
+            builder.promptCacheKey(cacheKey);
+        }
         return builder.build();
     }
 
