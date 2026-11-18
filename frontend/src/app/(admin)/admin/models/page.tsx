@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { ModelFormSheet } from "@/components/admin/model-form-sheet";
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
-import { AdminRoleGuard } from "@/components/common/auth-guard";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -275,9 +274,5 @@ function ModelsAdminContent() {
 }
 
 export default function AdminModelsPage() {
-  return (
-    <AdminRoleGuard>
-      <ModelsAdminContent />
-    </AdminRoleGuard>
-  );
+  return <ModelsAdminContent />;
 }

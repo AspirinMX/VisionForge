@@ -59,7 +59,7 @@ export function AdminRoleGuard({ children }: { children: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="space-y-4 p-6">
+      <div className="min-h-svh w-full space-y-4 p-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
@@ -68,7 +68,7 @@ export function AdminRoleGuard({ children }: { children: ReactNode }) {
 
   if (user?.role !== "ADMIN") {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <div className="flex min-h-svh w-full flex-1 items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader>
             <div className="flex items-center gap-2 text-destructive">

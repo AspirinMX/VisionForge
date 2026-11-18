@@ -5,7 +5,6 @@ import { ChevronLeftIcon, ChevronRightIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
-import { AdminRoleGuard } from "@/components/common/auth-guard";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
@@ -268,9 +267,5 @@ function UsersAdminContent() {
 }
 
 export default function AdminUsersPage() {
-  return (
-    <AdminRoleGuard>
-      <UsersAdminContent />
-    </AdminRoleGuard>
-  );
+  return <UsersAdminContent />;
 }
