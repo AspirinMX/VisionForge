@@ -21,7 +21,7 @@
 | `ConversationFileService` 只创建文本文件；媒体文件发布已由 `createMediaFile` 支持 | 增加 `STORYBOARD` 结构校验、镜头级任务关联和成片版本；不另建一套作品库 |
 | `message` 是纯文本；媒体任务卡片尚未接入消息 | 增加生成任务/成片任务引用，防止任务卡片泄露私人素材 |
 | `ObjectStorage.uploadPart` 返回 `void` | 改为返回分片编号和真实 ETag，供 multipart 完成步骤使用 |
-| `billing` 尚为模块骨架；Compose 只有 PostgreSQL、Redis | 已补最小额度账本（账户、预占、流水）；Temporal 与对象存储已在本地启用，Compose 尚未纳入 |
+| `billing` 尚为模块骨架；Compose 只有 PostgreSQL、Redis | 已补最小额度账本（账户、预占、流水）；开发 Compose 已纳入 Temporal、UI 和 RustFS，Worker 镜像内置 FFmpeg |
 
 路径均相对仓库，Java 类的完整包前缀为 `app.pagefault.visionforge`。当前代码事实以这些类和迁移为依据，提案中的候选实体不计为已实现。
 

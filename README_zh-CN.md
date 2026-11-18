@@ -10,7 +10,7 @@
 | --- | --- |
 | 根目录 `pom.xml` 及各模块目录 | Java 21 Maven 父工程及所有后端模块 |
 | `frontend/` | 使用 TypeScript 和 Tailwind CSS 的 Next.js App Router 应用 |
-| `Dockerfile`、`docker-compose.yaml`、`.dockerignore`、`.env.example` | 位于仓库根目录的部署配置 |
+| `Dockerfile.frontend`、`Dockerfile.api`、`Dockerfile.worker`、`docker-compose.yaml`、`docker-compose.prod.yaml`、`.dockerignore`、`.env.example` | 位于仓库根目录的部署配置 |
 | `docs/` | 项目文档 |
 
 ## 前端开发
@@ -220,4 +220,26 @@ MEDIA_ALLOW_HTTP=true
 
 ## 部署
 
-部署文件位于仓库根目录。Dockerfile 和 Compose 文件仍为占位配置，可运行的服务定义将在后续添加。
+根目录提供三个运行时镜像：
+
+- `Dockerfile.frontend`：Next.js standalone 服务，非 root，端口 3000。后端地址在运行期读取 `VISIONFORGE_API_BASE_URL`，`/api/v1/*` 由 `frontend/src/app/api/v1/[...path]/route.ts` 代理，因此同一个镜像可以跨环境使用。
+- `Dockerfile.api`：Spring Boot API，非 root，端口 8080，健康检查 `/actuator/health`。
+- `Dockerfile.worker`：Temporal Worker，镜像内安装 `ffmpeg` 和 `ffprobe`，非 root，`FFMPEG_PATH=/usr/bin/ffmpeg`。
+
+`docker-compose.yaml` 是开发用基础栈，只启动 PostgreSQL、Redis、RustFS、Temporal 和 Temporal UI；应用从宿主机运行：
+
+```sh
+docker compose up -d --wait postgres redis rustfs temporal temporal-ui
+```
+
+Temporal UI 默认位于 `http://localhost:8233`。
+
+`docker-compose.prod.yaml` 是完整栈，会构建三个应用镜像；一次性的 `migrate` 服务会先执行 Flyway 迁移，API 和 Worker 在迁移完成后启动：
+
+```sh
+export JWT_SECRET="$(openssl rand -base64 32)"
+export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
+docker compose -f docker-compose.prod.yaml up -d --build
+```
+
+部署前把 `STORAGE_PUBLIC_ENDPOINT` 设置为浏览器可达的对象存储地址，并按 Temporal UI 访问地址调整 `TEMPORAL_CORS_ORIGINS`。当前 Temporal 使用 `AUTO_SETUP=true`；真实生产环境建议使用托管 Temporal。

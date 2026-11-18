@@ -10,7 +10,7 @@ An image and video generation workbench.
 | --- | --- |
 | `pom.xml` and module directories at the repository root | Java 21 Maven parent project and all backend modules |
 | `frontend/` | Next.js App Router application with TypeScript and Tailwind CSS |
-| `Dockerfile`, `docker-compose.yaml`, `.dockerignore`, `.env.example` | Deployment configuration at the repository root |
+| `Dockerfile.frontend`, `Dockerfile.api`, `Dockerfile.worker`, `docker-compose.yaml`, `docker-compose.prod.yaml`, `.dockerignore`, `.env.example` | Deployment configuration at the repository root |
 | `docs/` | Project documentation |
 
 ## Frontend development
@@ -220,4 +220,26 @@ Video endpoints need `ffmpeg` on `PATH`; alternatively pass `--video-file <path>
 
 ## Deployment
 
-Deployment files are located at the repository root. The Dockerfile and Compose file remain placeholders; runnable service definitions will be added separately.
+Three root Dockerfiles build the runtime images:
+
+- `Dockerfile.frontend`: Next.js standalone server, non-root, port 3000. The backend URL is read at runtime from `VISIONFORGE_API_BASE_URL`; `/api/v1/*` is proxied by `frontend/src/app/api/v1/[...path]/route.ts`, so one image works across environments.
+- `Dockerfile.api`: Spring Boot API, non-root, port 8080, healthcheck on `/actuator/health`.
+- `Dockerfile.worker`: Temporal worker with `ffmpeg` and `ffprobe` installed, non-root; `FFMPEG_PATH=/usr/bin/ffmpeg`.
+
+`docker-compose.yaml` is the development stack: PostgreSQL, Redis, RustFS, Temporal and Temporal UI only. Run the applications from the host:
+
+```sh
+docker compose up -d --wait postgres redis rustfs temporal temporal-ui
+```
+
+Temporal UI is available at `http://localhost:8233` by default.
+
+`docker-compose.prod.yaml` is the full stack and builds the three images. A one-shot `migrate` service applies the Flyway migrations before the API and worker start:
+
+```sh
+export JWT_SECRET="$(openssl rand -base64 32)"
+export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
+docker compose -f docker-compose.prod.yaml up -d --build
+```
+
+Set `STORAGE_PUBLIC_ENDPOINT` to a browser-reachable object-store address and adjust `TEMPORAL_CORS_ORIGINS` for the Temporal UI origin. Temporal is run with `AUTO_SETUP=true` for this compose; a managed Temporal deployment is preferable for real production.

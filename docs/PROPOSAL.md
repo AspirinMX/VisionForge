@@ -96,8 +96,11 @@ VisionForge/
 ├── database/
 ├── frontend/
 ├── docs/
-├── Dockerfile
+├── Dockerfile.frontend
+├── Dockerfile.api
+├── Dockerfile.worker
 ├── docker-compose.yaml
+├── docker-compose.prod.yaml
 ├── .dockerignore
 └── .env.example
 ```
@@ -914,7 +917,7 @@ billing 独立于 Agent 的自然语言判断。
 - 前端生成入口、任务卡片、候选比较、成片播放页面。
 - 批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
 - 真实额度充值/管理接口；当前新账户按 `BILLING_INITIAL_CREDIT_UNITS` 初始化。
-- Dockerfile 仍为占位；Compose 尚未纳入 Temporal（本地验证使用了临时 dev server）。
+- 已提供 frontend、api、worker 三个根目录 Dockerfile；开发 Compose 覆盖 PostgreSQL、Redis、RustFS、Temporal 和 Temporal UI，生产 Compose 覆盖完整应用栈。Worker 镜像内置 FFmpeg/ffprobe。
 
 已确认的创作数据格式：
 

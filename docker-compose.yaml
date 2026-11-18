@@ -70,6 +70,33 @@ services:
       aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket $$RUSTFS_BUCKET
       "
 
+  temporal:
+    image: temporalio/server:1.29.5
+    container_name: visionforge-temporal
+    environment:
+      AUTO_SETUP: "true"
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-visionforge}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-visionforge}
+    ports:
+      - "${TEMPORAL_PORT:-7233}:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:2.49.0
+    container_name: visionforge-temporal-ui
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: ${TEMPORAL_CORS_ORIGINS:-http://localhost:8233}
+    ports:
+      - "${TEMPORAL_UI_PORT:-8233}:8080"
+    depends_on:
+      - temporal
+
 volumes:
   visionforge-postgres-data:
   visionforge-rustfs-data:

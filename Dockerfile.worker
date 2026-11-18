@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.7
+
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /workspace
+COPY . .
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -pl worker -am -DskipTests package
+
+FROM eclipse-temurin:21-jre-noble AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
+WORKDIR /app
+COPY --from=build --chown=app:app /workspace/worker/target/*.jar /app/app.jar
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0" \
+    FFMPEG_PATH=/usr/bin/ffmpeg
+USER app
+ENTRYPOINT ["/usr/bin/tini", "--", "java", "-jar", "/app/app.jar"]
