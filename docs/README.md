@@ -12,6 +12,7 @@
 | 4 | [BACKEND_DEV_STANDARDS.md](BACKEND_DEV_STANDARDS.md) | 后端研发、评审人员 | 本项目后端 Java / Spring Boot / MyBatis-Plus / Temporal 开发规范（【强制 / 推荐 / 禁止】） |
 | 5 | [FRONTEND_DEV_STANDARDS.md](FRONTEND_DEV_STANDARDS.md) | 前端研发、评审人员 | 本项目前端 Next.js / React / Animate UI 开发规范（【强制 / 推荐 / 禁止】） |
 | 6 | [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) | 全体贡献者、运维 | 本地基础设施搭建、数据库迁移、环境变量清单、Mock 网关与常见问题排查 |
+| 7 | [ENTERPRISE_GAP_ANALYSIS.md](ENTERPRISE_GAP_ANALYSIS.md) | 维护者、架构师 | 企业级能力缺口排查、Nacos/告警/管理端/UX 改造清单与分批演进路线 |
 
 ## 仓库规则
 
