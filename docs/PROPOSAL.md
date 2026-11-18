@@ -4,6 +4,8 @@
 
 更新日期：2026-11-18。
 
+本次范围修订：把多镜头顺序合成并导出短片提前到当前交付范围；成片请求默认走“剧本—分镜—首帧图—分镜视频—FFmpeg 成片”五步，但单素材请求仍可直接调用工具。仍不引入专业时间线、多轨编辑器或无限画布。
+
 媒体专题调研与详细设计见 [图片、视频生成与媒体资产方案](MEDIA_PIPELINE_DESIGN.md)。其中媒体协议边界的调整为待采纳建议，不表示本提案的 Responses 约束已变更或相关能力已实现。
 
 ## 1. 产品定位与范围
@@ -15,13 +17,14 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 核心目标：
 
 - 主模型动态决定是否调用工具、调用顺序以及如何使用结果。
+- 成片请求默认走“剧本—分镜—首帧图—分镜视频—FFmpeg 成片”五步；单张图片、已有首帧片段或单独修改某一步仍可直接调用对应工具。
 - 主模型支持图片与文本输入、文本输出；图片作为受控的多模态输入参与创意讨论、素材核对和提示词完善。
 - 模型调用、工具执行和长时间生成任务能够追踪、恢复和核对费用。
 - 保存完整用户消息，同时独立管理模型上下文和摘要。
 - 将生成图片、视频及其来源关系长期保存为可复用资产。
 - 支持用户修改、重新生成和复用已有作品，保留版本与执行记录。
 
-首版不建设独立微服务体系，不引入 Kafka 或 CDC，不自建 GPU 推理平台，不预先实现完整多镜头剪辑系统。
+首版不建设独立微服务体系，不引入 Kafka 或 CDC，不自建 GPU 推理平台。首版支持按分镜顺序合成成片（裁剪、规格统一、拼接），但不实现专业多轨时间线、复杂转场、无限画布或完整非线性剪辑器。
 
 ## 2. 已确定的设计方向
 
@@ -30,7 +33,7 @@ VisionForge（幻影工坊）是以对话为主入口的图片与视频生成工
 | 主交互 | 对话式工作台，主模型负责动态规划和工具选择 |
 | 创作能力 | 图片、视频、剧本、素材操作均作为工具暴露 |
 | 创作存储 | 脚本、分镜、提示词、图片和视频保存在所属会话的工作区；文件归属会话，不跨会话共享 |
-| 工作流 | Agent Loop，不预设必须先写剧本、再生成图片、最后生成视频 |
+| 工作流 | Agent Loop，不把所有请求写死为固定流水线；成片请求默认走五步，单素材请求可直达工具 |
 | 模型接入 | 第三方接入 OpenAI Responses API（`POST /responses`）；必须使用 OpenAI 官方 Java SDK 的 Responses 客户端（`responses().createStreaming()`）。禁止自行拼装 `/responses` HTTP 请求、手写 SSE 事件解析或自己实现上游重试 |
 | 上游协议 | 请求上游时使用 HTTP SSE（`stream: true`）；不使用 Chat Completions、同步响应或 WebSocket；不使用 `previous_response_id` |
 | 协议假设 | 按讨论约定，假设上游实现 OpenAI Responses API 的 HTTP SSE 事件和工具调用语义，不将上游实现差异作为本提案的前置问题 |
@@ -251,7 +254,19 @@ flowchart TD
 - 已有提示词：直接调用图片或视频工具。
 - 修改剧本：读取会话内文件的指定版本，修改部分内容并保存新版本。
 - 图生视频：选择已有素材，直接提交视频任务。
-- 完整短片：模型根据需求选择会话内文件、参考图、分镜和生成工具。
+- 完整短片：默认执行五步流程，见下文。
+
+### 6.1 成片请求的默认五步
+
+用户提出“生成一条短片/广告”这类成片请求时，主模型默认执行：
+
+1. **剧本**：从一句话中提取主体、事件、目标时长等明确要求，补全场景、角色和可见动作；保存 `SCRIPT` Markdown。
+2. **分镜**：通读剧本，一次写出整组镜头；每镜明确第一帧看见什么、随后发生什么、怎样接上前后镜；保存 `STORYBOARD` JSON。
+3. **分镜首帧图**：用全片角色/风格设定、该镜首帧描述和已有参考图调用图片工具；当前 run 等待可用图片资产。
+4. **分镜视频**：一次 `generate_video` 为一个镜头生成一个候选片段；当前 run 等待片段交付。
+5. **FFmpeg 成片**：按分镜顺序读取所选片段和使用区间，裁剪、统一规格并拼接为新的成片资产。
+
+五步是成片请求的默认行为，不是所有请求的必经流程。用户只要一张图片、一个已有首帧的片段，或只想修改某一步时，可以直接调用相应工具。分镜中的首帧描述（`firstFramePrompt`）与视频运动描述（`videoPrompt`）必须分开传给图片工具和视频工具，不能合并成一个笼统的镜头提示词。
 
 工具操作的对象是当前会话工作区里的文件。文件属于会话，不跨会话共享；生成任务固定文件版本。
 
@@ -275,14 +290,19 @@ flowchart TD
 | create_file | 在当前会话工作区创建文件 |
 | update_file | 基于 base_version 修改文件，产生新版本 |
 | list_file_versions | 列出文件的版本历史 |
+| validate_storyboard | 校验 `STORYBOARD` JSON 的 schema、镜头 id、顺序和引用字段；不写入 |
 | search_assets | 查询当前用户可访问的素材 |
 | inspect_asset | 获取媒体信息和可供模型使用的内容 |
-| generate_image | 创建并执行图片生成任务 |
-| generate_video | 创建并执行视频生成任务 |
+| generate_image | 为一个镜头或一次需求创建图片候选任务；首版一次调用一个输出 |
+| generate_video | 为一个镜头创建一个视频候选任务；首版一次调用一个输出 |
+| await_generation | 持久化等待指定任务交付，把最终结果回填给同一主模型 |
 | get_generation | 查询任务状态和产物 |
 | cancel_generation | 请求取消生成任务 |
+| compose_video | 按分镜顺序读取所选 S3 片段，裁剪、统一规格并拼接为成片资产 |
 
 主模型可以直接生成剧本内容，通过 create_file 以 `kind = SCRIPT` 保存到当前会话工作区。`create_script`、`read_script`、`update_script` 可以作为基于文件的类型化封装，但底层必须复用同一套文件与版本模型，不能建立第二套事实来源。工具不必再次调用同一个文本模型。
+
+`STORYBOARD` 文件在创建或更新时由服务端校验结构；不得把无法解析、缺少稳定 `shotId` 或引用越权素材的分镜写入。`await_generation` 只返回等待指令，由 AgentRunWorkflow 使用持久化 Timer 和短状态查询推进；不得在工具 Activity 内循环等待，也不得让模型自行反复调用 `get_generation` 消耗 token。`compose_video` 只接受当前会话内已选中的镜头片段和版本，不接受任意对象键或外部 URL。
 
 每个工具定义应包含参数 Schema、返回结构、副作用类型、权限要求、幂等策略、预算要求、超时策略，以及是否支持后台执行。
 
@@ -321,28 +341,26 @@ flowchart TD
 | Workflow | 职责 |
 | --- | --- |
 | AgentRunWorkflow | 一轮对话或明确续跑的动态模型与工具调用循环 |
-| ImageGenerationWorkflow | 图片生成、结果归档与费用处理 |
-| VideoGenerationWorkflow | 视频提交、等待结果、归档与费用处理 |
+| MediaGenerationWorkflow | 图片或视频任务的提交、等待、归档、发布与费用处理 |
+| VideoCompositionWorkflow | 按分镜读取冻结片段、裁剪、规格统一、拼接并发布成片资产 |
 | ContextCompactionWorkflow | 对固定范围的消息生成摘要并发布新上下文版本 |
 
-作品级或多镜头 Workflow 后续按真实需求增加，不作为所有请求的必经流程。
+成片请求仍然由 AgentRunWorkflow 动态推进；`VideoCompositionWorkflow` 是工具调用产生的独立任务，不作为所有请求的必经流程。视频和成片工具内部可以有稳定步骤：提交、保存远端任务 ID、等待回调或 Timer、查询、归档、处理、发布、结算。工具内部的可靠执行顺序不限制主 Agent 的动态规划。
 
-视频工具内部可以有稳定步骤：提交、保存远端任务 ID、等待回调或 Timer、查询、归档、提取元数据、结算。工具内部的可靠执行顺序不限制主 Agent 的动态规划。
-
-供应商等待使用持久化 Timer 或外部事件推进，避免一个 Activity 持续阻塞整个视频生成时长。文件传输和媒体处理等长 Activity 按需设置心跳与执行超时。
+供应商等待使用持久化 Timer 或外部事件推进，避免一个 Activity 持续阻塞整个视频生成时长。文件传输、FFmpeg 合成等长 Activity 按需设置心跳、执行超时和进程终止策略。
 
 ### 8.3 同步等待与后台执行
 
 | 情况 | 执行方式 |
 | --- | --- |
-| 后续步骤依赖生成产物 | Workflow 持久化等待完成，将结果交回主模型 |
-| 当前只需要启动任务 | 返回 task_id 和已受理状态，后台继续执行 |
+| 后续步骤依赖生成产物（成片五步中的首帧图和分镜视频） | 当前 AgentRun 持久化等待完成，将结果交回同一主模型 |
+| 当前只需要启动任务（用户只想要一个后台候选或片段） | 返回 task_id 和已受理状态，后台继续执行 |
 
-后台生成采用独立生命周期的 Workflow，或对 Child Workflow 明确设置父流程结束策略。不能让对话完成意外终止已付费的视频任务。
+依赖等待以工具层契约为准：`generate_image` / `generate_video` 先受理并返回 taskId；需要产物时调用 `await_generation`，AgentRunWorkflow 用持久化 Timer 加短状态查询等待任务进入终态，再把结果作为同一工具调用的最终结果回填，继续下一轮模型。不在工具 Activity 内循环 sleep，也不让模型反复调用 `get_generation` 轮询。
 
-后台任务完成后更新资产、任务卡片和消息。需要模型继续解释或创作时，创建新的续跑 AgentRun；已经完成的 AgentRun 不再等待后续 Signal。
+后台生成采用独立生命周期的 Workflow，或对 Child Workflow 明确设置父流程结束策略。不能让对话完成意外终止已付费的视频任务。只有不依赖产物的请求才在 AgentRun 结束后以后台消息和任务卡片更新结果；依赖产物的成片请求必须让当前 run 等到交付，或明确失败/取消。
 
-工具返回“已受理”与“已完成”采用不同状态，模型不能把受理结果描述成生成成功。
+工具返回“已受理”与“已完成”采用不同状态，模型不能把受理结果描述成生成成功。等待期间浏览器断线不取消 AgentRun 或已受理的媒体任务；客户端重连后从持久化消息和任务状态恢复。
 
 ### 8.4 重试、结果不确定和取消
 
@@ -616,7 +634,7 @@ GET    /api/v1/conversations/{conversationId}/files/{fileId}/versions
 
 剧本、提示词和分镜不再单独建立一套文件存储，作为会话内文件的类型表达：
 
-- 剧本可以是 Markdown 或结构化 JSON；具体格式由工具和前端决定，不改变文件和版本模型。
+- 剧本固定使用 Markdown；分镜固定使用结构化 JSON；两者都只是会话文件的类型表达，不另建第二套事实来源。
 - 每个版本记录来源消息、父版本、创建者和工具调用标识。
 - 生成任务保存提交时冻结的文件版本、实际提示词、参数、引用素材、价格规则和授权预算；后续修改文件不改变已提交任务。
 - 用户原始输入、优化后内容和实际提交参数都要保存。
@@ -644,9 +662,11 @@ GET    /api/v1/conversations/{conversationId}/files/{fileId}/versions
 
 结构化字段（画幅、时长、语言、预算等）同时保存为创作简报或生成参数，不从 Markdown 文本反向解析作为事实来源。剧本每次修改产生新版本，生成任务冻结其版本号。
 
+从一句话生成剧本时，先提取主体、事件、目标时长等明确要求，再补全场景、角色和可见动作。例如“橘猫第一次出门”应写成“缩爪、试探、跨过门槛”这类可拍摄的动作，而不是只重复“第一次出门”的抽象描述。剧本是后续分镜的唯一文本来源；分镜不得凭空新增与剧本冲突的主体或事件。
+
 #### 分镜格式（已确定）
 
-分镜使用**结构化 JSON**，保存在 `conversation_file.kind = STORYBOARD` 的版本内容中。首个版本采用以下 schema：
+分镜使用**结构化 JSON**，保存在 `conversation_file.kind = STORYBOARD` 的版本内容中。分镜既描述镜头，也承载逐镜生产的执行关系。首个版本采用以下 schema：
 
 ```json
 {
@@ -654,25 +674,46 @@ GET    /api/v1/conversations/{conversationId}/files/{fileId}/versions
   "title": "示例短片",
   "aspectRatio": "16:9",
   "language": "zh-CN",
+  "style": "全片风格与角色设定",
   "shots": [
     {
       "id": "shot-1",
       "order": 1,
       "sceneId": "scene-1",
-      "visual": "主体、动作、环境、光线与构图的文字描述",
+      "durationSeconds": 5,
+      "visual": "镜头整体画面描述",
+      "firstFramePrompt": "第一帧看见什么，例如：爪尖悬在水面上方",
+      "videoPrompt": "随后发生什么、运镜如何，例如：爪尖落下，水面泛起涟漪",
       "shotSize": "MEDIUM",
       "camera": "STATIC",
-      "durationSeconds": 5,
       "dialogue": "",
       "voiceOver": "",
       "sound": "环境声与音乐提示",
-      "prompt": "提交给媒体模型的镜头级提示词",
       "references": [
         {"assetId": "<uuid>", "version": 1, "role": "CHARACTER"}
       ],
-      "status": "DRAFT",
-      "tasks": [],
-      "selectedOutput": null
+      "firstFrame": {
+        "assetId": "<uuid>",
+        "fileId": "<uuid>",
+        "version": 1
+      },
+      "videoCandidates": [
+        {
+          "taskId": "<uuid>",
+          "assetId": "<uuid>",
+          "fileId": "<uuid>",
+          "version": 1,
+          "status": "SUCCEEDED"
+        }
+      ],
+      "selectedVideo": {
+        "taskId": "<uuid>",
+        "assetId": "<uuid>",
+        "fileId": "<uuid>",
+        "version": 1
+      },
+      "usedRange": {"startSeconds": 0, "endSeconds": 4.5},
+      "status": "DRAFT"
     }
   ]
 }
@@ -680,12 +721,15 @@ GET    /api/v1/conversations/{conversationId}/files/{fileId}/versions
 
 约束：
 
-- `id` 在文件内唯一且稳定；排序以 `order` 为准，增删、拆分、合并和排序都产生新的文件版本。
+- `id`（`shotId`）在文件内唯一且稳定；排序以 `order` 为准，增删、拆分、合并和排序都产生新的文件版本。`firstFrame`、`videoCandidates`、`selectedVideo` 和成片追溯都通过同一个 `shotId` 关联。
+- `firstFramePrompt` 只用于首帧生图，描述第一帧可见内容、构图、角色和参考图关系；`videoPrompt` 只用于视频生成，描述动作、运镜、时长和后续变化。两者不得合并成一个笼统的镜头提示词。
+- `firstFrame` 是该镜选中的首帧资产及版本；生成任务在受理时冻结该版本。相邻镜头可以共用角色参考图，但各自保留独立 `firstFrame` 和构图。
+- `videoCandidates` 只追加不覆盖；同一镜头重做时新增一个候选，其他镜头和旧候选保持不变。`selectedVideo` 是该镜当前选中的候选。
+- `usedRange` 是成片合成时从 `selectedVideo` 中截取的区间，必须落在片段时长内；未设置时默认使用整段。
 - `shotSize` 取值：`EXTREME_WIDE`、`WIDE`、`FULL`、`MEDIUM`、`CLOSE`、`EXTREME_CLOSE`。
 - `camera` 取值：`STATIC`、`PUSH`、`PULL`、`PAN`、`TRACK`、`FOLLOW`、`CRANE`。
 - `references[].role` 至少包括 `CHARACTER`、`PRODUCT`、`SCENE`、`STYLE`；引用的具体 `assetId` 与版本在生成受理时冻结。
-- `status` 取值：`DRAFT`、`READY`、`GENERATING`、`CANDIDATES`、`APPROVED`、`LOCKED`、`FAILED`。
-- `tasks` 保存该镜头的生成任务 ID；`selectedOutput` 保存选中的任务、输出序号和资产 ID。
+- `status` 取值：`DRAFT`、`FIRST_FRAME_GENERATING`、`FIRST_FRAME_READY`、`VIDEO_GENERATING`、`VIDEO_CANDIDATES`、`APPROVED`、`LOCKED`、`FAILED`。
 - 锁定的镜头不参与批量重做；修改锁定镜头必须显式解锁并创建新版本。
 - schema 版本升级必须提供迁移或兼容读取，不得静默改变旧版本含义。
 
@@ -713,6 +757,14 @@ Agent 写入：`create_file` 在当前会话工作区创建文件并写入版本
 - 已有记录但对象缺失：标记异常并进入修复。
 - 同一归档尝试重试：识别已保存对象；新的生成尝试使用新的资产标识。
 - 供应商临时产物尽快归档，不作为唯一长期副本。
+
+#### 成片合成
+
+- 成片受理时冻结分镜版本、每个镜头的 `selectedVideo` 资产与版本、`usedRange` 和输出规格；之后修改分镜不改变已受理的成片任务。
+- Worker 校验用户和会话归属，按镜头顺序从 S3 读取冻结片段，裁剪、统一规格并拼接；输入读取使用内部 Range 访问，不依赖浏览器预签名 URL。
+- 成片输出是新的资产和会话文件版本，原始片段与旧成片全部保留；不能覆盖任何镜头片段。
+- 成片任务记录所用 `shotId`、生成任务 ID、资产版本和剪辑区间，支持从成片追溯到分镜和生成记录。
+- FFmpeg 失败、超时或进程被终止时撤销未完成的对象写入；已成功的旧成片不受影响。成片合成本身不产生模型调用费用。
 
 ### 13.5 访问、可见性与生命周期
 
@@ -747,6 +799,7 @@ billing 独立于 Agent 的自然语言判断。
 - 金额使用定点小数，额度使用明确的最小计量单位。
 - 保存执行时的价格版本，后续调价不改变历史账目。
 - 用户计费与供应商成本分别记录，允许表达“产生上游成本但最终交付失败”。
+- 成片合成不产生模型调用费用；只记录存储和本地计算资源，失败不额外扣费。
 
 取消、超时和部分成功的收费规则需要在实现前明确。不能把网络超时或本地流程退出直接解释为无成本并立即释放全部额度。
 
@@ -769,7 +822,8 @@ billing 独立于 Agent 的自然语言判断。
 | Agent | agent_run、model_invocation、tool_invocation、workflow_start_request |
 | 上下文 | context_snapshot、context_summary |
 | 创作 | 剧本、分镜和提示词由 conversation_file 的 kind 表达，不单列 creative_document |
-| 生成 | generation_task、generation_attempt、generation_output |
+| 生成 | generation_task（可空 shot_id）、generation_attempt、generation_input、generation_output |
+| 成片 | composition_task、composition_input |
 | 模型配置 | model_definition、provider_config、model_price_rule |
 | 资产 | asset、asset_variant、asset_reference、upload_session |
 | 费用 | credit_account、credit_reservation、credit_ledger、usage_record |
@@ -791,7 +845,7 @@ billing 独立于 Agent 的自然语言判断。
 
 ## 17. 开发阶段与验收
 
-产品交付按 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 推进：第一阶段为单镜头创作闭环（包含图片、视频、任务、费用及前端），第二阶段为多镜头生产与成片，第三阶段为规模化生产与企业治理。下表是已有基础工程的技术演进拆分，不代替产品阶段验收。
+产品交付按 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 推进：第一阶段为成片创作闭环（单镜头、多镜头顺序合成、任务、费用及前端），第二阶段为多镜头生产增强（简报、一致性素材、批量、声音字幕、更强编排），第三阶段为规模化生产与企业治理。下表是已有基础工程的技术演进拆分，不代替产品阶段验收。
 
 媒体协议采用 `MEDIA_PIPELINE_DESIGN.md` 的适配器边界：本提案的 Responses SSE 约束适用于主对话与 compact，图片和视频按配置使用官方 SDK 访问现有第三方网关的媒体协议。
 
@@ -801,8 +855,9 @@ billing 独立于 Agent 的自然语言判断。
 | 2. 对话与工具循环 | 消息持久化、上下文快照、Responses API HTTP SSE 调用、会话工作区、文件与剧本工具、动态分发 | 模型能直接回复或多轮调用工具；上游只使用 Responses API SSE；进程恢复不重复创建文件版本 |
 | 3. 图片闭环 | 素材上传、图片工具、费用预占、生成与归档 | 重复请求不重复扣费，产物可以查看和下载 |
 | 4. 上下文压缩 | 摘要、上下文版本、来源追溯和预算控制 | 压缩不丢失关键确认信息，不删除历史消息 |
-| 5. 视频闭环 | 视频工具、长任务等待、取消、封面和后台完成通知 | AgentRun 结束后生成可继续，归档失败单独恢复 |
-| 6. 内测准备 | 运营排查、故障演练、成本对账、压测与备份恢复 | 达到约定负载和恢复目标 |
+| 5. 视频闭环 | 视频工具、同 run 等待、候选与选用、取消、封面和后台完成通知 | 需要产物时当前 run 持久化等待；不需要时 AgentRun 结束后生成可继续；归档失败单独恢复 |
+| 6. 顺序成片 | 分镜选片、S3 片段读取、裁剪、规格统一、FFmpeg 拼接、成片发布 | 成片可播放；失败可撤销；原始片段和旧成片保留；可追溯所用镜头 |
+| 7. 内测准备 | 运营排查、故障演练、成本对账、压测与备份恢复 | 达到约定负载和恢复目标 |
 
 实施前或实施过程中必须覆盖的故障场景：
 
@@ -822,10 +877,14 @@ billing 独立于 Agent 的自然语言判断。
 14. 同一工具调用重放不重复创建 `conversation_file_version`。
 15. 并发更新同一文件时，`base_version` 冲突被拒绝，不静默覆盖。
 16. 删除会话后其工作区文件按保留策略处理，不残留可访问数据。
+17. 等待中的 AgentRun 进程重启后继续等待，不重复提交付费任务，也不丢失已完成的工具结果。
+18. 分镜版本在成片受理后发生变化，已受理成片仍使用冻结的镜头、资产版本和剪辑区间。
+19. 成片合成中断或 FFmpeg 失败，未完成 multipart 被撤销，旧成片和原始片段不被破坏。
+20. FFmpeg 卡死、输出异常或临时磁盘耗尽时，进程被终止并回收资源，任务进入可解释的失败状态。
 
 ## 18. 当前实现差距与后续决策
 
-截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已到 V12：identity 表为 user_account、refresh_token、audit_log，会话工作区为 conversation_file、conversation_file_version，workspace 和 workspace_member 已在 V11 删除；Compose 提供 PostgreSQL 和 Redis。
+截至 2026-11-18，仓库已落地八模块布局、根 POM 依赖与插件版本（Java 21、Spring Boot 4.1.2 BOM、Temporal Java SDK 1.41.1 BOM）、Maven Wrapper 3.9.16、API/Worker 最小启动入口和 Temporal 自检 Workflow。Flyway 迁移已到 V14：identity 表为 user_account、refresh_token、audit_log，会话工作区为 conversation_file、conversation_file_version，V13 创建 asset/upload_session/asset_variant，V14 创建 generation_task/attempt/input/output、message_part 和额度账本；workspace 和 workspace_member 已在 V11 删除；Compose 提供 PostgreSQL、Redis 和 RustFS。
 
 已实现：
 
@@ -844,18 +903,32 @@ billing 独立于 Agent 的自然语言判断。
 
 尚未实现：
 
-- 真实媒体网关适配器与联调（OpenAI Images、Ark、DashScope 等），以及 `REMOTE_TASK` 的真实轮询/取消实现。
+- 分镜执行语义：`STORYBOARD` 的 schema 校验、`shotId` 与生成任务的关联、`firstFrame` / `videoCandidates` / `selectedVideo` / `usedRange` 的读写和逐镜生产约束。
+- 同一 AgentRun 的持久化等待：`await_generation` 尚未注册；当前媒体工具只返回受理结果，依赖产物的成片流程还不能在同一轮继续。
+- 真实媒体网关适配器与联调（OpenAI Images、Ark、DashScope 等），以及 `REMOTE_TASK` 的真实轮询/取消实现。当前只注册离线 `STUB`。
+- FFmpeg 成片：`VideoCompositionWorkflow`、S3 多片段读取、裁剪/规格统一/拼接、multipart 流式写回和成片发布尚未实现。`ObjectStorage.uploadPart` 还没有返回分片 ETag。
 - ffprobe 探测、封面、播放转码、缩略图等媒体处理；当前归档直接发布原文件。
-- 前端生成入口、任务卡片、候选比较页面。
-- `await_generation` 等待工具、批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
+- 前端生成入口、任务卡片、候选比较、成片播放页面。
+- 批量镜头调度、run 内 turn 级压缩、工具调用的 SSE 进度事件。
 - 真实额度充值/管理接口；当前新账户按 `BILLING_INITIAL_CREDIT_UNITS` 初始化。
-- Dockerfile 仍为占位；Compose 尚未纳入 Temporal 和 RustFS。
+- Dockerfile 仍为占位；Compose 尚未纳入 Temporal（本地验证使用了临时 dev server）。
 
 已确认的创作数据格式：
 
-- 剧本使用 Markdown，保存为 `conversation_file.kind = SCRIPT`。
-- 分镜使用结构化 JSON，保存为 `conversation_file.kind = STORYBOARD`，schema 见 §13.2。
+- 剧本使用 Markdown，保存为 `conversation_file.kind = SCRIPT`；一句话输入必须补全为可见动作。
+- 分镜使用结构化 JSON，保存为 `conversation_file.kind = STORYBOARD`，schema 见 §13.2；`firstFramePrompt` 供首帧生图，`videoPrompt` 供视频生成，`shotId` 贯穿候选、选用和成片追溯。
 - 主模型支持图片输入、文本输入、文本输出；图片以 `input_image` 内容块参与调用，签名 URL 不持久化。
+- 成片按分镜 `order` 顺序读取 `selectedVideo` 和 `usedRange`，输出新资产，不覆盖原始片段或旧成片。
+
+验证状态必须分开记录：
+
+| 能力 | 适配实现 | 离线契约验证 | 真实网关联调 |
+| --- | --- | --- | --- |
+| 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
+| 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
+| OpenAI Images / Ark / DashScope 图片与视频 | 未实现 | 未验证 | 未联调 |
+| `await_generation` 同 run 等待 | 未实现 | 未验证 | 不适用 |
+| FFmpeg S3→S3 成片 | 未实现 | 未验证 | 不适用 |
 
 需要通过实现验证或产品决策确定的事项：
 

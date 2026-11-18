@@ -1,12 +1,10 @@
 # 图片、视频生成与媒体资产方案
 
-调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；第一阶段后端切片已实现生成任务、额度预占、Temporal 工作流、媒体工具、归档发布和离线 `STUB` 协议，但真实网关适配、媒体处理（ffprobe/封面/转码）和网关联调尚未完成。
+调研日期：2026-11-18。状态：对象存储与上传链路已实现（S3 兼容，RustFS 为本地默认）；第一阶段后端切片已实现生成任务、额度预占、Temporal 工作流、媒体工具、归档发布和离线 `STUB` 协议。本次范围新增多镜头顺序成片、同一 AgentRun 持久化等待和实际图片/视频协议适配；这些能力目前仍为待实现设计，真实网关、FFmpeg 成片和媒体处理尚未联调。
 
-依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、工作空间存储服务和 V1–V10 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
+依据：重新阅读 `PROPOSAL.md`、`STANDARDS.md`，并核对模型客户端、工具执行器、Temporal Workflow、启动补偿、会话工作区存储服务和 V1–V14 迁移。用户已确认继续使用现有第三方网关；尚未提供网关名称、媒体接口文档或真实响应样本。
 
-> 模型变更说明：`PROPOSAL.md` 第 5 节已改为单用户隔离模型，不再有 workspace 和成员关系，创作文件改为会话级（`conversation_file`）。本文中出现的 `workspace_item`、`conversation_item`、按工作空间隔离等表述，一律按“会话级文件 + 按用户隔离”理解；媒体协议、任务生命周期、归档与计费设计不受此变更影响。
-
-建议沿用八模块、API/Worker 双入口、PostgreSQL、Temporal、Redis 与 S3 兼容对象存储。主对话继续使用官方 OpenAI Java SDK 的 Responses SSE；Seedream、Seedance、GPT Image 和万相统一纳入媒体生成服务，通过协议适配器访问现有第三方网关。媒体类型、执行方式和上游协议分别建模，复用任务、归档、处理、交付与结算流程；媒体永久标识使用资产 ID，文件归属工作空间。
+建议沿用八模块、API/Worker 双入口、PostgreSQL、Temporal、Redis 与 S3 兼容对象存储。主对话继续使用官方 OpenAI Java SDK 的 Responses SSE；Seedream、Seedance、GPT Image 和万相统一纳入媒体生成服务，通过协议适配器访问现有第三方网关。媒体类型、执行方式和上游协议分别建模，复用任务、归档、处理、交付与结算流程；媒体永久标识使用资产 ID，文件归属会话。
 
 **本方案涉及一个需要明确采纳的提案调整：将“所有模型统一 Responses SSE”收窄为“主对话与 compact 统一 Responses SSE”；媒体工具按网关实际支持的图片/视频协议调用。** 若网关确实把媒体封装在 Responses 内，仍可实现 Responses 媒体适配器，但必须具备下文规定的任务标识、产物、恢复与用量语义。本文不直接改写现有提案中的协议约束。
 
@@ -15,13 +13,14 @@
 | 现状与代码位置 | 本次设计的衔接方式 |
 | --- | --- |
 | `agent/provider/OpenAiResponsesModelClient` 仅映射文本、推理、function call；SDK 已设置 `maxRetries(0)` | 保留文本链路；新增媒体适配器，不把生成文件放进 `ModelResponse.text` |
-| `ModelDefinition` 是文本模型配置；默认模型唯一索引是全局的，token 上限为必填 | 扩展能力类型和模型路由；默认模型按用途区分，防止图片模型成为会话默认模型 |
+| `ModelDefinition` 原为文本模型配置；默认模型唯一索引是全局的，token 上限为必填 | 已扩展 `capability_type`、`protocol`、`execution_mode`、`price_units` 和图片输入能力；默认模型按能力类型唯一，token 只对 CHAT 必填 |
 | `ModelInputItem.Message` 只有字符串 content | 已确认主模型支持图片输入；增加受控的 `input_text` / `input_image` 内容块，本轮消息附带的图片由 provider 解析为短时 URL，仅传 `assetId` 不代表模型看到了图 |
-| `AgentRunWorkflowImpl` 的工具 Activity 超时 2 分钟 | 生成工具只创建任务并返回 `taskId`；不在该 Activity 中等待视频或长时间图片请求 |
+| `AgentRunWorkflowImpl` 的工具 Activity 超时 2 分钟 | 生成工具只创建任务并返回 `taskId`；依赖产物时由 `await_generation` 触发 Workflow 持久化等待，不在该 Activity 中阻塞 |
 | `AgentToolExecutor` 先写 RUNNING，再执行副作用，最后写结果；RUNNING 重放直接报冲突 | 为生成工具建立可恢复的提交事务；不能仅依赖现有工具记录实现付费幂等 |
-| `workflow_start_request.agent_run_id` 非空，补偿器只启动 `AgentRunWorkflow` | 扩展启动记录类型与分发；媒体任务拥有独立 Workflow |
-| `WorkspaceItemService.create` 显式拒绝非文本 kind；V5 预留 `asset_id`，没有真实 asset 表 | 增加媒体发布服务，复用条目与不可变版本，不另建一套作品库 |
-| `message` 是纯文本；会话查询当前主要按 workspace 过滤 | 增加媒体/任务引用，并先补齐会话可见性，防止任务卡片泄露私人素材 |
+| `workflow_start_request` 已支持 `AGENT_RUN` / `MEDIA_GENERATION`，但还没有成片任务类型 | 增加成片任务和 `VideoCompositionWorkflow`；启动补偿按受控类型分发 |
+| `ConversationFileService` 只创建文本文件；媒体文件发布已由 `createMediaFile` 支持 | 增加 `STORYBOARD` 结构校验、镜头级任务关联和成片版本；不另建一套作品库 |
+| `message` 是纯文本；媒体任务卡片尚未接入消息 | 增加生成任务/成片任务引用，防止任务卡片泄露私人素材 |
+| `ObjectStorage.uploadPart` 返回 `void` | 改为返回分片编号和真实 ETag，供 multipart 完成步骤使用 |
 | `billing` 尚为模块骨架；Compose 只有 PostgreSQL、Redis | 已补最小额度账本（账户、预占、流水）；Temporal 与对象存储已在本地启用，Compose 尚未纳入 |
 
 路径均相对仓库，Java 类的完整包前缀为 `app.pagefault.visionforge`。当前代码事实以这些类和迁移为依据，提案中的候选实体不计为已实现。
@@ -138,7 +137,7 @@ Responses 内置图片工具的概念示例：
 
 本次核查覆盖当前公开的 `wan2.7-image` / `wan2.7-image-pro` 图片模型，以及 `wan3.0-video` / `wan3.0-video-prime` 视频模型，同时保留 2.6 t2i、2.7 视频和早期接口的适配区别。[S18–S21] 以实际网关开通情况选型，不把一个品牌固定为一种协议。
 
-下列为阿里云官方北京地域协议示例。域名中的 `{WorkspaceId}` 是**阿里云百炼业务空间 ID**，不是 VisionForge 工作空间 ID；区域、凭证和端点必须配套。第三方网关可以重映射域名和模型名，不能把阿里云官方域名直接拼到已有网关的 baseUrl 后面。[S18]
+下列为阿里云官方北京地域协议示例。域名中的 `{WorkspaceId}` 是**阿里云百炼业务空间 ID**，不是 VisionForge 的用户或会话标识；区域、凭证和端点必须配套。第三方网关可以重映射域名和模型名，不能把阿里云官方域名直接拼到已有网关的 baseUrl 后面。[S18]
 
 图片同步调用：
 
@@ -279,6 +278,8 @@ Seedance 与万相异步图片/视频更接近：都是“提交 → 保存任�
 5. 依赖风险：`ark-runtime` 传递 Jackson 2、Retrofit、OkHttp、RxJava 2；`dashscope-sdk-java` 传递 Gson、OkHttp、RxJava 2、Kotlin stdlib。项目使用 Jackson 3 与 Spring Boot 4，包名不同可以共存，但引入后必须执行 `./mvnw dependency:tree` 检查 Jackson 2、OkHttp、Kotlin 的版本收敛。
 6. 依赖引入顺序：先接入 `openai-java` 的 GPT Image，再按网关实际协议接入 Ark 或 DashScope；不要为了“可能用到”同时引入两个媒体 SDK。
 
+本次范围要求实现实际图片/视频协议适配器，而不是只保留 `STUB`。没有上游测试条件时，可以交付适配代码和离线请求/响应契约测试，但状态只能标记“适配已实现 / 离线契约已验证”，不能标记“真实网关联调通过”。
+
 ## 3. 架构与接口边界
 
 ```mermaid
@@ -290,9 +291,11 @@ flowchart LR
     START --> TW[Temporal Workflow]
     TW --> GEN[生成 Activity]
     GEN --> GW[现有第三方网关]
-    TW --> ASSET[asset 归档与处理 Activity]
+    TW --> COMP[VideoCompositionWorkflow]
+    COMP --> ASSET[asset 归档与处理 Activity]
     ASSET --> S3[(RustFS 或 S3 对象存储)]
     ASSET --> PROC[libvips / FFmpeg 子进程]
+    COMP --> PROC
     TW --> BILL[billing 结算服务]
     TW --> REDIS[Redis 通知]
     REDIS --> API
@@ -301,7 +304,8 @@ flowchart LR
 
 模块职责建议：
 
-- `agent.generation`：统一任务、尝试、输入/输出关系、业务状态、计费编排与 GenerationWorkflow；按执行方式分支，按媒体类型选择校验和处理配方。
+- `agent.generation`：统一生成任务、尝试、输入/输出关系、业务状态、计费编排、`await_generation` 与 MediaGenerationWorkflow；按执行方式分支，按媒体类型选择校验和处理配方。
+- `agent.composition`：成片任务、分镜选片冻结、S3 片段读取、FFmpeg 配方编排与 VideoCompositionWorkflow；不重新调用生成模型。
 - `agent.provider`：网关协议、模型能力校验、请求映射、错误归类；不对外暴露 SDK 类型。
 - `asset.storage/upload/media/processing`：对象存储、上传会话、资产、变体、媒体探测与衍生处理；asset 不反向依赖 agent。
 - `billing`：预占、供应商成本、用户结算；通过公开服务参与应用事务。
@@ -332,6 +336,8 @@ interface CancellableJobProvider extends RemoteJobProvider {
 
 两种执行策略分别是 `INLINE_RESULT`（在本次上游调用内读到完整产物，耗时可能很长）与 `REMOTE_TASK`（返回可查询任务 ID）。JSON/SSE 是独立传输选项：SSE 图片流不自动变成可恢复的远端任务。未知付费结果仍进入 UNKNOWN，不能用统一接口掩盖恢复能力差异。
 
+依赖产物的成片流程通过 `await_generation` 让当前 AgentRun 等待，详细规则见 §4.5。成片合成不属于媒体生成 Provider：`compose_video` 受理后创建 `composition_task`，由 `VideoCompositionWorkflow` 使用同一套启动补偿和任务状态规则执行，但不会调用图片/视频模型，也不会重新生成任何镜头。成片输入在受理时冻结，失败重试只重跑 FFmpeg 配方。
+
 SDK 选型与坐标见 §2.7：GPT Image 复用现有 `openai-java`；Seedream、Seedance 按网关协议选择 `openai-java` 或 `ark-runtime`；万相图片/视频使用 `dashscope-sdk-java`。所有 SDK 调用封装在 provider 适配器内，DTO 与字段/状态映射留在 provider 包。SDK 暴露的“同步”方法可能内部轮询并阻塞，`REMOTE_TASK` 路径只使用明确提交和查询方法；自动重试必须显式关闭或收紧。[S12] 这项 SDK 选择属于开头说明的媒体协议调整范围。
 
 模型目录先在现有 `model_definition` 上兼容扩展，不要求立即拆出 provider_config：
@@ -340,7 +346,8 @@ SDK 选型与坐标见 §2.7：GPT Image 复用现有 `openai-java`；Seedream�
 capability_type: CHAT | IMAGE | VIDEO
 input_modalities: TEXT | TEXT_IMAGE        # CHAT 默认 TEXT_IMAGE
 protocol: OPENAI_RESPONSES | OPENAI_IMAGES | ARK_IMAGES | ARK_VIDEO_TASKS
-          | DASHSCOPE_IMAGE_MESSAGES | DASHSCOPE_T2I | DASHSCOPE_VIDEO | GATEWAY_CUSTOM
+          | DASHSCOPE_IMAGE_MESSAGES | DASHSCOPE_T2I | DASHSCOPE_VIDEO
+          | GATEWAY_CUSTOM | STUB
 execution_mode: INLINE_RESULT | REMOTE_TASK
 response_transport: JSON | SSE
 request_encoding: JSON | MULTIPART
@@ -368,13 +375,15 @@ default_parameters, allowed_parameters, price_rule_id, deprecation_at, retiremen
 
 三层幂等分别保证：
 
-1. API：`(workspace_id, user_id, operation, idempotency_key)` 唯一，保存请求指纹；同键同内容返回原任务，同键不同内容返回 409。
+1. API：`(user_id, operation, idempotency_key)` 唯一，保存请求指纹；同键同内容返回原任务，同键不同内容返回 409。
 2. 工具：`(agent_run_id, tool_call_id)` 唯一，任务与 ACCEPTED 工具结果在同一事务写入。调整生成工具执行路径；不能在已创建任务后因 executor 退出而留下永远 RUNNING 的调用。历史 RUNNING 记录通过稳定工具标识查找已建任务并补结果，无任务时按提交事务边界恢复。
 3. 上游：attempt ID 派生稳定客户端请求标识；只有网关明确支持幂等时才作为上游幂等键。内部唯一键不能解决供应商已接单但本地丢失响应的问题。
 
 先扩展启动表：添加 `workflow_type`、`business_id`、`input_schema_version`，回填现有行，放宽 agent_run_id 非空约束，增加 `(workflow_type, business_id)` 唯一键。补偿器通过受控类型注册表分发，不能使用数据库中的任意类名。启动前核对业务状态，已终态的业务不能因 Temporal 历史过期被再次执行。
 
 上传处理的编排入口也由 agent 应用服务协调 asset：创建 processing_job 与启动请求同事务提交；asset 只返回处理命令和结果，不调用 agent。Worker 注册 asset 提供的处理实现，保持依赖方向。
+
+成片任务沿用同一受理模式，但事务内解析当前分镜版本，冻结每个镜头的 `selectedVideo`、资产版本和 `usedRange`，创建 `composition_task`、`composition_input` 与 `VIDEO_COMPOSITION` 启动请求；它不调用生成模型，也不预占模型额度。分镜解析失败或引用越权时整个事务回滚。
 
 ### 4.2 状态不要混成一个“成功”
 
@@ -440,31 +449,40 @@ Activity 不循环 sleep 等整个视频生成完成。大文件传输和处理�
 
 取消请求是持久化业务命令。API 提交 `cancel_requested_at`，Workflow 用 Signal 加速感知，轮询同时读取该标志兜底；不能依赖一次不可恢复的 Signal。提交前取消释放预占；提交后等待上游取消结论与用量。正在运行但不能取消的任务显示“已请求取消，上游仍在处理”，本地继续核账。
 
-统一 GenerationWorkflow 独立于 AgentRun。MVP 默认后台返回 ACCEPTED，AgentRun 可完成；生成完成更新任务卡片，原 run 不再接收 Signal。自动文字解读首版不默认启动，用户继续对话即可查询结果。
+统一 GenerationWorkflow 独立于 AgentRun，但**是否等待由当前请求的依赖关系决定**：
 
-如果当前用户明确要求“先生成图，再用它生成视频”，需要增加 `await_generation` 工具及 Workflow 等待分支：工具分发返回受控的等待指令，Workflow 用 Timer/完成通知等待，完成后持久化同一 call 的最终结果再继续模型。不能让模型持续调用 get_generation 消耗 token，也不能在现有 2 分钟工具 Activity 内阻塞。后续自动续跑使用唯一 `(generation_task_id, continuation_kind)` 键，且遵守现有会话串行约束；会话忙时排队，不插入竞争 run。
+- 成片五步中的首帧图和分镜视频依赖产物，当前 AgentRun 必须等待交付后继续；后台任务本身仍在独立 Workflow 中执行。
+- 用户只要一个后台候选、片段或明确表示稍后查看时，工具返回 ACCEPTED 与 taskId，AgentRun 可以结束，任务完成后再更新任务卡片和消息。
+
+等待通过 `await_generation` 工具实现：工具分发返回受控的等待指令，AgentRunWorkflow 用持久化 Timer 加短状态查询检查任务终态；完成、失败或取消后，把最终结果持久化为同一工具调用的结果并继续同一主模型。不能让模型持续调用 `get_generation` 消耗 token，也不能在现有 2 分钟工具 Activity 内阻塞整个视频生成时长。等待中的 AgentRun 进程恢复后继续等待，不重复提交付费任务。
+
+自动文字解读首版不默认启动；需要模型继续解释或创作时，由同一轮等待结果自然续写，或在后台任务完成后创建明确的续跑 AgentRun。续跑使用唯一 `(generation_task_id, continuation_kind)` 键，且遵守现有会话串行约束；会话忙时排队，不插入竞争 run。
 
 ## 5. 数据模型与来源追溯
 
-以下为新增表/字段建议，迁移编号实施时从当前最大版本后分配，不修改 V1–V10。新业务主键 UUIDv7，时间 TIMESTAMPTZ，金额 NUMERIC(20,6)，遵守 `STANDARDS.md`。
+以下为新增表/字段建议，迁移编号实施时从当前最大版本后分配，不修改已发布的 V1–V14。新业务主键 UUIDv7，时间 TIMESTAMPTZ，金额 NUMERIC(20,6)，遵守 `STANDARDS.md`。
 
 | 表及归属 | 关键内容与约束 |
 | --- | --- |
-| `generation_task` / agent | workspace、creator、可空 conversation/run/tool、任务类型、配置/价格快照、实际提示词、参数、状态版本、取消标志、预算、工作流 ID、原任务 ID；API 幂等键与工具来源分别唯一 |
+| `generation_task` / agent | user、conversation、可空 run/tool、任务类型、配置/价格快照、实际提示词、参数、状态版本、取消标志、预算、工作流 ID、原任务 ID、可空 `shot_id`；API 幂等键与工具来源分别唯一 |
 | `generation_attempt` / agent | task、attempt_no、provider connection、model ID、request ID、remote ID、提交状态/时间、用量、归档清单引用、错误分类；UNIQUE(task_id, attempt_no)，远端标识按连接作用域唯一 |
-| `generation_input` / agent | task、item_version_id、asset_id、role、ordinal、mask、裁剪/预处理配置和实际输入变体；拒绝不同 workspace 引用 |
-| `generation_output` / agent | attempt、output_index、asset_id、发布后的 item/version、逐项状态/错误；UNIQUE(attempt_id, output_index) |
-| `asset` / asset | workspace、creator、bucket/key、可选 object version ID、MIME、字节数、SHA-256、宽高/时长/编码、状态、来源业务 ID；稳定存储定位唯一 |
+| `generation_input` / agent | task、file_version_id、asset_id、role、ordinal、mask、裁剪/预处理配置和实际输入变体；拒绝不同用户或会话引用 |
+| `generation_output` / agent | attempt、output_index、asset_id、发布后的 file/version、逐项状态/错误；UNIQUE(attempt_id, output_index) |
+| `composition_task` / agent | user、conversation、storyboard_file_id/version、输出规格、状态、工作流 ID、错误、成片 asset/file/version；输入为冻结的镜头选片清单 |
+| `composition_input` / agent | task、shot_id、generation_task_id、asset_id/file_version_id、start/end 秒、ordinal；UNIQUE(task_id, ordinal) |
+| `asset` / asset | user、conversation、bucket/key、可选 object version ID、MIME、字节数、SHA-256、宽高/时长/编码、状态、来源业务 ID；稳定存储定位唯一 |
 | `asset_variant` / asset | parent_asset_id、variant_asset_id、用途、recipe_version、参数 hash；变体文件也有 asset 行，UNIQUE(parent, recipe, params_hash) |
 | `asset_reference` / asset | asset、owner_type、owner_id、引用目的、释放时间；UNIQUE(asset_id, owner_type, owner_id, purpose)，用于 GC 保护，不自动授予访问权 |
-| `upload_session` / asset | workspace、creator、暂存键、multipart upload ID、预期大小/校验值、额度预留、到期时间、状态、最终资产 ID |
+| `upload_session` / asset | user、conversation、暂存键、multipart upload ID、预期大小/校验值、额度预留、到期时间、状态、最终资产 ID |
 | `processing_job` / asset | 输入资产、recipe、参数、状态、attempt、心跳/错误、输出资产；同配方幂等，处理失败不影响原始文件 |
 | `message_part` / agent | 追加 TEXT/ASSET_REFERENCE/GENERATION_TASK 类型及序号；历史 content 保留，媒体结果不改写旧消息正文 |
 | billing 表 | account、reservation、ledger、usage_record；预占/供应商成本/用户扣费不同记录，账本操作业务键唯一 |
 
-媒体版本只保存 `asset_id`，通过 asset 定位对象；V5 的 `object_key` 预留给大型文本外置，不与媒体 asset 同时充当两个可修改的文件地址。新增媒体版本接口只允许引用同空间、已校验且有权限的资产。
+分镜仍是 `conversation_file.kind = STORYBOARD` 的 JSON 版本，不单独建镜头表；`shotId`、`firstFramePrompt`、`videoPrompt`、`firstFrame`、`videoCandidates`、`selectedVideo` 和 `usedRange` 的 schema 见 `PROPOSAL.md` §13.2。生成任务通过可空 `shot_id` 关联镜头，候选和选中结果写回同一分镜版本；成片受理再把选中的资产/版本和区间冻结到 `composition_input`。
 
-生成输入冻结为具体 item_version_id 与 asset_id；对一个条目“跟随最新”的会话绑定不影响已受理任务。输出默认新条目；只有显式要求修改指定作品时才基于 baseVersion 发布新版本。发布遇到并发版本冲突时保留产物，返回“待选择发布位置”，禁止覆盖别人版本或重新生成。
+媒体版本只保存 `asset_id`，通过 asset 定位对象；V5 的 `object_key` 预留给大型文本外置，不与媒体 asset 同时充当两个可修改的文件地址。新增媒体版本接口只允许引用同一用户、同一会话、已校验且有权限的资产。
+
+生成输入冻结为具体 file_version_id 与 asset_id；对文件“跟随最新”的会话绑定不影响已受理任务。输出默认新文件；只有显式要求修改指定作品时才基于 baseVersion 发布新版本。发布遇到并发版本冲突时保留产物，返回“待选择发布位置”，禁止覆盖别人版本或重新生成。
 
 首版不做跨用户内容去重；相同文件可以拥有不同资产 ID 和权限归属。原始生成参数、用户原话、优化提示词分别保留；供应商响应只保存经过裁剪/脱敏的必要字段。短期签名 URL 不进入永久版本、聊天历史或 Temporal 输入。
 
@@ -480,10 +498,11 @@ Activity 不循环 sleep 等整个视频生成完成。大文件传输和处理�
 users/{userId}/conversations/{conversationId}/uploads/{uploadSessionId}/{filename}
 users/{userId}/conversations/{conversationId}/assets/{assetId}/original.{ext}
 users/{userId}/conversations/{conversationId}/generations/{taskId}/{outputId}.{ext}
+users/{userId}/conversations/{conversationId}/compositions/{compositionTaskId}/final.{ext}
 users/{userId}/conversations/{conversationId}/variants/{assetId}/{variant}.{ext}
 ```
 
-`uploads/` 是预签名 PUT 的临时键；complete 时把对象复制到 `assets/.../original.*`，正式资产不会再接受客户端写入。生成结果和变体的键已预留，归档流程尚未实现。
+`uploads/` 是预签名 PUT 的临时键；complete 时把对象复制到 `assets/.../original.*`，正式资产不会再接受客户端写入。生成结果使用 `generations/{taskId}/{outputId}.{ext}`，当前已能把离线 Provider 产物归档为该键；成片使用新的 `compositions/...` 键，由 F 阶段实现。
 
 bucket/key 只在服务端，客户端使用业务 ID。数据库不把对象公开 URL 存为永久地址。配置区分内部 endpoint（Worker 读写）和外部 endpoint（浏览器/供应商可达）；预签名必须用最终实际访问的 host/path 生成，不能签完再字符串替换域名。所有正式桶默认私有。
 
@@ -519,6 +538,32 @@ bucket/key 只在服务端，客户端使用业务 ID。数据库不把对象公
 
 若排队窗口超过可签发有效期，使用有期限、可撤销的素材读取租约，由网关可达的出口解析固定资产；或先上传供应商文件服务。授权到期后不立即删除任务输入，实际存储引用保护持续到任务与核账结束。主模型、浏览器和供应商分别使用各自的访问范围，不共享长期凭证。
 
+### 6.5 多镜头成片：S3 输入到 S3 输出
+
+成片合成不把完整片段和完整成片落到本地磁盘，输入和输出都围绕 S3 设计：
+
+1. **受理时冻结输入**：`compose_video` 只接收当前会话分镜版本和镜头引用。服务端解析每个 `shotId` 的 `selectedVideo`、资产版本和 `usedRange`，校验用户/会话归属后写入 `composition_task` 与 `composition_input`；之后修改分镜不改变已受理任务。
+2. **输入按需读取**：Worker 只传资产 ID、版本和区间给内部解析层，由解析层校验对象归属并从 S3 以只读、支持 HTTP Range 的方式提供输入。FFmpeg 可按需读取 MP4 索引和媒体数据，不要求先把完整片段下载到本地，也不使用浏览器预签名 URL。
+3. **输出边编码边上传**：顺序输出优先采用 fragmented MP4，让 FFmpeg 写到标准输出。Worker 用有界缓冲和背压读取 stdout，按固定分片大小上传 S3 multipart；FFmpeg 成功退出且所有分片上传成功后执行 `CompleteMultipartUpload`，再创建成片资产和会话文件。任一步失败执行 `AbortMultipartUpload`，不发布半成品。
+4. **分片完成需要真实 ETag**：`ObjectStorage.uploadPart` 必须返回分片编号和实际 ETag，`completeMultipart` 使用这些值；不能只返回 `void` 后假设完成步骤能自行取得 ETag。
+5. **规格统一**：成片规格来自分镜的画幅、时长和输出配置；固定 recipe 负责统一分辨率、帧率、像素格式、编码和音轨。首版不做调色、复杂转场、混音、旁白或字幕。
+6. **成片发布与追溯**：输出作为新的 asset 和会话文件版本，不覆盖任何镜头片段或旧成片。`composition_input` 保留 `shot_id`、生成任务 ID、资产/版本和剪辑区间，成片可追溯到所用镜头。
+7. **失败恢复**：FFmpeg 失败、超时、输出解析失败或分片上传失败时终止进程、回收临时资源并撤销 multipart；旧成片不受影响。重试复用同一 `composition_task` 和冻结输入，不重新生成镜头。
+
+fragmented MP4 管道输出与传统 MP4 faststart 的索引重排不是同一条路径。首版优先保证流式写回和可恢复性，播放器兼容性需用目标浏览器和播放器单独验证；若必须 faststart，再评估写完整对象后受控重写索引的单独配方。
+
+成片合成的故障窗口：
+
+| 故障窗口 | 恢复动作 |
+| --- | --- |
+| FFmpeg 已开始但进程崩溃 | 终止进程树、Abort multipart、任务可重试；不发布对象 |
+| 分片上传成功、Complete 前退出 | 根据 multipart upload ID 和已记录分片确认或重新上传；不重复创建成片版本 |
+| Complete 成功、DB 未发布 | 通过稳定对象键和 composition task 标识补发布；不重新编码 |
+| DB 已发布、对象缺失 | 标记交付失败并进入修复；不能返回可下载成功 |
+| 分镜在受理后变化 | 已受理任务继续使用冻结的镜头、资产和区间 |
+
+`composition_task` 建议状态：`PENDING → VALIDATING → COMPOSING → UPLOADING → PUBLISHING → SUCCEEDED`，异常分支为 `FAILED`、`CANCELLED`。状态更新使用期望状态与版本号 CAS，迟到重试不能把终态改回进行中。
+
 ## 7. 图片和视频处理
 
 处理在 asset 中实现，以固定配方调用工具，Worker 负责编排和资源限制。建议图片使用 libvips，视频使用 FFmpeg/ffprobe；libvips 提供缩略图处理，ffprobe 可输出结构化媒体信息，FFmpeg 的 MP4 faststart 可将索引移至文件前部。[S15–S17] 具体可执行版本在镜像中固定，并记录到 recipe_version。
@@ -531,8 +576,9 @@ bucket/key 只在服务端，客户端使用业务 ID。数据库不把对象公
 | 视频导入/生成 | ffprobe 探测容器、编码、时长、宽高、帧率、旋转与音轨；保存原文件 |
 | 视频浏览 | 一张封面；已兼容的 MP4 仅按需 remux/faststart，否则生成 H.264/AAC、yuv420p 的 MP4 预览；无音轨不人为合成音频 |
 | 视频送模型 | 根据模型要求生成受限时长/尺寸/编码变体；裁剪片段记录时间范围；音轨单独检查 |
+| 多镜头成片 | 按分镜顺序读取冻结片段与 `usedRange`；统一分辨率/帧率/像素格式/编码/音轨；裁剪并拼接；fragmented MP4 流式写回 S3 |
 
-原片作为下载和追溯依据，展示变体不覆盖原片。首版用 MP4 + Range，暂不引入 HLS/DASH、自适应码率、分布式剪辑或 GPU 转码；视频规模和真实播放需求出现后再扩展。
+原片作为下载和追溯依据，展示变体不覆盖原片。首版用 MP4 + Range，暂不引入 HLS/DASH、自适应码率、分布式剪辑或 GPU 转码；视频规模和真实播放需求出现后再扩展。成片合成本身不按模型调用计费，只记录存储和计算资源占用。
 
 媒体内容不可信：限制字节、总像素、帧数、时长、CPU、内存、临时磁盘和进程执行时间；对动画图片和异常文件明确拒绝或显式转换。使用参数数组启动进程，不拼 shell 命令；禁止从模型参数直接生成 FFmpeg filtergraph。子进程只读输入、写专属临时目录、无外网、最小权限，停止时终止进程树并回收临时文件。预览移除不必要 EXIF/GPS，原文件只在原权限范围内保留。
 
@@ -550,16 +596,17 @@ vf-media-process    解码、缩略图、转码
 
 ### 8.1 权限和保留
 
-workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载链接和生成任务时，都要检查所属空间以及 PRIVATE/WORKSPACE 可见性；对象键前缀不构成授权。绑定会话不自动授予素材读取权。任务详情中的提示词、输入和错误信息也属于私有数据。
+用户和会话归属来自 JWT/服务端执行上下文。访问资产、变体、下载链接、生成任务和成片任务时，都要检查用户与会话归属；对象键前缀不构成授权。绑定会话不自动授予素材读取权。任务详情中的提示词、输入和错误信息也属于私有数据。
 
-同一资产可被多个条目引用时，下载授权通过一个当前用户可见的有效条目关系证明；没有条目的暂存资产仅上传者/授权执行可用。派生变体继承源资产的访问规则；输出默认 PRIVATE，不因为关联共享会话或完成任务自动发布。平台管理员按现有规则显式进入空间并审计。
+同一资产可被多个条目引用时，下载授权通过一个当前用户可见的有效条目关系证明；没有条目的暂存资产仅上传者/授权执行可用。派生变体继承源资产的访问规则；输出默认 PRIVATE，不因为关联共享会话或完成任务自动发布。平台管理员不自动获得用户内容访问权限，管理员操作单独审计。
 
 建议首版生命周期策略（产品默认值，可配置）：
 
 - 上传会话、未完成分片、staging 孤儿超过 24 小时后清理；先核对上传/归档是否仍活跃。
 - 正式资产显式删除后保留 7 天回收期；对象物理删除前再次检查所有条目版本、输入引用与处理任务。
 - 任务结束释放执行期 pin，但其来源追溯引用继续保留，直到任务/历史按产品保留策略删除；否则会出现“历史参数存在、输入已丢失”。
-- 删除会话仅删除绑定；取消任务不删除已有付费产物；归档 workspace 不自动删除媒体。
+- 成片任务引用的镜头片段、首帧和分镜版本在成片任务与历史引用存续期间不能被清理；删除会话前检查活跃成片任务。
+- 删除会话仅删除绑定；取消任务不删除已有付费产物；归档会话不自动删除媒体。
 - 孤儿回收是 DB 标记、宽限期、复核、删除的流程；S3 生命周期规则只作为兜底，不独立删除仍被引用的正式对象。
 
 建议先上线媒体专用 `asset_reference`，由 asset 统一检查引用；禁止 GC 跨模块 JOIN 读取 generation_task。任务受理事务增 pin，终态事务更新 pin。备份恢复时同时验证数据库与对象的一致性，并在恢复/核对期间暂停 GC。
@@ -569,6 +616,8 @@ workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载
 预占金额按选定模型、冻结参数与价格规则计算：图片按张/规格或图像 token；视频按实际计费单位、分辨率、时长和音频模式。不同模型不可统一成“输出 token × 文本单价”。官方价格不能代替第三方网关的实际报价，本文不提供未经核实的固定单价。
 
 网关实际成本、用户扣费、存储占用分别记录。推荐首版用户规则为“按可交付产物结算”，交付失败但网关已收费记平台成本；如果采用按上游完成收费，必须在生成前明确展示。所有规则带版本，不能因后台配置修改而回写历史账目。
+
+成片合成不产生模型调用费用；只记录成片存储占用和本地计算资源，失败不额外扣费。用户取消成片合成不释放任何已完成的镜头生成费用，只终止未完成的合成任务。
 
 建议处理语义：
 
@@ -581,70 +630,84 @@ workspaceId 来自 JWT/服务端执行上下文。访问资产、变体、下载
 | UNKNOWN、取消结论未知 | 转待核账，不自动全额释放；达到配置的核账期限后进入人工处理队列 |
 | 最终交付失败 | 保留真实上游成本，按本系统用户收费规则释放/退款；账本追加补偿流水 |
 
-持久化 billing reservation ID；`reserve/settle/release/refund` 分别有唯一业务键。并发预占在数据库锁/条件更新下检查余额；Redis 限流不能代替额度约束。增加单任务、单 run 和工作空间预算上限，在工具侧强制执行，避免当前无轮数上限的 Agent Loop 连续生成超预算媒体。
+持久化 billing reservation ID；`reserve/settle/release/refund` 分别有唯一业务键。并发预占在数据库锁/条件更新下检查余额；Redis 限流不能代替额度约束。增加单任务、单 run 和会话预算上限，在工具侧强制执行，避免当前无轮数上限的 Agent Loop 连续生成超预算媒体。
 
 ## 9. API、工具与前端衔接
 
-业务路径前缀均为 `/api/v1/workspaces/{workspaceId}`：
+业务路径按资源归属划分：上传和会话文件挂在会话下，生成/成片任务与资产使用顶层资源路径。
 
 | 接口 | 语义 |
 | --- | --- |
-| `POST /upload-sessions` | 创建上传会话，201，返回上传方式和到期时间 |
-| `POST /upload-sessions/{id}/parts` | 按白名单分片编号签名；限制并发、数量和累计大小 |
-| `POST /upload-sessions/{id}/complete` | 202，异步验证与发布，重复请求返回同一结果 |
-| `GET /upload-sessions/{id}` | 验证状态、处理状态、最终 asset/item 引用 |
-| `POST /upload-sessions/{id}/abort` | 幂等终止上传，200 包络；已发布不能通过此入口删除 |
-| `POST /generation-tasks` | 202 + Location，支持 Idempotency-Key |
-| `GET /generation-tasks[/{id}]` | 游标列表或任务详情，包含各状态、输出引用和可执行操作 |
-| `POST /generation-tasks/{id}/cancel` | 202 接收取消命令；已终态重复请求可返回 200 当前结果 |
-| `POST /generation-tasks/{id}/retry-archive` | 202，只恢复归档，不重新生成；支持幂等 |
-| `GET /assets/{id}` | 鉴权后返回元数据及可用变体 |
-| `POST /assets/{id}/access` | 200，返回指定用途的短时 URL 与 expiresAt |
-| `GET /generation-tasks/{id}/events` | 可选任务 SSE，避免依赖已经关闭的 AgentRun SSE |
+| `POST /api/v1/conversations/{conversationId}/uploads` | 创建上传会话，201，返回上传方式和到期时间 |
+| `POST /api/v1/conversations/{conversationId}/uploads/{id}/complete` | 校验并发布上传对象，重复请求返回同一资产 |
+| `POST /api/v1/generation-tasks` | 202 + Location，支持 Idempotency-Key；可携带 `shotId` |
+| `GET /api/v1/generation-tasks[/{id}]` | 游标列表或任务详情，包含各状态、输出引用和可执行操作 |
+| `POST /api/v1/generation-tasks/{id}/cancel` | 202 接收取消命令；已终态重复请求可返回 200 当前结果 |
+| `POST /api/v1/generation-tasks/{id}/retry-archive` | 202，只恢复归档，不重新生成；支持幂等 |
+| `POST /api/v1/composition-tasks` | 202 + Location，按分镜冻结镜头选片并创建成片任务 |
+| `GET /api/v1/composition-tasks/{id}` | 成片任务状态、所用镜头和成片引用 |
+| `POST /api/v1/composition-tasks/{id}/cancel` | 请求取消成片合成 |
+| `POST /api/v1/composition-tasks/{id}/retry` | 使用同一冻结输入重试合成，不重新生成镜头 |
+| `GET /api/v1/assets/{id}` | 鉴权后返回元数据及可用变体 |
+| `GET /api/v1/assets/{id}/download-url` | 返回指定用途的短时 URL 与 expiresAt |
+| `GET /api/v1/generation-tasks/{id}/events` | 可选任务 SSE，避免依赖已经关闭的 AgentRun SSE |
 
-“再生成”使用新的 `POST /generation-tasks` 请求和新幂等键，携带 `sourceTaskId`，保留原任务。UNKNOWN 任务不能被 UI 自动重试为新付费请求。
+“再生成”使用新的 `POST /generation-tasks` 请求和新幂等键，携带 `sourceTaskId`，保留原任务。同一镜头重做时新增一个候选并写回分镜的 `videoCandidates`，不覆盖其他镜头。UNKNOWN 任务不能被 UI 自动重试为新付费请求。
 
 请求示例仅为本系统 DTO，与上游 JSON 分离：
 
 ```json
 {
+  "conversationId": "<uuid>",
   "type": "VIDEO",
   "modelDefinitionId": "<uuid>",
-  "prompt": "让杯中的蒸汽缓慢上升",
+  "shotId": "shot-2",
+  "prompt": "爪尖落下，水面泛起涟漪",
   "inputs": [
-    {"itemId": "<uuid>", "version": 3, "role": "FIRST_FRAME"}
+    {"assetId": "<uuid>", "fileVersionId": "<uuid>", "role": "FIRST_FRAME"}
   ],
   "parameters": {"durationSeconds": 5, "resolution": "720p", "audio": false},
-  "conversationId": "<optional uuid>"
+  "sourceTaskId": null
 }
 ```
 
-不接受 body 中的 workspaceId、任意来源 URL、供应商 task ID 或 callbackUrl。API/工具显式引用素材；外部 URL 导入若未来开放，应作为独立受控导入任务。
+不接受 body 中的 userId、任意来源 URL、供应商 task ID、callbackUrl 或对象键。API/工具显式引用素材；外部 URL 导入若未来开放，应作为独立受控导入任务。
 
-工具新增 `generate_image`、`generate_video`、`get_generation`、`cancel_generation`、`inspect_asset`，依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL 等明确状态及 task/item/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。用户本轮消息附带的图片通过消息附件参与输入，历史消息默认只回放文本。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
+工具新增 `generate_image`、`generate_video`、`await_generation`、`get_generation`、`cancel_generation`、`inspect_asset`、`validate_storyboard`、`compose_video`。生成工具一次调用只创建一个候选；依赖任务的等待由第 4.5 节机制处理。工具结果只返回 ACCEPTED/SUCCEEDED/PARTIAL/WAITING 等明确状态及 task/file/version/asset 引用。`inspect_asset` 返回元数据不等于视觉理解；需要主模型看图时，provider 在调用时解析已授权预览为真正 `input_image`，不在聊天或摘要中长期保存签名 URL。用户本轮消息附带的图片通过消息附件参与输入，历史消息默认只回放文本。视频理解暂按受控抽帧提供，不假设 Responses 可以直接接受任意视频文件。
 
 任务通知先落库再经 Redis 推送小型状态事件，使用 stateVersion 去重。断线后 GET 恢复状态；首版不承诺事件重放。新增 SSE 按 `STANDARDS.md` 包含 type/code/message/data/traceId/timestamp，终态明确；现有聊天 SSE 的旧简化格式需要兼容迁移，不借本次媒体功能直接破坏旧客户端。
 
-错误至少区分 `GENERATION_CAPABILITY_UNSUPPORTED`、`GENERATION_INPUT_INVALID`、`GENERATION_SUBMIT_UNKNOWN`、`GENERATION_CANCEL_UNSUPPORTED`、`GENERATION_ARCHIVE_FAILED`、`ASSET_VALIDATION_FAILED`、`ASSET_STORAGE_QUOTA_EXCEEDED`。跨空间资源隐藏为 404；路径 workspaceId 与 token 不一致按现有提案返回 403，两种情况分别处理。异步任务失败写在任务资源中，GET 本身仍可成功返回该资源。
+错误至少区分 `GENERATION_CAPABILITY_UNSUPPORTED`、`GENERATION_INPUT_INVALID`、`GENERATION_SUBMIT_UNKNOWN`、`GENERATION_CANCEL_UNSUPPORTED`、`GENERATION_ARCHIVE_FAILED`、`GENERATION_AWAIT_UNSUPPORTED`、`COMPOSITION_INPUT_INVALID`、`COMPOSITION_FAILED`、`ASSET_VALIDATION_FAILED`、`ASSET_STORAGE_QUOTA_EXCEEDED`。跨用户或跨会话资源统一隐藏为 404，不泄露资源存在性。异步任务失败写在任务资源中，GET 本身仍可成功返回该资源。
 
 ## 10. 实施顺序与验收
 
-产品范围以 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 为准。下面 A–F 是第一阶段“单镜头创作闭环”的工程拆分；图片、图生视频、候选比较、前端、归档、版本和费用共同构成第一阶段验收，不能仅完成图片接口就标记该阶段完成。主对话与 compact 保留 Responses SSE，媒体协议适配边界已由产品路线采纳。
+产品范围以 [视频创作工坊三阶段计划](PRODUCT_ROADMAP.md) 为准。下面 A–G 是第一阶段“成片创作闭环（单镜头 + 多镜头顺序合成）”的工程拆分；剧本、分镜、首帧图、分镜视频、顺序成片、前端、归档、版本和费用共同构成第一阶段验收，不能仅完成图片接口就标记该阶段完成。主对话与 compact 保留 Responses SSE，媒体协议适配边界已由产品路线采纳。
 
-截至 2026-11-18 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地离线切片（`STUB` 协议）；A 的真实网关契约、D 的多协议与多模态适配、E 的 ffprobe/封面/播放变体、F 的上线准备和前端入口仍未完成。离线通过不等于网关联调通过。
+截至 2026-11-18 的进度：B 的直传与资产发布、C/E 的任务受理、额度预占、Temporal 工作流、归档发布、工具与 API 已落地离线切片（`STUB` 协议）；A 的真实网关契约与协议适配、D 的多协议与多模态扩展、E 的同 run 等待与逐镜候选、F 的 FFmpeg 顺序成片、G 的上线准备和前端入口仍未完成。离线通过不等于网关联调通过。
 
 | 阶段 | 交付 | 验收重点 |
 | --- | --- | --- |
-| A. 网关契约与基础设施 | 记录实际模型映射、响应/错误/用量样本；确定媒体协议；RustFS/S3 和 Temporal 环境；补会话权限 | 不调用未授权的付费测试；有测试额度后执行最小联调；存储支持所需接口 |
-| B. 资产闭环 | asset/upload_session/variant/reference、直传验证、媒体版本、图片预览、存储配额、GC | 同一文件 complete 重试只发布一次；签名上传重放不能修改正式资产；跨空间/私有越权被拒绝 |
-| C. 图片闭环 | 最小 billing、通用启动补偿、工具提交事务、一个网关适配器、统一 GenerationWorkflow、任务卡片 | 选择网关已开通的 Seedream、image-2 或万相图片路由；未知提交不重复扣费；归档失败单独恢复 |
+| A. 网关契约与协议适配 | 记录实际模型映射、响应/错误/用量样本；确定媒体协议；实现实际图片/视频协议适配器；RustFS/S3 和 Temporal 环境；补会话权限 | 不调用未授权的付费测试；适配器有离线契约测试；真实联调单独记录；存储支持所需接口 |
+| B. 资产闭环 | asset/upload_session/variant/reference、直传验证、媒体版本、图片预览、存储配额、GC | 同一文件 complete 重试只发布一次；签名上传重放不能修改正式资产；跨用户/跨会话越权被拒绝 |
+| C. 图片闭环 | 最小 billing、通用启动补偿、工具提交事务、图片适配器、统一 MediaGenerationWorkflow、任务卡片 | 选择网关已开通的 Seedream、image-2 或万相图片路由；未知提交不重复扣费；归档失败单独恢复 |
 | D. 多协议与多模态输入 | 第二图片协议、万相异步图片策略验证、编辑/参考图、能力 Schema、主模型 input_image | 同一业务 DTO 正确映射不同上游；同类图片可选 INLINE_RESULT 或 REMOTE_TASK；图片真实进入模型输入 |
-| E. 视频闭环 | Seedance/万相按已开通模型接入、复用远端任务策略、ffprobe/封面/播放变体、等待工具 | 对话完成/浏览器断线不取消视频；取消语义按协议处理；依赖任务可继续图生视频 |
-| F. 上线准备 | 用量核对、超时人工入口、限流、故障恢复、备份恢复 | 能恢复数据库与对象对应关系；升级后已有 Workflow 可继续 |
+| E. 视频闭环与等待 | Seedance/万相视频适配、复用远端任务策略、逐镜候选、`await_generation`、ffprobe/封面/播放变体 | 需要产物时当前 run 持久化等待；浏览器断线不取消视频；取消语义按协议处理；同一镜头重做只新增候选 |
+| F. 顺序成片 | 分镜选片冻结、S3 Range 输入、FFmpeg 裁剪/规格统一/拼接、fragmented MP4 流式 multipart、成片发布与追溯 | 成片可播放；失败 Abort 且不覆盖旧成片；原始片段保留；分镜变化不影响已受理成片 |
+| G. 上线准备 | 用量核对、超时人工入口、限流、故障恢复、备份恢复、播放器兼容性 | 能恢复数据库与对象对应关系；升级后已有 Workflow 可继续；管道 MP4 在目标播放器验证通过 |
 
-SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream、Seedance 与万相按 §2.7 的网关协议判断结果引入 `ark-runtime` 或 `dashscope-sdk-java`。每个 SDK 至少有一个只验证请求构造、字段映射和错误归类的离线测试，真实付费调用仍受阶段 A 的授权约束。
+SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream、Seedance 与万相按 §2.7 的网关协议判断结果引入 `ark-runtime` 或 `dashscope-sdk-java`。每个 SDK 至少有一个只验证请求构造、字段映射和错误归类的离线测试；真实付费调用仍受阶段 A 的授权约束。没有上游测试条件时，只能记录“适配已实现”，不能记录“联调通过”。
 
-基础设施兼容测试必须覆盖实际部署版本的 PUT/GET/HEAD/DELETE、预签名外部域名、multipart Complete/Abort、Range/206、CORS、条件复制或替代不可变上传方案、checksum 与超时重试。生命周期规则不支持时用应用清理任务，不能阻断原始资产读写。
+验证状态矩阵：
+
+| 能力 | 适配实现 | 离线契约验证 | 真实网关联调 |
+| --- | --- | --- | --- |
+| 离线 `STUB` 图片 | 已实现 | 已用真实 PNG 验证受理、归档、发布、结算 | 不适用 |
+| 离线 `STUB` 视频 | 已实现 | 已验证任务链路；输出为占位字节，不可播放 | 不适用 |
+| OpenAI Images / Ark / DashScope | 未实现 | 未验证 | 未联调 |
+| `await_generation` 同 run 等待 | 未实现 | 未验证 | 不适用 |
+| FFmpeg S3→S3 成片 | 未实现 | 未验证 | 不适用 |
+
+基础设施兼容测试必须覆盖实际部署版本的 PUT/GET/HEAD/DELETE、预签名外部域名、multipart Complete/Abort、分片 ETag 回传、Range/206、CORS、条件复制或替代不可变上传方案、checksum 与超时重试。生命周期规则不支持时用应用清理任务，不能阻断原始资产读写。
 
 必须覆盖的故障测试：
 
@@ -662,8 +725,12 @@ SDK 版本在阶段 A 锁定：GPT Image 复用现有 `openai-java`；Seedream�
 12. Workflow 代码升级和数据库迁移：历史重放兼容、旧文本模型配置可读，新增媒体默认模型不会污染会话默认模型。
 13. 同一万相图片能力切换同步/异步端点：业务受理、权限、预占、归档和结算不变；SDK 不能暗中阻塞整个轮询周期。
 14. 协议差异：Seedance 的 id 与万相 output.task_id 映射正确；万相过期 UNKNOWN 不自动重提；批次 SUCCEEDED 中的子项失败仍按逐项产物交付与结算。
+15. 等待中的 AgentRun Worker 重启：继续等待同一任务，不重复提交、不丢失已完成结果。
+16. 分镜在成片受理后变化：成片仍使用冻结的镜头、资产版本和 `usedRange`。
+17. FFmpeg 崩溃、超时或输出异常：终止进程树、Abort multipart、回收临时资源，旧成片不受影响。
+18. multipart 分片上传成功但 Complete 前退出：根据 upload ID 和已记录 ETag 核对或重传，不重复发布成片版本。
 
-监控重点：待提交/UNKNOWN 数量与年龄、上游耗时、归档失败和 URL 剩余有效时间、Worker 临时磁盘、处理 CPU/内存、未结算预占、对象缺失、每空间存储增长。性能目标依据网关额度和实际视频大小压测后设定，本文不虚构吞吐或费用数据。
+监控重点：待提交/UNKNOWN 数量与年龄、上游耗时、归档失败和 URL 剩余有效时间、等待中的 AgentRun 数量与年龄、Worker 临时磁盘、处理 CPU/内存、FFmpeg 合成时长与失败率、multipart 分片失败、未结算预占、对象缺失、每会话存储增长。性能目标依据网关额度和实际视频大小压测后设定，本文不虚构吞吐或费用数据。
 
 ## 11. 官方资料与证据边界
 
