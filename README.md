@@ -267,4 +267,4 @@ export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
 docker compose -f docker-compose.prod.yaml up -d --build
 ```
 
-Set `STORAGE_PUBLIC_ENDPOINT` to a browser-reachable object-store address and adjust `TEMPORAL_CORS_ORIGINS` for the Temporal UI origin. Temporal is run with `AUTO_SETUP=true` for this compose; a managed Temporal deployment is preferable for real production.
+Set `STORAGE_PUBLIC_ENDPOINT` to a browser-reachable object-store address and adjust `TEMPORAL_CORS_ORIGINS` for the Temporal UI origin. Temporal uses `temporalio/auto-setup` in this compose setup to initialize databases and the default namespace; a managed Temporal deployment is preferable for real production.

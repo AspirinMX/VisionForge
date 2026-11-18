@@ -267,4 +267,4 @@ export MODEL_CONFIG_SECRET="$(openssl rand -base64 32)"
 docker compose -f docker-compose.prod.yaml up -d --build
 ```
 
-部署前把 `STORAGE_PUBLIC_ENDPOINT` 设置为浏览器可达的对象存储地址，并按 Temporal UI 访问地址调整 `TEMPORAL_CORS_ORIGINS`。当前 Temporal 使用 `AUTO_SETUP=true`；真实生产环境建议使用托管 Temporal。
+部署前把 `STORAGE_PUBLIC_ENDPOINT` 设置为浏览器可达的对象存储地址，并按 Temporal UI 访问地址调整 `TEMPORAL_CORS_ORIGINS`。当前 Temporal 使用 `temporalio/auto-setup` 自动初始化数据库与默认命名空间；真实生产环境建议使用托管 Temporal。

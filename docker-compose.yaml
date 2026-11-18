@@ -71,15 +71,17 @@ services:
       "
 
   temporal:
-    image: temporalio/server:1.29.5
+    image: temporalio/auto-setup:1.29.5
     container_name: visionforge-temporal
     environment:
-      AUTO_SETUP: "true"
       DB: postgres12
       DB_PORT: "5432"
       POSTGRES_SEEDS: postgres
       POSTGRES_USER: ${POSTGRES_USER:-visionforge}
       POSTGRES_PWD: ${POSTGRES_PASSWORD:-visionforge}
+      DBNAME: ${TEMPORAL_DB:-temporal}
+      VISIBILITY_DBNAME: ${TEMPORAL_VISIBILITY_DB:-temporal_visibility}
+      DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
     ports:
       - "${TEMPORAL_PORT:-7233}:7233"
     depends_on:
