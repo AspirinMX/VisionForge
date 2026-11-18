@@ -8,10 +8,14 @@ import {
 import { consumeAgentStream, type StreamHandlers } from "./sse";
 import type {
   AgentRunResponse,
+  AgentRunStatus,
   AgentTurnResponse,
   AssetDownloadUrlResponse,
+  AssetKind,
   AssetResponse,
+  AssetSource,
   ChangeRoleRequest,
+  CompositionStatus,
   CompositionTaskResponse,
   ConversationFileKind,
   ConversationFileResponse,
@@ -23,12 +27,17 @@ import type {
   CreateGenerationTaskRequest,
   CreateModelRequest,
   CreateUploadRequest,
+  CreditLedgerEntryResponse,
+  CreditSummaryResponse,
+  CreditUsageResponse,
   GenerationTaskResponse,
   LoginRequest,
   LoginResponse,
   MessageResponse,
+  ModelCapabilityType,
   ModelResponse,
   PageResult,
+  PublicModelResponse,
   RefreshRequest,
   RegisterRequest,
   SendMessageRequest,
@@ -108,6 +117,22 @@ export const conversationsApi = {
   },
 };
 
+export const agentRunsApi = {
+  list(params?: {
+    conversationId?: UUID;
+    status?: AgentRunStatus[];
+    limit?: number;
+  }): Promise<AgentRunResponse[]> {
+    return apiGet<AgentRunResponse[]>("/api/v1/agent-runs", {
+      query: {
+        conversationId: params?.conversationId,
+        status: params?.status?.length ? params.status.join(",") : undefined,
+        limit: params?.limit,
+      },
+    });
+  },
+};
+
 export const filesApi = {
   list(
     conversationId: UUID,
@@ -173,6 +198,23 @@ export const filesApi = {
 };
 
 export const assetsApi = {
+  list(
+    conversationId: UUID,
+    params?: { kind?: AssetKind; source?: AssetSource; limit?: number }
+  ): Promise<AssetResponse[]> {
+    return apiGet<AssetResponse[]>(
+      `/api/v1/conversations/${conversationId}/assets`,
+      { query: params }
+    );
+  },
+  resolveInConversation(
+    conversationId: UUID,
+    assetId: UUID
+  ): Promise<AssetResponse> {
+    return apiGet<AssetResponse>(
+      `/api/v1/conversations/${conversationId}/assets/${assetId}`
+    );
+  },
   createUpload(
     conversationId: UUID,
     request: CreateUploadRequest
@@ -233,6 +275,15 @@ export const generationApi = {
 };
 
 export const compositionApi = {
+  list(params?: {
+    conversationId?: UUID;
+    status?: CompositionStatus;
+    limit?: number;
+  }): Promise<CompositionTaskResponse[]> {
+    return apiGet<CompositionTaskResponse[]>("/api/v1/composition-tasks", {
+      query: params,
+    });
+  },
   create(
     request: CreateCompositionTaskRequest
   ): Promise<CompositionTaskResponse> {
@@ -253,6 +304,35 @@ export const compositionApi = {
     return apiPost<CompositionTaskResponse>(
       `/api/v1/composition-tasks/${taskId}/retry`
     );
+  },
+};
+
+export const modelsApi = {
+  list(params?: {
+    capabilityType?: ModelCapabilityType;
+  }): Promise<PublicModelResponse[]> {
+    return apiGet<PublicModelResponse[]>("/api/v1/models", {
+      query: params,
+    });
+  },
+};
+
+export const accountApi = {
+  credit(): Promise<CreditSummaryResponse> {
+    return apiGet<CreditSummaryResponse>("/api/v1/account/credit");
+  },
+  ledger(params?: {
+    limit?: number;
+    before?: UUID;
+  }): Promise<CreditLedgerEntryResponse[]> {
+    return apiGet<CreditLedgerEntryResponse[]>("/api/v1/account/credit/ledger", {
+      query: params,
+    });
+  },
+  usage(window = 100): Promise<CreditUsageResponse> {
+    return apiGet<CreditUsageResponse>("/api/v1/account/usage", {
+      query: { window },
+    });
   },
 };
 

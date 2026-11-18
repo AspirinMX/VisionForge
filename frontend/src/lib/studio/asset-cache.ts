@@ -1,7 +1,6 @@
 import { putToPresignedUrl } from "@/lib/api/client";
 import { assetsApi } from "@/lib/api/endpoints";
 import type { AssetKind, AssetResponse, UUID } from "@/lib/api/types";
-import { placeholderStore } from "@/lib/storage/placeholder-store";
 
 interface CachedDownloadEntry {
   url: string;
@@ -56,14 +55,13 @@ export function inferAssetKindFromFile(file: File): AssetKind {
 }
 
 export async function uploadConversationAsset(params: {
-  userId: UUID;
   conversationId: UUID;
   file: File;
   kind?: AssetKind;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
 }): Promise<AssetResponse> {
-  const { userId, conversationId, file, onProgress, signal } = params;
+  const { conversationId, file, onProgress, signal } = params;
   const kind = params.kind ?? inferAssetKindFromFile(file);
 
   const ticket = await assetsApi.createUpload(conversationId, {
@@ -81,10 +79,5 @@ export async function uploadConversationAsset(params: {
     signal,
   });
 
-  const asset = await assetsApi.completeUpload(
-    conversationId,
-    ticket.uploadSessionId
-  );
-  placeholderStore.upsertAsset(userId, conversationId, asset);
-  return asset;
+  return assetsApi.completeUpload(conversationId, ticket.uploadSessionId);
 }

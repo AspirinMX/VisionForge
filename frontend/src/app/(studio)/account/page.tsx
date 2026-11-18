@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckIcon,
@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,13 +27,30 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncData } from "@/hooks/use-async-data";
-import { generationApi } from "@/lib/api/endpoints";
+import { accountApi } from "@/lib/api/endpoints";
 import { copyToClipboard, notifyApiError } from "@/lib/api/feedback";
+import type { CreditLedgerEntryType } from "@/lib/api/types";
 import {
   formatDateTime,
+  GENERATION_BILLING_LABEL,
+  GENERATION_STATUS_LABEL,
   USER_ROLE_LABEL,
   USER_STATUS_LABEL,
 } from "@/lib/format";
+
+const CREDIT_ENTRY_LABEL: Record<CreditLedgerEntryType, string> = {
+  GRANT: "初始授予",
+  RESERVE: "预占",
+  SETTLE: "结算扣费",
+  RELEASE: "释放预占",
+};
+
+const CREDIT_ENTRY_HINT: Record<CreditLedgerEntryType, string> = {
+  GRANT: "可用余额增加",
+  RESERVE: "冻结，不影响总余额",
+  SETTLE: "总余额与预占同时减少",
+  RELEASE: "仅释放冻结",
+};
 
 export default function AccountPage() {
   const router = useRouter();
@@ -45,46 +61,43 @@ export default function AccountPage() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   const {
-    data: tasksData,
-    loading: loadingTasks,
-    error: tasksError,
+    data: credit,
+    loading: loadingCredit,
+    error: creditError,
   } = useAsyncData(
-    () => generationApi.list({ limit: 100 }),
-    user ? `account-tasks:${user.id}` : "account-tasks:anon",
+    () => accountApi.credit(),
+    user ? `account-credit:${user.id}` : "account-credit:anon",
     {
       enabled: Boolean(user),
-      errorMessage: "加载最近任务额度统计失败",
+      errorMessage: "加载额度余额失败",
     }
   );
 
-  const tasks = useMemo(() => tasksData ?? [], [tasksData]);
-
-  const creditStats = useMemo(() => {
-    let settledUnits = 0;
-    let reservedUnits = 0;
-    let pendingReconcileUnits = 0;
-    let settledCount = 0;
-    let reservedCount = 0;
-
-    for (const task of tasks) {
-      if (task.billingStatus === "SETTLED") {
-        settledUnits += task.priceUnits;
-        settledCount += 1;
-      } else if (task.billingStatus === "RESERVED") {
-        reservedUnits += task.priceUnits;
-        reservedCount += 1;
-      } else if (task.billingStatus === "PENDING_RECONCILIATION") {
-        pendingReconcileUnits += task.priceUnits;
-      }
+  const {
+    data: ledger,
+    loading: loadingLedger,
+    error: ledgerError,
+  } = useAsyncData(
+    () => accountApi.ledger({ limit: 50 }),
+    user ? `account-ledger:${user.id}` : "account-ledger:anon",
+    {
+      enabled: Boolean(user),
+      errorMessage: "加载额度流水失败",
     }
-    return {
-      settledUnits,
-      reservedUnits,
-      pendingReconcileUnits,
-      settledCount,
-      reservedCount,
-    };
-  }, [tasks]);
+  );
+
+  const {
+    data: usage,
+    loading: loadingUsage,
+    error: usageError,
+  } = useAsyncData(
+    () => accountApi.usage(100),
+    user ? `account-usage:${user.id}` : "account-usage:anon",
+    {
+      enabled: Boolean(user),
+      errorMessage: "加载近期任务额度汇总失败",
+    }
+  );
 
   const handleRefreshProfile = async () => {
     setRefreshingUser(true);
@@ -201,25 +214,14 @@ export default function AccountPage() {
                     服务端按最小计量单位预占与结算媒体生成费用
                   </CardDescription>
                 </div>
-                <Badge variant="outline">余额接口占位</Badge>
+                <Badge variant="outline">实时账本</Badge>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-4">
-              <Alert>
-                <AlertTitle>实时余额查询接口暂未暴露（前端占位状态）</AlertTitle>
-                <AlertDescription>
-                  后端 billing 模块已实现额度预占与结算账本，新注册账户初始额度由服务端环境变量{" "}
-                  <code className="font-mono text-xs">
-                    BILLING_INITIAL_CREDIT_UNITS
-                  </code>
-                  （默认 10000）授予；当前尚未开放余额及流水查询 API，提交生成时如余额不足会由服务端直接拦截提示。
-                </AlertDescription>
-              </Alert>
+            <CardContent className="space-y-5">
+              <ApiErrorAlert error={creditError} title="读取额度账户失败" />
 
-              <ApiErrorAlert error={tasksError} title="读取近期任务记录失败" />
-
-              {loadingTasks && !tasksData ? (
+              {loadingCredit && !credit ? (
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Skeleton className="h-20 rounded-2xl" />
                   <Skeleton className="h-20 rounded-2xl" />
@@ -228,36 +230,139 @@ export default function AccountPage() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-2xl border p-3.5">
-                    <p className="text-xs text-muted-foreground">
-                      近 {tasks.length} 条已结算额度
-                    </p>
+                    <p className="text-xs text-muted-foreground">可用余额</p>
                     <p className="mt-1 text-xl font-semibold tabular-nums">
-                      {creditStats.settledUnits}
+                      {credit?.availableUnits ?? 0}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                      共 {creditStats.settledCount} 个已交付任务
+                      总余额 {credit?.balanceUnits ?? 0} · 更新于{" "}
+                      {formatDateTime(credit?.updatedAt)}
                     </p>
                   </div>
                   <div className="rounded-2xl border p-3.5">
                     <p className="text-xs text-muted-foreground">当前预占中</p>
                     <p className="mt-1 text-xl font-semibold tabular-nums">
-                      {creditStats.reservedUnits}
+                      {credit?.reservedUnits ?? 0}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                      {creditStats.reservedCount} 个进行中/待归档任务
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      进行中任务冻结的额度
                     </p>
                   </div>
                   <div className="rounded-2xl border p-3.5">
-                    <p className="text-xs text-muted-foreground">待核账挂起</p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums">
-                      {creditStats.pendingReconcileUnits}
+                    <p className="text-xs text-muted-foreground">
+                      最近 {usage?.window ?? 100} 条任务额度
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      UNKNOWN 状态任务预占保留
+                    <p className="mt-1 text-xl font-semibold tabular-nums">
+                      {usage?.totalPriceUnits ?? 0}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                      共{" "}
+                      {(usage?.buckets ?? []).reduce(
+                        (sum, bucket) => sum + bucket.taskCount,
+                        0
+                      )}{" "}
+                      个任务
                     </p>
                   </div>
                 </div>
               )}
+
+              <Separator />
+
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium">消费流水</h3>
+                  <span className="text-xs text-muted-foreground">
+                    按 UUIDv7 倒序，最近 50 条
+                  </span>
+                </div>
+                <ApiErrorAlert error={ledgerError} title="读取额度流水失败" />
+                {loadingLedger && !ledger ? (
+                  <Skeleton className="h-24 rounded-2xl" />
+                ) : (ledger ?? []).length === 0 ? (
+                  <p className="rounded-2xl border px-3.5 py-6 text-center text-xs text-muted-foreground">
+                    暂无额度流水；首次生成或访问本页后会出现初始授予记录。
+                  </p>
+                ) : (
+                  <div className="divide-y rounded-2xl border">
+                    {(ledger ?? []).map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={
+                              entry.entryType === "SETTLE"
+                                ? "default"
+                                : entry.entryType === "GRANT"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {CREDIT_ENTRY_LABEL[entry.entryType]}
+                          </Badge>
+                          <span className="font-mono font-medium tabular-nums">
+                            {entry.amountUnits}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {CREDIT_ENTRY_HINT[entry.entryType]}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground tabular-nums">
+                          {entry.taskType ? (
+                            <Badge variant="outline">{entry.taskType}</Badge>
+                          ) : null}
+                          {entry.taskStatus ? (
+                            <span>{GENERATION_STATUS_LABEL[entry.taskStatus]}</span>
+                          ) : null}
+                          {entry.taskId ? (
+                            <code className="font-mono text-[11px]">
+                              {entry.taskId.slice(0, 8)}
+                            </code>
+                          ) : null}
+                          <span>{formatDateTime(entry.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2.5">
+                <h3 className="text-sm font-medium">
+                  最近任务 priceUnits 汇总
+                </h3>
+                <ApiErrorAlert error={usageError} title="读取近期任务汇总失败" />
+                {loadingUsage && !usage ? (
+                  <Skeleton className="h-16 rounded-2xl" />
+                ) : (usage?.buckets ?? []).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    尚无媒体生成任务。
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {(usage?.buckets ?? []).map((bucket) => (
+                      <div
+                        key={bucket.billingStatus}
+                        className="rounded-2xl border p-3"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          {GENERATION_BILLING_LABEL[bucket.billingStatus]}
+                        </p>
+                        <p className="mt-1 text-lg font-semibold tabular-nums">
+                          {bucket.priceUnits}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {bucket.taskCount} 个任务
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

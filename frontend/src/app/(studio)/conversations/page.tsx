@@ -34,7 +34,6 @@ import { notifyApiError } from "@/lib/api/feedback";
 import type { UUID } from "@/lib/api/types";
 import { formatShortTime } from "@/lib/format";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
-import { placeholderStore } from "@/lib/storage/placeholder-store";
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
@@ -160,7 +159,6 @@ export default function ConversationsHomePage() {
           conversation.id,
           ticket.uploadSessionId
         );
-        placeholderStore.upsertAsset(user.id, conversation.id, asset);
         uploadedAssetIds.push(asset.id);
         URL.revokeObjectURL(item.previewUrl);
       }

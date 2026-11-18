@@ -42,8 +42,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useAsyncData } from "@/hooks/use-async-data";
 import { createIdempotencyKey } from "@/lib/api/client";
-import { generationApi } from "@/lib/api/endpoints";
+import { generationApi, modelsApi } from "@/lib/api/endpoints";
 import {
   copyToClipboard,
   notifyApiError,
@@ -176,6 +177,12 @@ function QuickGenerateForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [selectedAssetToAdd, setSelectedAssetToAdd] = useState("");
+
+  const { data: availableModels } = useAsyncData(
+    () => modelsApi.list({ capabilityType: genType }),
+    `models:${genType}`,
+    { errorMessage: "加载可用模型失败" }
+  );
 
   useImperativeHandle(ref, () => ({
     addInputAsset(assetId: UUID) {
@@ -348,21 +355,44 @@ function QuickGenerateForm({
         </div>
       ) : null}
 
-      {/* Model selection notice */}
+      {/* Model selection */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">
-            模型路由（默认占位，可选覆盖 UUID）
-          </Label>
+          <Label className="text-xs text-muted-foreground">模型路由</Label>
+          <Select
+            value={modelDefinitionId || "__default__"}
+            onValueChange={(value) =>
+              setModelDefinitionId(
+                !value || value === "__default__" ? "" : value
+              )
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="使用系统默认启用模型" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">
+                使用系统默认启用模型（留空）
+              </SelectItem>
+              {(availableModels ?? []).map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.displayName} · {model.modelId}
+                  {model.defaultModel ? " · 默认" : ""}
+                  {model.priceUnits > 0 ? ` · ${model.priceUnits} 单位/次` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             value={modelDefinitionId}
             onChange={(e) => setModelDefinitionId(e.target.value)}
-            placeholder="留空：自动使用管理员配置的默认模型"
+            placeholder="或手动填写 modelDefinitionId (UUID)"
             className="h-8 font-mono text-xs"
           />
         </div>
         <div className="flex items-end text-[11px] text-muted-foreground">
-          提示：普通用户端暂不拉取全量模型目录，留空由服务端按能力路由默认模型并预占额度。
+          提示：留空由服务端按能力类型选择默认启用模型并预占额度；模型价格以服务端
+          priceUnits 为准。
         </div>
       </div>
 
@@ -724,7 +754,6 @@ export function AssetsGeneratePanel() {
     try {
       for (let i = 0; i < picked.length; i += 1) {
         const asset = await uploadConversationAsset({
-          userId,
           conversationId,
           file: picked[i],
           onProgress: (pct) => {

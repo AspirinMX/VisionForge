@@ -82,7 +82,6 @@ import type {
   UUID,
 } from "@/lib/api/types";
 import { COMPOSITION_STATUS_LABEL, formatDateTime } from "@/lib/format";
-import { placeholderStore } from "@/lib/storage/placeholder-store";
 import {
   CAMERA_LABEL,
   createBlankStoryboard,
@@ -542,13 +541,12 @@ export function StoryboardPanel() {
 
     setSubmittingComp(true);
     try {
-      const task = await compositionApi.create({
+      await compositionApi.create({
         conversationId,
         storyboardFileId: activeFile.id,
         storyboardVersion: activeFile.currentVersion,
         outputSpec: compSpec,
       });
-      placeholderStore.addCompositionTaskId(userId, conversationId, task.taskId);
       await refreshSilent();
       notifySuccess("已提交 FFmpeg 成片合成任务");
     } catch (err) {
@@ -1567,12 +1565,10 @@ export function StoryboardPanel() {
               </Button>
             </div>
 
-            {/* Track composition by taskId placeholder helper */}
+            {/* Recover a composition task that falls outside the server list */}
             <div className="space-y-2 rounded-xl border border-dashed p-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium">
-                  合成任务记录（客户端会话追踪缓存）
-                </span>
+                <span className="font-medium">合成任务记录（服务端）</span>
                 <span className="text-muted-foreground">
                   已追踪 {compositionTasks.length} 条
                 </span>

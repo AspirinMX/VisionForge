@@ -102,6 +102,21 @@ export interface ModelResponse {
   updatedAt: string;
 }
 
+export interface PublicModelResponse {
+  id: UUID;
+  displayName: string;
+  modelId: string;
+  capabilityType: ModelCapabilityType;
+  protocol: MediaProtocol;
+  executionMode: ExecutionMode;
+  priceUnits: number;
+  supportsImageInput: boolean;
+  defaultModel: boolean;
+  reasoningEffort: ReasoningEffort | null;
+  maxInputTokens: number | null;
+  maxOutputTokens: number | null;
+}
+
 export interface CreateModelRequest {
   displayName: string;
   baseUrl: string;
@@ -164,6 +179,8 @@ export interface MessageResponse {
   status: MessageStatus;
   senderUserId: UUID | null;
   createdAt: string;
+  assetIds: UUID[];
+  generationTaskIds: UUID[];
 }
 
 export interface SendMessageRequest {
@@ -237,6 +254,7 @@ export interface ConversationFileVersionResponse {
   sizeBytes: number | null;
   checksum: string | null;
   source: ConversationFileSource;
+  assetId: UUID | null;
   createdAt: string;
 }
 
@@ -272,10 +290,13 @@ export interface UploadTicketResponse {
   requiredHeaders: Record<string, string>;
 }
 
+export type AssetSource = "UPLOAD" | "GENERATION" | "DERIVED";
+
 export interface AssetResponse {
   id: UUID;
   conversationId: UUID;
   kind: AssetKind;
+  source: AssetSource;
   mimeType: string;
   sizeBytes: number;
   checksum: string | null;
@@ -458,6 +479,40 @@ export interface CompositionTaskResponse {
   startedAt: string | null;
   completedAt: string | null;
   inputs: CompositionInputResponse[];
+}
+
+// --- Account & Credit ---
+
+export type CreditLedgerEntryType = "GRANT" | "RESERVE" | "SETTLE" | "RELEASE";
+
+export interface CreditSummaryResponse {
+  balanceUnits: number;
+  reservedUnits: number;
+  availableUnits: number;
+  updatedAt: string;
+}
+
+export interface CreditLedgerEntryResponse {
+  id: UUID;
+  entryType: CreditLedgerEntryType;
+  amountUnits: number;
+  reservationId: UUID | null;
+  taskId: UUID | null;
+  taskType: GenerationType | null;
+  taskStatus: GenerationStatus | null;
+  createdAt: string;
+}
+
+export interface CreditUsageBucket {
+  billingStatus: GenerationBillingStatus;
+  taskCount: number;
+  priceUnits: number;
+}
+
+export interface CreditUsageResponse {
+  window: number;
+  totalPriceUnits: number;
+  buckets: CreditUsageBucket[];
 }
 
 // --- Storyboard JSON Schema (PROPOSAL §13.2 & StoryboardValidator.java) ---

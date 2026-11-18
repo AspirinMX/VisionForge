@@ -15,6 +15,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { useConversations } from "@/components/providers/conversations-provider";
 import { useAsyncData } from "@/hooks/use-async-data";
 import {
+  agentRunsApi,
   assetsApi,
   compositionApi,
   conversationsApi,
@@ -36,7 +37,6 @@ import type {
   MessageResponse,
   UUID,
 } from "@/lib/api/types";
-import { placeholderStore } from "@/lib/storage/placeholder-store";
 
 export type StudioCanvasTab = "storyboard" | "files" | "assets" | "tasks";
 
@@ -76,6 +76,7 @@ interface StudioCoreSnapshot {
   files: ConversationFileResponse[];
   generationTasks: GenerationTaskResponse[];
   compositionTasks: CompositionTaskResponse[];
+  assets: AssetResponse[];
   activeRun: AgentRunResponse | null;
 }
 
@@ -151,47 +152,34 @@ function sortByCreatedDesc<T extends { createdAt: string }>(items: T[]): T[] {
 }
 
 async function fetchStudioSnapshot(
-  conversationId: UUID,
-  userId: UUID
+  conversationId: UUID
 ): Promise<StudioCoreSnapshot> {
-  const cachedCompIds = placeholderStore.getCompositionTaskIds(
-    userId,
-    conversationId
-  );
-  const cachedRun = placeholderStore.getActiveRun(userId, conversationId);
+  const [
+    conversation,
+    messages,
+    files,
+    generationTasks,
+    compositionTasks,
+    activeRuns,
+    assets,
+  ] = await Promise.all([
+    conversationsApi.get(conversationId),
+    conversationsApi.messages(conversationId),
+    filesApi.list(conversationId, { limit: 100 }),
+    generationApi.list({ conversationId, limit: 100 }),
+    compositionApi.list({ conversationId, limit: 50 }),
+    agentRunsApi.list({
+      conversationId,
+      status: ["PENDING", "RUNNING"],
+      limit: 1,
+    }),
+    assetsApi.list(conversationId, { limit: 100 }),
+  ]);
 
-  const [conversation, messages, files, generationTasks, compResults, runResult] =
-    await Promise.all([
-      conversationsApi.get(conversationId),
-      conversationsApi.messages(conversationId),
-      filesApi.list(conversationId, { limit: 100 }),
-      generationApi.list({ conversationId, limit: 100 }),
-      Promise.allSettled(cachedCompIds.map((id) => compositionApi.get(id))),
-      cachedRun
-        ? conversationsApi.getAgentRun(cachedRun.runId).catch(() => null)
-        : Promise.resolve(null),
-    ]);
-
-  const compositionTasks: CompositionTaskResponse[] = [];
-  for (const res of compResults) {
-    if (
-      res.status === "fulfilled" &&
-      res.value.conversationId === conversationId
-    ) {
-      compositionTasks.push(res.value);
-    }
-  }
-
-  let activeRun: AgentRunResponse | null = null;
-  if (runResult) {
-    if (runResult.status === "PENDING" || runResult.status === "RUNNING") {
-      activeRun = runResult;
-    } else {
-      placeholderStore.setActiveRun(userId, conversationId, null);
-    }
-  } else if (cachedRun) {
-    placeholderStore.setActiveRun(userId, conversationId, null);
-  }
+  const activeRun =
+    activeRuns.find(
+      (run) => run.status === "PENDING" || run.status === "RUNNING"
+    ) ?? null;
 
   return {
     conversation,
@@ -199,6 +187,7 @@ async function fetchStudioSnapshot(
     files,
     generationTasks: sortByCreatedDesc(generationTasks),
     compositionTasks: sortByCreatedDesc(compositionTasks),
+    assets: sortByCreatedDesc(assets),
     activeRun,
   };
 }
@@ -228,7 +217,6 @@ export function StudioProvider({
   const [selectedFileId, setSelectedFileId] = useState<UUID | null>(
     initialFileId ?? null
   );
-  const [localStorageTick, setLocalStorageTick] = useState(0);
   const [quickGenDraft, setQuickGenDraft] = useState<QuickGenDraft | null>(null);
   const composerListenersRef = useRef<Set<(patch: ChatComposerPatch) => void>>(
     new Set()
@@ -242,7 +230,7 @@ export function StudioProvider({
       if (!userId) {
         return Promise.reject(new Error("Missing authenticated user"));
       }
-      return fetchStudioSnapshot(conversationId, userId);
+      return fetchStudioSnapshot(conversationId);
     },
     userId ? `studio:${userId}:${conversationId}` : `studio:anon:${conversationId}`,
     {
@@ -269,7 +257,7 @@ export function StudioProvider({
       return null;
     }
     try {
-      const fresh = await fetchStudioSnapshot(conversationId, userId);
+      const fresh = await fetchStudioSnapshot(conversationId);
       mutate(() => fresh);
       return fresh;
     } catch {
@@ -376,21 +364,25 @@ export function StudioProvider({
 
   const registerLocalAsset = useCallback(
     (asset: AssetResponse) => {
-      if (!userId) {
-        return;
-      }
-      placeholderStore.upsertAsset(userId, conversationId, asset);
-      setLocalStorageTick((n) => n + 1);
+      mutate((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          assets: [asset, ...prev.assets.filter((item) => item.id !== asset.id)],
+        };
+      });
     },
-    [conversationId, userId]
+    [mutate]
   );
 
   const importAssetById = useCallback(
     async (assetId: UUID): Promise<AssetResponse> => {
-      const asset = await assetsApi.get(assetId);
-      if (asset.conversationId !== conversationId) {
-        throw new Error("该资产不属于当前会话，已按会话隔离规则拦截");
-      }
+      const asset = await assetsApi.resolveInConversation(
+        conversationId,
+        assetId
+      );
       registerLocalAsset(asset);
       return asset;
     },
@@ -403,30 +395,21 @@ export function StudioProvider({
       if (task.conversationId !== conversationId) {
         throw new Error("该合成任务不属于当前会话");
       }
-      if (userId) {
-        placeholderStore.addCompositionTaskId(userId, conversationId, task.taskId);
-      }
       await refreshSilent();
       return task;
     },
-    [conversationId, refreshSilent, userId]
+    [conversationId, refreshSilent]
   );
 
   const setTrackedActiveRun = useCallback(
     (runId: UUID | null) => {
-      if (!userId) {
+      if (runId) {
+        void refreshSilent();
         return;
       }
-      placeholderStore.setActiveRun(
-        userId,
-        conversationId,
-        runId ? { runId, createdAt: new Date().toISOString() } : null
-      );
-      if (!runId) {
-        mutate((prev) => (prev ? { ...prev, activeRun: null } : prev));
-      }
+      mutate((prev) => (prev ? { ...prev, activeRun: null } : prev));
     },
-    [conversationId, mutate, userId]
+    [mutate, refreshSilent]
   );
 
   const files = useMemo(() => data?.files ?? [], [data?.files]);
@@ -457,22 +440,7 @@ export function StudioProvider({
   }, [compositionTasks, generationTasks]);
 
   const localAssets = useMemo<ConversationAssetItem[]>(() => {
-    void localStorageTick;
     const byId = new Map<UUID, ConversationAssetItem>();
-
-    if (userId) {
-      for (const asset of placeholderStore.getAssets(userId, conversationId)) {
-        byId.set(asset.id, {
-          assetId: asset.id,
-          kind: asset.kind,
-          source: "UPLOAD",
-          label: `${asset.kind} 资产 · ${asset.id.slice(0, 8)}`,
-          mimeType: asset.mimeType,
-          sizeBytes: asset.sizeBytes,
-          createdAt: asset.createdAt,
-        });
-      }
-    }
 
     for (const task of generationTasks) {
       for (const out of task.outputs) {
@@ -510,14 +478,27 @@ export function StudioProvider({
       }
     }
 
+    for (const asset of data?.assets ?? []) {
+      if (byId.has(asset.id)) {
+        continue;
+      }
+      byId.set(asset.id, {
+        assetId: asset.id,
+        kind: asset.kind,
+        source: asset.source === "UPLOAD" ? "UPLOAD" : "GENERATED",
+        label: `${asset.kind === "VIDEO" ? "视频" : "图片"}资产 · ${asset.id.slice(0, 8)}`,
+        mimeType: asset.mimeType,
+        sizeBytes: asset.sizeBytes,
+        createdAt: asset.createdAt,
+      });
+    }
+
     return sortByCreatedDesc(Array.from(byId.values()));
   }, [
     compositionTasks,
-    conversationId,
+    data?.assets,
     fileTitleMap,
     generationTasks,
-    localStorageTick,
-    userId,
   ]);
 
   const messages = useMemo(() => data?.messages ?? [], [data?.messages]);

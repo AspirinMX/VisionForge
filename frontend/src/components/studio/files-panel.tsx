@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useAsyncData } from "@/hooks/use-async-data";
-import { filesApi } from "@/lib/api/endpoints";
+import { assetsApi, filesApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError } from "@/lib/api/errors";
 import {
   copyToClipboard,
@@ -181,8 +181,8 @@ export function FilesPanel() {
       ? `file-ver:${conversationId}:${activeFile.id}:v${activeFile.currentVersion}`
       : "file-ver:none",
     {
-      enabled: Boolean(activeFile && isTextFile),
-      errorMessage: "加载文件内容失败",
+      enabled: Boolean(activeFile),
+      errorMessage: "加载文件版本失败",
     }
   );
 
@@ -356,8 +356,31 @@ export function FilesPanel() {
   };
 
   const resolvedMediaAssetId = activeFile
-    ? fileAssetIdMap.get(activeFile.id) ?? manualAssetIds[activeFile.id] ?? null
+    ? activeVersion?.assetId ??
+      fileAssetIdMap.get(activeFile.id) ??
+      manualAssetIds[activeFile.id] ??
+      null
     : null;
+
+  const handleResolveManualAsset = async () => {
+    const assetId = assetInputValue.trim();
+    if (!activeFile || !assetId) {
+      return;
+    }
+    try {
+      const asset = await assetsApi.resolveInConversation(
+        conversationId,
+        assetId
+      );
+      setManualAssetIds((prev) => ({
+        ...prev,
+        [activeFile.id]: asset.id,
+      }));
+      setAssetInputValue("");
+    } catch (err) {
+      notifyApiError(err, "该资产不属于当前会话或不存在");
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -648,7 +671,7 @@ export function FilesPanel() {
                       <AlertTitle>对象存储文件预览说明</AlertTitle>
                       <AlertDescription className="space-y-2.5 text-xs">
                         <p>
-                          后端文件详情接口当前未直接返回关联资产 UUID。前序生成任务或合成记录若仍在前 100 条列表中会自动映射；否则可输入对应资产 UUID 手动预览：
+                          文件版本未记录可用的关联资产。可粘贴同一会话内的资产 UUID，服务端校验归属后再加载预览：
                         </p>
                         <div className="flex gap-2">
                           <Input
@@ -662,13 +685,7 @@ export function FilesPanel() {
                             variant="outline"
                             size="sm"
                             disabled={!assetInputValue.trim()}
-                            onClick={() => {
-                              setManualAssetIds((prev) => ({
-                                ...prev,
-                                [activeFile.id]: assetInputValue.trim(),
-                              }));
-                              setAssetInputValue("");
-                            }}
+                            onClick={() => void handleResolveManualAsset()}
                           >
                             解析预览
                           </Button>

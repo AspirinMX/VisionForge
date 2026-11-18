@@ -63,7 +63,6 @@ import { copyToClipboard, notifyError, notifyInfo } from "@/lib/api/feedback";
 import type { AgentStreamEvent, UUID } from "@/lib/api/types";
 import { AGENT_RUN_STATUS_LABEL, formatShortTime } from "@/lib/format";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
-import { placeholderStore } from "@/lib/storage/placeholder-store";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
 import { cn } from "@/lib/utils";
 
@@ -130,7 +129,6 @@ export function ChatPane() {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<UUID | null>(null);
-  const [attachmentVersion, setAttachmentVersion] = useState(0);
 
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
@@ -143,14 +141,6 @@ export function ChatPane() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const handoffCheckedRef = useRef(false);
   const submittingRef = useRef(false);
-
-  const messageAttachments = useMemo(() => {
-    void attachmentVersion;
-    if (!userId) {
-      return {};
-    }
-    return placeholderStore.getMessageAttachments(userId, conversationId);
-  }, [attachmentVersion, conversationId, userId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     bottomEndRef.current?.scrollIntoView({ behavior, block: "end" });
@@ -190,73 +180,13 @@ export function ChatPane() {
     };
   }, []);
 
-  const persistUserAttachments = useCallback(
-    (
-      freshMessages: { id: UUID; role: string; content: string; sequenceNo: number }[],
-      sentPrompt: string,
-      assetIds: UUID[],
-      knownMessageId?: UUID
-    ) => {
-      if (!userId || assetIds.length === 0) {
-        return;
-      }
-      if (knownMessageId) {
-        placeholderStore.setMessageAttachments(
-          userId,
-          conversationId,
-          knownMessageId,
-          assetIds
-        );
-        setAttachmentVersion((v) => v + 1);
-        return;
-      }
-
-      const existing = placeholderStore.getMessageAttachments(
-        userId,
-        conversationId
-      );
-      const matched = [...freshMessages]
-        .reverse()
-        .find(
-          (msg) =>
-            msg.role === "USER" &&
-            !existing[msg.id] &&
-            msg.content.trim() === sentPrompt.trim()
-        );
-      if (matched) {
-        placeholderStore.setMessageAttachments(
-          userId,
-          conversationId,
-          matched.id,
-          assetIds
-        );
-        setAttachmentVersion((v) => v + 1);
-      }
-    },
-    [conversationId, userId]
-  );
-
   const pollUntilComplete = useCallback(
-    async (
-      runId: UUID,
-      sentPrompt: string,
-      sentAssetIds: UUID[],
-      knownUserMessageId: UUID,
-      signal: AbortSignal
-    ) => {
+    async (runId: UUID, signal: AbortSignal) => {
       while (!signal.aborted) {
         const run = await conversationsApi.getAgentRun(runId);
         if (run.status === "COMPLETED") {
           setTrackedActiveRun(null);
-          const fresh = await refreshSilent();
-          if (fresh) {
-            persistUserAttachments(
-              fresh.messages,
-              sentPrompt,
-              sentAssetIds,
-              knownUserMessageId
-            );
-          }
+          await refreshSilent();
           refreshSidebar();
           return;
         }
@@ -269,7 +199,7 @@ export function ChatPane() {
         await new Promise((resolve) => window.setTimeout(resolve, 1800));
       }
     },
-    [persistUserAttachments, refreshSidebar, refreshSilent, setTrackedActiveRun]
+    [refreshSidebar, refreshSilent, setTrackedActiveRun]
   );
 
   const submitTurn = useCallback(
@@ -346,10 +276,7 @@ export function ChatPane() {
             controller.signal
           );
 
-          const fresh = await refreshSilent();
-          if (fresh) {
-            persistUserAttachments(fresh.messages, trimmed, assetIds);
-          }
+          await refreshSilent();
           refreshSidebar();
         } else {
           const turn = await conversationsApi.send(conversationId, payload);
@@ -357,22 +284,7 @@ export function ChatPane() {
           setLiveStream((prev) =>
             prev ? { ...prev, runId: turn.runId } : prev
           );
-          if (userId && assetIds.length > 0) {
-            placeholderStore.setMessageAttachments(
-              userId,
-              conversationId,
-              turn.userMessageId,
-              assetIds
-            );
-            setAttachmentVersion((v) => v + 1);
-          }
-          await pollUntilComplete(
-            turn.runId,
-            trimmed,
-            assetIds,
-            turn.userMessageId,
-            controller.signal
-          );
+          await pollUntilComplete(turn.runId, controller.signal);
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -388,12 +300,10 @@ export function ChatPane() {
     [
       conversationId,
       deliveryMode,
-      persistUserAttachments,
       pollUntilComplete,
       refreshSidebar,
       refreshSilent,
       setTrackedActiveRun,
-      userId,
     ]
   );
 
@@ -462,7 +372,6 @@ export function ChatPane() {
       const addedIds: UUID[] = [];
       for (let i = 0; i < candidates.length; i += 1) {
         const asset = await uploadConversationAsset({
-          userId,
           conversationId,
           file: candidates[i],
           kind: "IMAGE",
@@ -595,7 +504,7 @@ export function ChatPane() {
               message.role === "ASSISTANT" &&
               idx === messages.length - 1 &&
               !liveStream;
-            const attached = messageAttachments[message.id] ?? [];
+            const attached = message.assetIds ?? [];
 
             if (message.role === "SYSTEM") {
               return (
