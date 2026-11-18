@@ -2,14 +2,14 @@
 
 ## 初次开发
 
-第一次参与本项目开发时，先按顺序阅读 `docs/` 下的文档：
+第一次参与本项目开发时，先按顺序阅读 `docs/` 下的文档（完整索引见 [`docs/README.md`](docs/README.md)）：
 
-1. `docs/PROPOSAL.md`：产品定位、架构、身份与隔离、Agent Loop、数据模型和当前实现差距。
-2. `docs/STANDARDS.md`：编码、模块边界和工程规范。
-3. `docs/MEDIA_PIPELINE_DESIGN.md`：图片/视频生成、任务生命周期和媒体资产方案。
-4. `docs/PRODUCT_ROADMAP.md`：已确认的三阶段产品范围、功能边界和验收标准。
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：系统全局架构、8 个后端模块职责与依赖边界、Temporal / Redis / RustFS 基础设施协作机制。
+2. [`docs/DESIGN_DETAILS.md`](docs/DESIGN_DETAILS.md)：核心表结构（V1–V15）、生成与计费状态机、上下文压缩与分镜 Schema、前端工作台与独立管理后台设计。
+3. [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)：前端使用的 HTTP / SSE 接口契约、请求/响应字段、错误码总表与鉴权机制。
+4. [`docs/BACKEND_DEV_STANDARDS.md`](docs/BACKEND_DEV_STANDARDS.md) 与 [`docs/FRONTEND_DEV_STANDARDS.md`](docs/FRONTEND_DEV_STANDARDS.md)：前后端企业级开发规范与评审红线。
 
-随后阅读 `README.md` 或 `README_zh-CN.md` 了解本地启动方式。文档与代码冲突时，以当前代码、数据库迁移和测试为准，并在同一次变更中修正文档。
+随后阅读 [`docs/DEVELOPMENT_SETUP.md`](docs/DEVELOPMENT_SETUP.md)、`README.md` 或 `README_zh-CN.md` 了解本地启动方式。文档与代码冲突时，以当前代码、数据库迁移和测试为准，并在同一次变更中修正文档。
 
 ## 提交信息
 
