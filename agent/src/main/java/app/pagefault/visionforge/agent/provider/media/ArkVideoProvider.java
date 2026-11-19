@@ -138,10 +138,11 @@ public class ArkVideoProvider implements RemoteMediaProvider {
         }
 
         String resolution = text(parameters, "resolution");
-        if (resolution != null) {
-            root.put("resolution", resolution);
+        if (resolution != null && !resolution.isBlank()) {
+            // Ark only accepts 480p / 720p / 1080p; models may emit either casing.
+            root.put("resolution", resolution.trim().toLowerCase(Locale.ROOT));
         }
-        String ratio = text(parameters, "ratio");
+        String ratio = text(parameters, "ratio", "aspectRatio");
         if (ratio != null) {
             root.put("ratio", ratio);
         }

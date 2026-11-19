@@ -114,7 +114,7 @@ class DashScopeProvidersTest {
             MediaProviderRequest request = request(
                     GenerationType.VIDEO,
                     baseUrl(server),
-                    "{\"resolution\":\"720P\",\"durationSeconds\":5,\"generateAudio\":true}",
+                    "{\"resolution\":\"720p\",\"aspectRatio\":\"9:16\",\"durationSeconds\":5,\"generateAudio\":true}",
                     List.of(new MediaProviderInput(
                             UUID.randomUUID(),
                             GenerationInputRole.FIRST_FRAME,
@@ -128,6 +128,10 @@ class DashScopeProvidersTest {
                     .isEqualTo("first_frame");
             assertThat(submitted.path("input").path("media").get(0).path("url").asText())
                     .isEqualTo("https://media.example.com/first.png");
+            assertThat(submitted.path("parameters").path("resolution").asText())
+                    .isEqualTo("720P");
+            assertThat(submitted.path("parameters").path("ratio").asText())
+                    .isEqualTo("9:16");
             assertThat(submitted.path("parameters").path("duration").asInt()).isEqualTo(5);
             assertThat(submitted.path("parameters").path("audio").asBoolean()).isTrue();
 

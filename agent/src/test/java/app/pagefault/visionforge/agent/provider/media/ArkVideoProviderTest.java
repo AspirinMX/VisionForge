@@ -37,7 +37,7 @@ class ArkVideoProviderTest {
                 "mock-seedance",
                 "camera pan over coffee shop",
                 """
-                {"resolution":"720p","ratio":"16:9","durationSeconds":5,"generateAudio":true,"watermark":false,"seed":42}
+                {"resolution":"720P","aspectRatio":"16:9","durationSeconds":5,"generateAudio":true,"watermark":false,"seed":42}
                 """,
                 ExecutionMode.REMOTE_TASK,
                 List.of(

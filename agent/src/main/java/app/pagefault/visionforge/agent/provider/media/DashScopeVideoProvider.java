@@ -98,8 +98,14 @@ public class DashScopeVideoProvider implements RemoteMediaProvider {
             entry.put("url", item.url());
         }
         ObjectNode output = root.putObject("parameters");
-        copy(parameters, output, "resolution");
-        copy(parameters, output, "ratio");
+        JsonNode resolution = parameters.path("resolution");
+        if (!resolution.isMissingNode() && !resolution.isNull()
+                && !resolution.asText().isBlank()) {
+            // DashScope only accepts 480P / 720P / 1080P; models may emit either casing.
+            output.put("resolution",
+                    resolution.asText().trim().toUpperCase(Locale.ROOT));
+        }
+        copy(parameters, output, "ratio", "aspectRatio");
         copy(parameters, output, "duration", "durationSeconds");
         copy(parameters, output, "seed");
         copy(parameters, output, "prompt_extend", "promptExtend");
