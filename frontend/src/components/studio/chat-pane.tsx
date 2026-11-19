@@ -704,7 +704,7 @@ export function ChatPane() {
         </div>
       </div>
 
-      {/* Floating bottom capsule composer & scroll-to-bottom button */}
+      {/* Floating bottom composer & scroll-to-bottom button */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-8 pb-4">
         <AnimatePresence>
           {showScrollBottom ? (
@@ -735,7 +735,7 @@ export function ChatPane() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "pointer-events-auto rounded-pill border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors motion-reduce:transition-none",
+            "pointer-events-auto rounded-surface-lg border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors motion-reduce:transition-none",
             isDragging && "border-primary bg-accent/40",
             columnWidthClass
           )}

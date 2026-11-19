@@ -245,7 +245,7 @@ export default function ConversationsHomePage() {
               </p>
             </div>
 
-            <div className="rounded-pill border border-border/80 bg-card/95 p-3 shadow-md transition-shadow motion-reduce:transition-none focus-within:ring-2 focus-within:ring-ring/20">
+            <div className="rounded-surface-lg border border-border/80 bg-card/95 p-3 shadow-md transition-shadow motion-reduce:transition-none focus-within:ring-2 focus-within:ring-ring/20">
             {queuedFiles.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1">
                 {queuedFiles.map((item) => (
