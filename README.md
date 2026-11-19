@@ -4,15 +4,16 @@
 
 [简体中文](README_zh-CN.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
+![Actively shipping](https://img.shields.io/badge/actively_shipping-2EA043?style=flat-square)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1-6DB33F?style=flat-square&logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)
-![Temporal](https://img.shields.io/badge/Temporal-000000?style=flat-square&logo=temporal&logoColor=white)
+![Temporal workflows](https://img.shields.io/badge/Temporal-workflows-000000?style=flat-square&logo=temporal&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Alibaba Bailian](https://img.shields.io/badge/Alibaba_Bailian-FF6A00?style=flat-square&logo=alibabacloud&logoColor=white)
-![Ark](https://img.shields.io/badge/Ark-1664FF?style=flat-square&logo=bytedance&logoColor=white)
+![Volcengine Ark](https://img.shields.io/badge/Volcengine_Ark-1664FF?style=flat-square&logo=bytedance&logoColor=white)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)
 
 ---
