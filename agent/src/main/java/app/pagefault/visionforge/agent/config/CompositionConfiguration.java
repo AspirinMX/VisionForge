@@ -22,6 +22,7 @@ import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.asset.storage.ObjectStorage;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import tools.jackson.databind.ObjectMapper;
@@ -51,8 +52,9 @@ public class CompositionConfiguration {
             AssetService assetService,
             ObjectMapper objectMapper,
             IdGenerator idGenerator,
-            Clock clock) {
-        return new CompositionTaskService(
+            Clock clock,
+            ObjectProvider<AlertPublisher> alertPublisherProvider) {
+        CompositionTaskService service = new CompositionTaskService(
                 compositionTaskMapper,
                 compositionInputMapper,
                 workflowStartRequestMapper,
@@ -63,6 +65,8 @@ public class CompositionConfiguration {
                 objectMapper,
                 idGenerator,
                 clock);
+        service.setAlertPublisher(alertPublisherProvider.getIfAvailable(() -> AlertPublisher.NOOP));
+        return service;
     }
 
     @Bean

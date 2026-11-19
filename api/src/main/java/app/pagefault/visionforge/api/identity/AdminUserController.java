@@ -2,6 +2,7 @@ package app.pagefault.visionforge.api.identity;
 
 import java.util.UUID;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -21,6 +22,9 @@ import app.pagefault.visionforge.api.identity.dto.ChangeRoleRequest;
 import app.pagefault.visionforge.api.identity.dto.ChangeUserStatusRequest;
 import app.pagefault.visionforge.api.identity.dto.RevokeSessionsResponse;
 import app.pagefault.visionforge.api.identity.dto.UserResponse;
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.common.api.ApiResponse;
 import app.pagefault.visionforge.common.api.PageResult;
 import app.pagefault.visionforge.identity.auth.AuthService;
@@ -39,6 +43,7 @@ public class AdminUserController {
 
     private final IdentityService identityService;
     private final AuthService authService;
+    private final ObjectProvider<AlertPublisher> alertPublisherProvider;
 
     @GetMapping
     public ApiResponse<PageResult<UserResponse>> list(
@@ -69,8 +74,9 @@ public class AdminUserController {
             @PathVariable UUID id,
             @Valid @RequestBody ChangeRoleRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        UserAccount user = identityService.changeRole(
-                AuthenticatedUser.id(jwt), id, request.role());
+        UUID actorId = AuthenticatedUser.id(jwt);
+        UserAccount user = identityService.changeRole(actorId, id, request.role());
+        notifySecurityChange("管理员调整用户系统角色", "管理员 " + actorId + " 将用户 " + id + " 角色设置为 " + request.role(), id);
         return ApiResponse.success(UserResponse.from(user));
     }
 
@@ -79,8 +85,11 @@ public class AdminUserController {
             @PathVariable UUID id,
             @Valid @RequestBody ChangeUserStatusRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        UserAccount user = authService.updateUserStatus(
-                AuthenticatedUser.id(jwt), id, request.status());
+        UUID actorId = AuthenticatedUser.id(jwt);
+        UserAccount user = authService.updateUserStatus(actorId, id, request.status());
+        if (request.status() == UserStatus.DISABLED) {
+            notifySecurityChange("管理员禁用用户账号", "管理员 " + actorId + " 已禁用用户 " + id + " 并吊销其活跃会话", id);
+        }
         return ApiResponse.success(UserResponse.from(user));
     }
 
@@ -98,5 +107,18 @@ public class AdminUserController {
     public ApiResponse<RevokeSessionsResponse> revokeSessions(@PathVariable UUID id) {
         int revoked = authService.revokeUserSessions(id);
         return ApiResponse.success(new RevokeSessionsResponse(revoked));
+    }
+
+    private void notifySecurityChange(String title, String summary, UUID targetId) {
+        AlertPublisher publisher = alertPublisherProvider.getIfAvailable();
+        if (publisher != null) {
+            publisher.publish(AlertEvent.of(
+                    AlertEvent.EVENT_ADMIN_SECURITY_CHANGE,
+                    AlertSeverity.INFO,
+                    "visionforge-api",
+                    title,
+                    summary,
+                    targetId.toString()));
+        }
     }
 }

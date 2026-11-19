@@ -92,6 +92,17 @@
 | `PUT /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | `{ content }`（校验 JSON 对象后发布至 Nacos 并热刷新） | `ConfigEntryResponse` |
 | `POST /api/v1/admin/configs/{dataId}/reset` | `200` | `ADMIN` | 还原该 `dataId` 为内置默认 JSON 配置 | `ConfigEntryResponse` |
 
+### 3.5 邮件与 Webhook 告警管理 (`AdminAlertController`, `/api/v1/admin/alerts`)
+
+| 方法与路径 | 状态码 | 权限 | 请求体 / 查询参数 | 响应 `data` |
+| --- | --- | --- | --- | --- |
+| `GET /api/v1/admin/alerts/channels` | `200` | `ADMIN` | — | `AlertChannelResponse[]`（脱敏，仅返回 `secretConfigured`） |
+| `POST /api/v1/admin/alerts/channels` | `201` | `ADMIN` | `{ name, channelType (EMAIL\|WEBHOOK), target, secret?, subscribedEvents?, minSeverity?, enabled? }` | `AlertChannelResponse` |
+| `PATCH /api/v1/admin/alerts/channels/{id}` | `200` | `ADMIN` | 同上字段全可选 | `AlertChannelResponse` |
+| `DELETE /api/v1/admin/alerts/channels/{id}` | `200` | `ADMIN` | 路径参数 `{id}` | `null` |
+| `POST /api/v1/admin/alerts/channels/{id}/test` | `200` | `ADMIN` | 同步发送测试告警并记录投递流水 | `AlertDeliveryResponse` |
+| `GET /api/v1/admin/alerts/deliveries` | `200` | `ADMIN` | `?page=1&size=50&channelId=&status=SENT\|FAILED\|SKIPPED&eventType=` | `PageResult<AlertDeliveryResponse>` |
+
 ---
 
 ## 4. 会话、消息、流式 SSE 与 AgentRun
@@ -280,8 +291,8 @@
 
 | 错误码 | HTTP | 说明 |
 | --- | --- | --- |
-| `AGENT_MODEL_NOT_FOUND` / `AGENT_CONVERSATION_NOT_FOUND` / `AGENT_RUN_NOT_FOUND` / `AGENT_STORYBOARD_SHOT_NOT_FOUND` / `AGENT_GENERATION_NOT_FOUND` / `AGENT_SKILL_NOT_FOUND` / `AGENT_TOOL_NOT_FOUND` | 404 | 对应实体不存在或不属于当前用户 |
-| `AGENT_MODEL_CONFIG_INVALID` / `AGENT_MODEL_API_KEY_REQUIRED` / `AGENT_MESSAGE_EMPTY` / `AGENT_MESSAGE_TOO_LONG` / `AGENT_STORYBOARD_INVALID` / `AGENT_GENERATION_PROMPT_EMPTY` / `AGENT_GENERATION_CAPABILITY_UNSUPPORTED` / `AGENT_GENERATION_INPUT_INVALID` / `AGENT_GENERATION_PROVIDER_UNSUPPORTED` / `AGENT_TOOL_ARGUMENTS_INVALID` | 400 | 请求参数、模型配置、分镜校验或工具入参不合法 |
+| `AGENT_MODEL_NOT_FOUND` / `AGENT_CONVERSATION_NOT_FOUND` / `AGENT_RUN_NOT_FOUND` / `AGENT_STORYBOARD_SHOT_NOT_FOUND` / `AGENT_GENERATION_NOT_FOUND` / `AGENT_SKILL_NOT_FOUND` / `AGENT_TOOL_NOT_FOUND` / `AGENT_ALERT_CHANNEL_NOT_FOUND` | 404 | 对应实体不存在或不属于当前用户 |
+| `AGENT_MODEL_CONFIG_INVALID` / `AGENT_MODEL_API_KEY_REQUIRED` / `AGENT_MESSAGE_EMPTY` / `AGENT_MESSAGE_TOO_LONG` / `AGENT_STORYBOARD_INVALID` / `AGENT_GENERATION_PROMPT_EMPTY` / `AGENT_GENERATION_CAPABILITY_UNSUPPORTED` / `AGENT_GENERATION_INPUT_INVALID` / `AGENT_GENERATION_PROVIDER_UNSUPPORTED` / `AGENT_TOOL_ARGUMENTS_INVALID` / `AGENT_ALERT_CONFIG_INVALID` | 400 | 请求参数、模型配置、分镜校验、告警配置或工具入参不合法 |
 | `AGENT_MODEL_NOT_CONFIGURED` / `AGENT_CONVERSATION_BUSY` / `AGENT_RUN_INVALID_STATE` / `AGENT_GENERATION_IDEMPOTENCY_CONFLICT` / `AGENT_GENERATION_STATE_CONFLICT` / `AGENT_GENERATION_CANCEL_UNSUPPORTED` / `AGENT_TOOL_CONVERSATION_REQUIRED` / `AGENT_TOOL_INVOCATION_IN_PROGRESS` | 409 | 模型未就绪、会话并发互斥、幂等冲突或状态不允许 |
 | `AGENT_MODEL_PROVIDER_ERROR` / `AGENT_MODEL_RESPONSE_INVALID` / `AGENT_GENERATION_PROVIDER_ERROR` / `AGENT_GENERATION_ARCHIVE_FAILED` | 502 | 上游模型或媒体网关失败、响应非法或结果归档失败 |
 | `AGENT_RUN_START_FAILED` / `AGENT_GENERATION_START_FAILED` | 503 | 工作流投递不可用 |

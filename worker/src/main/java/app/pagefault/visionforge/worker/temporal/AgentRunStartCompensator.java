@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +19,9 @@ import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentRunWorkflow;
 import app.pagefault.visionforge.agent.temporal.composition.VideoCompositionWorkflow;
 import app.pagefault.visionforge.agent.temporal.generation.MediaGenerationWorkflow;
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.worker.config.WorkerProperties;
 
 import io.temporal.client.WorkflowClient;
@@ -43,6 +48,7 @@ public class AgentRunStartCompensator {
     private final CompositionTaskService compositionTaskService;
     private final WorkerProperties properties;
     private final String taskQueue;
+    private final AlertPublisher alertPublisher;
 
     public AgentRunStartCompensator(
             WorkflowClient workflowClient,
@@ -51,12 +57,50 @@ public class AgentRunStartCompensator {
             CompositionTaskService compositionTaskService,
             WorkerProperties properties,
             @Value("${visionforge.temporal.task-queue}") String taskQueue) {
+        this(
+                workflowClient,
+                agentRunService,
+                generationTaskService,
+                compositionTaskService,
+                properties,
+                taskQueue,
+                AlertPublisher.NOOP);
+    }
+
+    @Autowired
+    public AgentRunStartCompensator(
+            WorkflowClient workflowClient,
+            AgentRunService agentRunService,
+            GenerationTaskService generationTaskService,
+            CompositionTaskService compositionTaskService,
+            WorkerProperties properties,
+            @Value("${visionforge.temporal.task-queue}") String taskQueue,
+            ObjectProvider<AlertPublisher> alertPublisherProvider) {
+        this(
+                workflowClient,
+                agentRunService,
+                generationTaskService,
+                compositionTaskService,
+                properties,
+                taskQueue,
+                alertPublisherProvider.getIfAvailable(() -> AlertPublisher.NOOP));
+    }
+
+    AgentRunStartCompensator(
+            WorkflowClient workflowClient,
+            AgentRunService agentRunService,
+            GenerationTaskService generationTaskService,
+            CompositionTaskService compositionTaskService,
+            WorkerProperties properties,
+            String taskQueue,
+            AlertPublisher alertPublisher) {
         this.workflowClient = workflowClient;
         this.agentRunService = agentRunService;
         this.generationTaskService = generationTaskService;
         this.compositionTaskService = compositionTaskService;
         this.properties = properties;
         this.taskQueue = taskQueue;
+        this.alertPublisher = alertPublisher == null ? AlertPublisher.NOOP : alertPublisher;
     }
 
     @Scheduled(
@@ -107,6 +151,7 @@ public class AgentRunStartCompensator {
                     request.getAttempts() + 1,
                     exception);
             agentRunService.recordWorkflowStartFailure(request, message, config.maxAttempts());
+            notifyIfExhausted("AGENT_RUN", request, message, config.maxAttempts());
         }
     }
 
@@ -133,6 +178,7 @@ public class AgentRunStartCompensator {
                     exception);
             generationTaskService.recordWorkflowStartFailure(
                     request, message, config.maxAttempts());
+            notifyIfExhausted("MEDIA_GENERATION", request, message, config.maxAttempts());
         }
     }
 
@@ -159,6 +205,21 @@ public class AgentRunStartCompensator {
                     exception);
             compositionTaskService.recordWorkflowStartFailure(
                     request, message, config.maxAttempts());
+            notifyIfExhausted("VIDEO_COMPOSITION", request, message, config.maxAttempts());
+        }
+    }
+
+    private void notifyIfExhausted(
+            String type, WorkflowStartRequest request, String errorMessage, int maxAttempts) {
+        if (request.getAttempts() >= Math.max(maxAttempts, 1)) {
+            alertPublisher.publish(AlertEvent.of(
+                    AlertEvent.EVENT_WORKFLOW_START_EXHAUSTED,
+                    AlertSeverity.CRITICAL,
+                    "visionforge-worker",
+                    "Temporal 工作流启动补偿已耗尽 (" + type + ")",
+                    "Workflow " + request.getWorkflowId() + " 经 " + request.getAttempts()
+                            + " 次补偿仍未能启动: " + errorMessage,
+                    request.getWorkflowId()));
         }
     }
 

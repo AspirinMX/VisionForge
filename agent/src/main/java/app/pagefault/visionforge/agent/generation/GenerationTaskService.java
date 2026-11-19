@@ -43,6 +43,9 @@ import app.pagefault.visionforge.asset.media.Asset;
 import app.pagefault.visionforge.asset.media.AssetKind;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.billing.credit.CreditService;
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -83,6 +86,11 @@ public class GenerationTaskService {
     private final ObjectMapper objectMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
+    private volatile AlertPublisher alertPublisher = AlertPublisher.NOOP;
+
+    public void setAlertPublisher(AlertPublisher alertPublisher) {
+        this.alertPublisher = alertPublisher == null ? AlertPublisher.NOOP : alertPublisher;
+    }
 
     @Transactional
     public GenerationSubmission submit(UUID userId, SubmitGenerationCommand command) {
@@ -444,6 +452,13 @@ public class GenerationTaskService {
             task.setStateVersion(task.getStateVersion() + 1);
             task.setUpdatedAt(clock.instant());
             taskMapper.updateById(task);
+            alertPublisher.publish(AlertEvent.of(
+                    AlertEvent.EVENT_GENERATION_ARCHIVE_FAILED,
+                    AlertSeverity.CRITICAL,
+                    "media-generation",
+                    "媒体生成结果归档失败 (ARCHIVE_FAILED)",
+                    truncate(exception.getMessage()),
+                    taskId.toString()));
             throw exception;
         }
     }
@@ -706,6 +721,13 @@ public class GenerationTaskService {
         task.setCompletedAt(now);
         taskMapper.updateById(task);
         creditService.release(task.getUserId(), creditBusinessKey(taskId));
+        alertPublisher.publish(AlertEvent.of(
+                AlertEvent.EVENT_MEDIA_PROVIDER_ERROR,
+                AlertSeverity.WARNING,
+                "media-generation",
+                "媒体生成任务失败",
+                truncate(errorMessage),
+                taskId.toString()));
     }
 
     @Transactional
@@ -758,6 +780,13 @@ public class GenerationTaskService {
         task.setUpdatedAt(now);
         task.setCompletedAt(now);
         taskMapper.updateById(task);
+        alertPublisher.publish(AlertEvent.of(
+                AlertEvent.EVENT_BILLING_PENDING_RECONCILIATION,
+                AlertSeverity.CRITICAL,
+                "media-generation",
+                "生成任务进入人工对账状态 (PENDING_RECONCILIATION)",
+                truncate(errorMessage),
+                taskId.toString()));
     }
 
     public List<WorkflowStartRequest> pendingStartRequests(int limit) {

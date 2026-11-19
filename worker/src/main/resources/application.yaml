@@ -72,6 +72,16 @@ visionforge:
     username: ${NACOS_USERNAME:nacos}
     password: ${NACOS_PASSWORD:}
     timeout-ms: ${NACOS_TIMEOUT_MS:5000}
+  alert:
+    enabled: ${ALERT_ENABLED:true}
+    webhook-allow-private-network: ${ALERT_WEBHOOK_ALLOW_PRIVATE_NETWORK:false}
+    mail:
+      host: ${ALERT_MAIL_HOST:}
+      port: ${ALERT_MAIL_PORT:587}
+      username: ${ALERT_MAIL_USERNAME:}
+      password: ${ALERT_MAIL_PASSWORD:}
+      from: ${ALERT_MAIL_FROM:}
+      ssl-enabled: ${ALERT_MAIL_SSL:true}
 
 logging:
   pattern:

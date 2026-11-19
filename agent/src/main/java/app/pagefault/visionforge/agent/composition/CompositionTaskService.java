@@ -34,6 +34,9 @@ import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 import app.pagefault.visionforge.asset.media.Asset;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.asset.media.AssetStatus;
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -59,6 +62,11 @@ public class CompositionTaskService {
     private final ObjectMapper objectMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
+    private volatile AlertPublisher alertPublisher = AlertPublisher.NOOP;
+
+    public void setAlertPublisher(AlertPublisher alertPublisher) {
+        this.alertPublisher = alertPublisher == null ? AlertPublisher.NOOP : alertPublisher;
+    }
 
     @Transactional
     public CompositionSubmission submit(UUID userId, SubmitCompositionCommand command) {
@@ -324,6 +332,13 @@ public class CompositionTaskService {
         task.setCompletedAt(now);
         task.setUpdatedAt(now);
         taskMapper.updateById(task);
+        alertPublisher.publish(AlertEvent.of(
+                AlertEvent.EVENT_COMPOSITION_FAILED,
+                AlertSeverity.WARNING,
+                "video-composition",
+                "视频合成任务失败",
+                truncate(errorMessage),
+                taskId.toString()));
     }
 
     public boolean cancelled(UUID taskId) {

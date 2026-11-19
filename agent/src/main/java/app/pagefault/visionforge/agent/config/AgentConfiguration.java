@@ -8,11 +8,20 @@ import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
+
+import app.pagefault.visionforge.agent.alert.AlertChannelMapper;
+import app.pagefault.visionforge.agent.alert.AlertChannelService;
+import app.pagefault.visionforge.agent.alert.AlertDeliveryMapper;
+import app.pagefault.visionforge.agent.alert.AlertDispatchService;
+import app.pagefault.visionforge.agent.alert.AlertProperties;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 
 import app.pagefault.visionforge.agent.assetlink.ConversationFileAssetResolver;
 import app.pagefault.visionforge.agent.composition.CompositionTaskMapper;
@@ -70,6 +79,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @MapperScan(basePackages = "app.pagefault.visionforge.agent", annotationClass = Mapper.class)
+@EnableConfigurationProperties(AlertProperties.class)
 public class AgentConfiguration {
 
     @Bean
@@ -214,8 +224,9 @@ public class AgentConfiguration {
             SkillRegistry skillRegistry,
             ObjectMapper objectMapper,
             IdGenerator idGenerator,
-            Clock clock) {
-        return new AgentRunService(
+            Clock clock,
+            ObjectProvider<AlertPublisher> alertPublisherProvider) {
+        AgentRunService service = new AgentRunService(
                 agentRunMapper,
                 modelInvocationRecorder,
                 agentRunTurnMapper,
@@ -231,6 +242,8 @@ public class AgentConfiguration {
                 objectMapper,
                 idGenerator,
                 clock);
+        service.setAlertPublisher(alertPublisherProvider.getIfAvailable(() -> AlertPublisher.NOOP));
+        return service;
     }
 
     @Bean
@@ -281,8 +294,9 @@ public class AgentConfiguration {
             MediaProviderRegistry mediaProviderRegistry,
             ObjectMapper objectMapper,
             IdGenerator idGenerator,
-            Clock clock) {
-        return new GenerationTaskService(
+            Clock clock,
+            ObjectProvider<AlertPublisher> alertPublisherProvider) {
+        GenerationTaskService service = new GenerationTaskService(
                 generationTaskMapper,
                 generationAttemptMapper,
                 generationInputMapper,
@@ -298,6 +312,50 @@ public class AgentConfiguration {
                 objectMapper,
                 idGenerator,
                 clock);
+        service.setAlertPublisher(alertPublisherProvider.getIfAvailable(() -> AlertPublisher.NOOP));
+        return service;
+    }
+
+    @Bean
+    public AlertChannelService alertChannelService(
+            AlertChannelMapper channelMapper,
+            AlertDeliveryMapper deliveryMapper,
+            ApiKeyCipher apiKeyCipher,
+            IdGenerator idGenerator,
+            Clock clock,
+            AlertProperties alertProperties,
+            ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider) {
+        return new AlertChannelService(
+                channelMapper,
+                deliveryMapper,
+                apiKeyCipher,
+                idGenerator,
+                clock,
+                alertProperties,
+                runtimeConfigProvider.getIfAvailable());
+    }
+
+    @Bean(destroyMethod = "close")
+    public AlertDispatchService alertDispatchService(
+            AlertChannelMapper channelMapper,
+            AlertDeliveryMapper deliveryMapper,
+            AlertChannelService alertChannelService,
+            ApiKeyCipher apiKeyCipher,
+            IdGenerator idGenerator,
+            Clock clock,
+            ObjectMapper objectMapper,
+            AlertProperties alertProperties,
+            ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider) {
+        return new AlertDispatchService(
+                channelMapper,
+                deliveryMapper,
+                alertChannelService,
+                apiKeyCipher,
+                idGenerator,
+                clock,
+                objectMapper,
+                alertProperties,
+                runtimeConfigProvider.getIfAvailable());
     }
 
     @Bean

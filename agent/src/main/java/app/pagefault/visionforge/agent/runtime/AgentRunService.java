@@ -42,6 +42,9 @@ import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
 import app.pagefault.visionforge.agent.tool.ToolResult;
 import app.pagefault.visionforge.asset.media.AssetDownloadTicket;
 import app.pagefault.visionforge.asset.media.AssetService;
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -80,6 +83,11 @@ public class AgentRunService {
     private final ObjectMapper objectMapper;
     private final IdGenerator idGenerator;
     private final Clock clock;
+    private volatile AlertPublisher alertPublisher = AlertPublisher.NOOP;
+
+    public void setAlertPublisher(AlertPublisher alertPublisher) {
+        this.alertPublisher = alertPublisher == null ? AlertPublisher.NOOP : alertPublisher;
+    }
 
     public AgentRun getForUser(UUID userId, UUID runId) {
         AgentRun run = runId == null ? null : agentRunMapper.selectById(runId);
@@ -454,6 +462,13 @@ public class AgentRunService {
         run.setErrorMessage(truncate(errorMessage));
         run.setCompletedAt(clock.instant());
         agentRunMapper.updateById(run);
+        alertPublisher.publish(AlertEvent.of(
+                AlertEvent.EVENT_MODEL_PROVIDER_ERROR,
+                AlertSeverity.WARNING,
+                "agent-run",
+                "AgentRun 执行失败",
+                errorMessage == null ? "未知执行异常" : truncate(errorMessage),
+                runId.toString()));
         return true;
     }
 

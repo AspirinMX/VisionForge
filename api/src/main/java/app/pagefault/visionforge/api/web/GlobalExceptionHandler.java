@@ -3,6 +3,7 @@ package app.pagefault.visionforge.api.web;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -14,6 +15,9 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import app.pagefault.visionforge.common.alert.AlertEvent;
+import app.pagefault.visionforge.common.alert.AlertPublisher;
+import app.pagefault.visionforge.common.alert.AlertSeverity;
 import app.pagefault.visionforge.common.api.ApiResponse;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
@@ -21,6 +25,7 @@ import app.pagefault.visionforge.common.error.ErrorCode;
 import app.pagefault.visionforge.common.error.SystemException;
 
 import jakarta.validation.ConstraintViolationException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -28,7 +33,10 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final ObjectProvider<AlertPublisher> alertPublisherProvider;
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
@@ -42,6 +50,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleSystemException(SystemException exception) {
         ErrorCode errorCode = exception.getErrorCode();
         log.error("System exception [{}]: {}", errorCode.code(), exception.getMessage(), exception);
+        publishSystemError(errorCode.code(), exception.getMessage());
         return ResponseEntity.status(errorCode.httpStatus()).body(ApiResponse.error(errorCode));
     }
 
@@ -116,7 +125,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
         log.error("Unhandled exception", exception);
+        publishSystemError(CommonErrorCode.INTERNAL_ERROR.code(), exception.getMessage());
         return ResponseEntity.status(CommonErrorCode.INTERNAL_ERROR.httpStatus())
                 .body(ApiResponse.error(CommonErrorCode.INTERNAL_ERROR));
+    }
+
+    private void publishSystemError(String code, String message) {
+        AlertPublisher publisher = alertPublisherProvider.getIfAvailable();
+        if (publisher != null) {
+            publisher.publish(AlertEvent.of(
+                    AlertEvent.EVENT_SYSTEM_INTERNAL_ERROR,
+                    AlertSeverity.CRITICAL,
+                    "visionforge-api",
+                    "API 未捕获系统异常 (" + code + ")",
+                    message == null || message.isBlank() ? code : message,
+                    code));
+        }
     }
 }

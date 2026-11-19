@@ -1,10 +1,10 @@
 # VisionForge 核心设计细节
 
-本文档阐述 VisionForge 的关键领域设计决策，涵盖数据库 Schema 演进（`V1`–`V17`）、生成任务四轴生命周期与额度账本、本地上下文压缩与无状态推理重放、结构化分镜 Schema v1、FFmpeg 合成流水线，以及前端工作台与管理后台的设计架构。
+本文档阐述 VisionForge 的关键领域设计决策，涵盖数据库 Schema 演进（`V1`–`V18`）、生成任务四轴生命周期与额度账本、本地上下文压缩与无状态推理重放、结构化分镜 Schema v1、FFmpeg 合成流水线，以及前端工作台与管理后台的设计架构。
 
 ---
 
-## 1. 数据库 Schema 演进与核心实体关系（Flyway `V1`–`V17`）
+## 1. 数据库 Schema 演进与核心实体关系（Flyway `V1`–`V18`）
 
 所有业务迁移脚本由 `database/src/main/resources/db/migration/` 统一管理，全部主键采用应用侧生成的 **UUIDv7**（`common.id.UuidV7Generator`，48-bit 毫秒时间戳 + `version=7`、`variant=2`），全部时间字段使用 PostgreSQL `TIMESTAMPTZ` 存储 UTC 时间。
 
@@ -23,6 +23,7 @@
 | `V15` | 新增 `generation_task` 分镜关联列（`shot_id`、`storyboard_file_id`、`storyboard_version`）、工具 `WAITING` 状态与成片表 `composition_task` / `composition_input` |
 | `V16` | 新增 `conversation.deleted_at` 软删除列与活跃会话索引，扩展 `agent_run.status` 允许 `CANCELLED` |
 | `V17` | 扩充 `credit_ledger`（支持 `ADJUST` / `REDEEM` 与 `remark`），创建 `credit_redemption_code` / `credit_redemption_record` 兑换码体系 |
+| `V18` | 创建邮件与 Webhook 告警通道表 `alert_channel`（HMAC 密钥加密存储）与投递流水表 `alert_delivery` |
 
 ### 1.2 核心约束摘要
 

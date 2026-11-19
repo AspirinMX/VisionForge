@@ -145,6 +145,8 @@ pnpm --dir frontend dev
 | `NACOS_ENABLED` | `false`（prod Compose 默认 `true`） | 启用 Nacos 配置中心拉取与长轮询热监听 |
 | `NACOS_SERVER_ADDR` / `NACOS_GROUP` | `127.0.0.1:8848` / `VISIONFORGE_GROUP` | Nacos 地址与配置分组 |
 | `NACOS_AUTH_ENABLE` / `NACOS_AUTH_TOKEN` | `true` / 开发 Base64 默认值 | Nacos standalone 认证与密钥配置 |
+| `ALERT_ENABLED` / `ALERT_MAIL_*` | `true` / 空（端口默认 `587`） | 全局告警开关、SMTP 主机/端口/发件人与密码（非密钥项亦可在 Nacos `visionforge-alert.json` 热更新） |
+| `ALERT_WEBHOOK_ALLOW_PRIVATE_NETWORK` | `false` | 是否允许 Webhook 指向内网/回环地址（默认拦截以防 SSRF） |
 
 ---
 
