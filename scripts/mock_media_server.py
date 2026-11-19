@@ -16,6 +16,7 @@ Options:
     --poll-count             polls before a task succeeds (default 2)
     --slow-poll-count        polls for prompts containing [mock:slow] (default 4)
     --video-file             use an existing MP4 instead of generating one
+    --video-duration         default mock MP4 duration in seconds (default 5)
     --ffmpeg-path            path to ffmpeg executable or bin directory (env: FFMPEG_PATH)
     --cert / --key           serve HTTPS with the given certificate
     --api-key                require this bearer token (default: accept any)
@@ -31,6 +32,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
 import re
 import shutil
@@ -45,6 +47,9 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+DEFAULT_VIDEO_DURATION = 5
+MAX_VIDEO_DURATION = 60
+
 TASKS: dict[str, dict] = {}
 MEDIA: dict[str, tuple[str, bytes]] = {}
 PNG_CACHE: dict[tuple[int, int, int], bytes] = {}
@@ -55,6 +60,9 @@ CONFIG = {
     "api_key": None,
     "poll_count": 2,
     "slow_poll_count": 4,
+    "video_duration": DEFAULT_VIDEO_DURATION,
+    "ffmpeg": None,
+    "custom_video": False,
 }
 
 
@@ -134,7 +142,7 @@ def save_media(content_type: str, data: bytes, suffix: str) -> str:
     return public_url(name)
 
 
-def new_task(kind: str, prompt: str, model: str) -> str:
+def new_task(kind: str, prompt: str, model: str, duration: int | None = None) -> str:
     task_id = f"{'cgt' if kind == 'ark-video' else 'task'}-{uuid.uuid4().hex[:12]}"
     with LOCK:
         TASKS[task_id] = {
@@ -142,6 +150,7 @@ def new_task(kind: str, prompt: str, model: str) -> str:
             "kind": kind,
             "prompt": prompt,
             "model": model,
+            "duration": duration if duration is not None else CONFIG["video_duration"],
             "polls": 0,
             "created": time.time(),
         }
@@ -245,18 +254,22 @@ def resolve_ffmpeg(ffmpeg_path: str | None = None) -> tuple[str | None, str]:
     return shutil.which(expanded), expanded
 
 
-def prepare_video(path: str | None, ffmpeg_path: str | None = None) -> bytes | None:
-    if path:
-        with open(path, "rb") as handle:
-            return handle.read()
-    ffmpeg, candidate = resolve_ffmpeg(ffmpeg_path)
-    if not ffmpeg:
-        detail = f" (checked '{candidate}')" if candidate != "ffmpeg" else ""
-        print(
-            f"[mock] ffmpeg not found{detail}; set --ffmpeg-path, FFMPEG_PATH, "
-            "PATH, or pass --video-file; video endpoints will return 503"
-        )
-        return None
+def parse_duration(value: object, default: int | None = None) -> int:
+    fallback = max(
+        1, min(int(default or CONFIG["video_duration"]), MAX_VIDEO_DURATION)
+    )
+    if value is None or isinstance(value, bool):
+        return fallback
+    try:
+        seconds = float(str(value).strip())
+    except ValueError:
+        return fallback
+    if not math.isfinite(seconds) or seconds <= 0:
+        return fallback
+    return max(1, min(int(math.ceil(seconds)), MAX_VIDEO_DURATION))
+
+
+def render_video(ffmpeg: str, duration: int) -> bytes | None:
     with tempfile.TemporaryDirectory(prefix="visionforge-mock-") as tmpdir:
         output = os.path.join(tmpdir, "mock.mp4")
         command = [
@@ -269,7 +282,7 @@ def prepare_video(path: str | None, ffmpeg_path: str | None = None) -> bytes | N
             "-i",
             "testsrc=size=640x360:rate=24",
             "-t",
-            "2",
+            str(duration),
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -283,6 +296,45 @@ def prepare_video(path: str | None, ffmpeg_path: str | None = None) -> bytes | N
         except (OSError, subprocess.CalledProcessError) as exc:
             print(f"[mock] could not generate the test video with '{ffmpeg}': {exc}")
             return None
+
+
+def ensure_video_url(duration: int) -> str:
+    if CONFIG["custom_video"] or not CONFIG["ffmpeg"]:
+        return public_url("mock.mp4")
+    seconds = parse_duration(duration)
+    name = f"mock-{seconds}s.mp4"
+    with LOCK:
+        if name in MEDIA:
+            return public_url(name)
+    data = render_video(str(CONFIG["ffmpeg"]), seconds)
+    if not data:
+        return public_url("mock.mp4")
+    with LOCK:
+        MEDIA.setdefault(name, ("video/mp4", data))
+    return public_url(name)
+
+
+def prepare_video(
+    path: str | None,
+    ffmpeg_path: str | None = None,
+    duration: int | None = None,
+) -> bytes | None:
+    if path:
+        with open(path, "rb") as handle:
+            CONFIG["custom_video"] = True
+            CONFIG["ffmpeg"] = None
+            return handle.read()
+    CONFIG["custom_video"] = False
+    ffmpeg, candidate = resolve_ffmpeg(ffmpeg_path)
+    CONFIG["ffmpeg"] = ffmpeg
+    if not ffmpeg:
+        detail = f" (checked '{candidate}')" if candidate != "ffmpeg" else ""
+        print(
+            f"[mock] ffmpeg not found{detail}; set --ffmpeg-path, FFMPEG_PATH, "
+            "PATH, or pass --video-file; video endpoints will return 503"
+        )
+        return None
+    return render_video(ffmpeg, parse_duration(duration))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -492,7 +544,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self._video_ready():
             return self._video_unavailable()
         prompt = ark_text(request.get("content"))
-        task_id = new_task("ark-video", prompt, str(request.get("model", "")))
+        duration = parse_duration(request.get("duration"))
+        task_id = new_task(
+            "ark-video", prompt, str(request.get("model", "")), duration
+        )
         self._json(200, {"id": task_id, "model": request.get("model", "mock-seedance")})
 
     def _ark_video_query(self, task_id: str) -> None:
@@ -500,13 +555,14 @@ class Handler(BaseHTTPRequestHandler):
         if task is None or task["kind"] != "ark-video":
             return self._error(404, "NotFound", f"unknown task {task_id}")
         status = task_status(task)
+        duration = task.get("duration") or CONFIG["video_duration"]
         payload: dict[str, object] = {
             "id": task_id,
             "model": task["model"] or "mock-seedance",
             "status": status,
             "created_at": int(task["created"]),
             "updated_at": int(time.time()),
-            "duration": 5,
+            "duration": duration,
             "framespersecond": 24,
             "ratio": "16:9",
             "resolution": "720p",
@@ -516,7 +572,7 @@ class Handler(BaseHTTPRequestHandler):
         }
         if status == "succeeded":
             if "[mock:empty]" not in task["prompt"]:
-                payload["content"] = {"video_url": public_url("mock.mp4")}
+                payload["content"] = {"video_url": ensure_video_url(duration)}
             payload["usage"] = {"completion_tokens": 1000, "total_tokens": 1000}
         elif status == "failed":
             payload["error"] = {"code": "MockFailure", "message": "mock video failure"}
@@ -564,7 +620,13 @@ class Handler(BaseHTTPRequestHandler):
         prompt = str(value.get(prompt_field, "")) if isinstance(value, dict) else ""
         if not prompt and isinstance(value, dict):
             prompt = dashscope_text(value)
-        task_id = new_task(kind, prompt, str(request.get("model", "")))
+        params = request.get("parameters")
+        duration = (
+            parse_duration(params.get("duration") if isinstance(params, dict) else None)
+            if kind == "ds-video"
+            else None
+        )
+        task_id = new_task(kind, prompt, str(request.get("model", "")), duration)
         self._json(
             200,
             {
@@ -602,13 +664,14 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 usage = {"image_count": 0 if empty else 1}
             else:
+                duration = task.get("duration") or CONFIG["video_duration"]
                 if not empty:
-                    output["video_url"] = public_url("mock.mp4")
+                    output["video_url"] = ensure_video_url(duration)
                 usage = {
                     "video_count": 0 if empty else 1,
-                    "duration": 5.0,
+                    "duration": float(duration),
                     "input_video_duration": 0.0,
-                    "output_video_duration": 5.0,
+                    "output_video_duration": float(duration),
                     "SR": "720",
                     "size": "1280*720",
                 }
@@ -679,6 +742,7 @@ def main() -> None:
     parser.add_argument("--poll-count", type=int, default=2)
     parser.add_argument("--slow-poll-count", type=int, default=4)
     parser.add_argument("--video-file", default=None)
+    parser.add_argument("--video-duration", type=int, default=DEFAULT_VIDEO_DURATION)
     parser.add_argument("--ffmpeg-path", default=None)
     parser.add_argument("--cert", default=None)
     parser.add_argument("--key", default=None)
@@ -688,10 +752,17 @@ def main() -> None:
     CONFIG["poll_count"] = max(1, args.poll_count)
     CONFIG["slow_poll_count"] = max(CONFIG["poll_count"], args.slow_poll_count)
     CONFIG["api_key"] = args.api_key
+    CONFIG["video_duration"] = max(
+        1, min(args.video_duration, MAX_VIDEO_DURATION)
+    )
 
-    video = prepare_video(args.video_file, args.ffmpeg_path)
+    video = prepare_video(
+        args.video_file, args.ffmpeg_path, CONFIG["video_duration"]
+    )
     if video:
         MEDIA["mock.mp4"] = ("video/mp4", video)
+        if not CONFIG["custom_video"]:
+            MEDIA[f"mock-{CONFIG['video_duration']}s.mp4"] = ("video/mp4", video)
 
     scheme = "https" if args.cert and args.key else "http"
     host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host

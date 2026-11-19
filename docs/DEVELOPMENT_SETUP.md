@@ -12,7 +12,7 @@
 | **Maven** | 仓库内置 `./mvnw`（Maven `>= 3.9`） | 无需单独安装本机 Maven |
 | **Node.js & pnpm** | 推荐 Node `>= 20` 与 `pnpm 12.21.0` | 前端开发、Lint、构建 |
 | **Docker & Compose** | Docker Engine + Compose v2 | 启动 Postgres、Redis、RustFS、Temporal |
-| **FFmpeg / ffprobe** | 建议安装并在 `PATH` 可见 | 本地运行 Worker 视频合成及 2s+ Mock 测试 |
+| **FFmpeg / ffprobe** | 建议安装并在 `PATH` 可见 | 本地运行 Worker 视频合成及 Mock 视频生成 |
 
 ---
 
@@ -164,7 +164,7 @@ python scripts/mock_media_server.py --port 8000
 - `ARK_IMAGES` / `ARK_VIDEO_TASKS`：`http://127.0.0.1:8000`
 - `DASHSCOPE_*`：`http://127.0.0.1:8000/api/v1`
 
-支持提示词故障注入标记：`[mock:fail]`（触发上游失败）、`[mock:slow]`（延迟响应）、`[mock:empty]`（空结果，用于测边界）。默认使用 `--ffmpeg-path`、`FFMPEG_PATH` 或 `PATH` 中的 `ffmpeg`（可传可执行文件路径或 `bin` 目录）生成 2 秒 MP4，也可通过 `--video-file <path>` 直接指定现成样片。
+支持提示词故障注入标记：`[mock:fail]`（触发上游失败）、`[mock:slow]`（延迟响应）、`[mock:empty]`（空结果，用于测边界）。默认按请求 `duration`（未传时默认 5 秒，可通过 `--video-duration` 调整）使用 `--ffmpeg-path`、`FFMPEG_PATH` 或 `PATH` 中的 `ffmpeg` 生成对应时长的 MP4 并缓存；也可通过 `--video-file <path>` 直接指定现成样片。
 
 ---
 
