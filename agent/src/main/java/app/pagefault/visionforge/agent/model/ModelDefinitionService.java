@@ -120,9 +120,8 @@ public class ModelDefinitionService {
         model.setApiKeyCiphertext(apiKeyCipher.encrypt(input.apiKey().trim()));
         model.setModelId(modelId);
         applyCreateReasoning(model, capability, input);
-        model.setReasoningReplay(input.reasoningReplay() == null
-                ? ReasoningReplayPolicy.ENCRYPTED
-                : input.reasoningReplay());
+        model.setReasoningEncrypted(input.reasoningEncrypted() == null
+                || input.reasoningEncrypted());
         model.setCapabilityType(capability);
         model.setProtocol(protocol);
         model.setExecutionMode(executionMode);
@@ -170,8 +169,8 @@ public class ModelDefinitionService {
             }
             model.setApiKeyCiphertext(apiKeyCipher.encrypt(input.apiKey().trim()));
         }
-        if (input.reasoningReplay() != null) {
-            model.setReasoningReplay(input.reasoningReplay());
+        if (input.reasoningEncrypted() != null) {
+            model.setReasoningEncrypted(input.reasoningEncrypted());
         }
         if (input.capabilityType() != null) {
             model.setCapabilityType(input.capabilityType());

@@ -27,6 +27,7 @@
 | `V19` | 标准化模型推理强度为 `NONE/LOW/MEDIUM/HIGH/XHIGH/MAX`（历史 `MINIMAL` 迁移为 `LOW`），并新增 `model_definition.supported_reasoning_efforts` |
 | `V20` | 为运维总览的时间范围聚合补充 `model_invocation`、`credit_ledger`、`agent_run`、`user_account`、`conversation` 索引 |
 | `V21` | 创建业务系统参数表 `system_config`（JSONB 内容、版本号与操作人），替代外部 Nacos 配置中心 |
+| `V22` | 将 `model_definition.reasoning_replay` 三态策略替换为 `reasoning_encrypted` 布尔值（`ENCRYPTED`/`NONE` 映射为 `true`，`ALL` 映射为 `false`） |
 
 ### 1.2 核心约束摘要
 
@@ -77,7 +78,7 @@ VisionForge 不依赖模型服务商的有状态 Thread/Assistant 会话，而�
 
 - **触发公式**：当 `reservedCost + latestSummaryLength + pendingMessagesCost > maxInputTokens * compactThreshold`（默认 `0.8`）且待压缩历史多于 1 条时执行压缩；保留尾部占比约 `compactKeepRatio`（默认 `0.25`）的最近消息原文，将较早连续消息区间压缩为固定六段模板（`[目标]`、`[约束]`、`[已确认]`、`[已否决]`、`[待解决]`、`[产物]`），最大输出 `1024` tokens（`CONTEXT_SUMMARY_MAX_OUTPUT_TOKENS`）。
 - **只增不删 & 失败降级**：压缩结果持久化至 `context_summary`（按 `(conversation_id, epoch)` 递增），原始 `message` 表记录永不删除；若摘要模型调用失败则回退为历史裁剪，绝不阻塞主对话。
-- **推理重放策略（`reasoning_replay`）**：每条 `agent_run_turn` 绑定产生时的 `context_epoch`。因为上游加密 `reasoning` 载体与输入前缀强绑定，**跨过压缩 epoch 后不会重放旧 epoch 的加密推理**；仅当前 epoch 内按模型配置的 `ENCRYPTED` / `ALL` / `NONE` 重放。
+- **推理重放（`reasoning_encrypted`）**：每条 `agent_run_turn` 绑定产生时的 `context_epoch`。因为上游加密 `reasoning` 载体与输入前缀强绑定，**跨过压缩 epoch 后不会重放旧 epoch 的加密推理**。模型声明 `reasoning_encrypted = true` 时只回放带 `encrypted_content` 的推理项；声明为 `false` 时按 `content[].reasoning_text` 回放明文思维链（DeepSeek 等），并且每个 `function_call` 前都会补一个推理项，满足“思考模式 + 工具调用必须回传思维链”的约束。
 
 ### 3.3 过程时间线视图 (`AgentProcessReader`)
 

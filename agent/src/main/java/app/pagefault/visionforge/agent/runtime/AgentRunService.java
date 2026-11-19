@@ -29,7 +29,6 @@ import app.pagefault.visionforge.agent.context.ContextSummary;
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
-import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
 import app.pagefault.visionforge.agent.provider.ModelReasoning;
 import app.pagefault.visionforge.agent.provider.ModelResponse;
@@ -70,6 +69,8 @@ public class AgentRunService {
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
     private static final int IMAGE_CONTEXT_COST = 4_000;
+    private static final ModelInputItem.Reasoning EMPTY_REASONING =
+            new ModelInputItem.Reasoning(null, "", List.of());
 
     /**
      * Images are sent inline as base64 data URLs, so the request body grows by roughly a third.
@@ -243,20 +244,30 @@ public class AgentRunService {
     private List<ModelInputItem> runItems(UUID runId, ModelDefinition model, int currentEpoch) {
         List<ModelInputItem> items = new ArrayList<>();
         for (AgentRunTurn turn : listTurns(runId)) {
-            if (turn.getContextEpoch() == currentEpoch) {
-                for (ModelReasoning reasoning : parseReasoning(turn.getReasoning())) {
-                    if (shouldReplay(model.getReasoningReplay(), reasoning)) {
-                        items.add(new ModelInputItem.Reasoning(
-                                reasoning.encryptedContent(),
-                                reasoning.text(),
-                                reasoning.summary()));
-                    }
-                }
+            List<ModelReasoning> reasoning = turn.getContextEpoch() == currentEpoch
+                    ? parseReasoning(turn.getReasoning()).stream()
+                            .filter(item -> shouldReplay(model.isReasoningEncrypted(), item))
+                            .toList()
+                    : List.of();
+            List<ModelToolCall> calls = parseCalls(turn.getFunctionCalls());
+            boolean hasText =
+                    turn.getAssistantText() != null && !turn.getAssistantText().isBlank();
+
+            for (ModelReasoning item : reasoning) {
+                items.add(reasoningItem(item));
             }
-            if (turn.getAssistantText() != null && !turn.getAssistantText().isBlank()) {
+            if (hasText) {
                 items.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
             }
-            for (ModelToolCall call : parseCalls(turn.getFunctionCalls())) {
+            for (int index = 0; index < calls.size(); index++) {
+                // Plaintext reasoning is merged into the adjacent assistant message, and every
+                // function call is its own assistant message. Later calls therefore need a
+                // placeholder so each tool-call message still carries a reasoning item.
+                if (!model.isReasoningEncrypted()
+                        && (hasText || index > 0 || reasoning.isEmpty())) {
+                    items.add(EMPTY_REASONING);
+                }
+                ModelToolCall call = calls.get(index);
                 items.add(new ModelInputItem.FunctionCall(
                         call.callId(), call.name(), call.arguments()));
                 ToolInvocation invocation = findInvocation(runId, call.callId());
@@ -267,6 +278,11 @@ public class AgentRunService {
             }
         }
         return items;
+    }
+
+    private ModelInputItem.Reasoning reasoningItem(ModelReasoning reasoning) {
+        return new ModelInputItem.Reasoning(
+                reasoning.encryptedContent(), reasoning.text(), reasoning.summary());
     }
 
     private ModelInputItem userMessageItem(AgentRun run, Message message) {
@@ -326,13 +342,14 @@ public class AgentRunService {
         };
     }
 
-    private boolean shouldReplay(ReasoningReplayPolicy policy, ModelReasoning reasoning) {
-        if (policy == null || policy == ReasoningReplayPolicy.NONE) {
-            return false;
-        }
+    /**
+     * Encrypted models can only replay the opaque carrier; plaintext models replay their readable
+     * chain of thought because the provider merges it back into the adjacent assistant message.
+     */
+    private boolean shouldReplay(boolean reasoningEncrypted, ModelReasoning reasoning) {
         boolean encrypted = reasoning.encryptedContent() != null
                 && !reasoning.encryptedContent().isBlank();
-        if (policy == ReasoningReplayPolicy.ENCRYPTED) {
+        if (reasoningEncrypted) {
             return encrypted;
         }
         return encrypted

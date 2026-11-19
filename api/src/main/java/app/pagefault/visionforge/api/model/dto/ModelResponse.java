@@ -10,7 +10,6 @@ import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
 import app.pagefault.visionforge.agent.model.ReasoningEffortCodec;
-import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 public record ModelResponse(
         UUID id,
@@ -19,7 +18,7 @@ public record ModelResponse(
         String modelId,
         ReasoningEffort reasoningEffort,
         List<ReasoningEffort> supportedReasoningEfforts,
-        ReasoningReplayPolicy reasoningReplay,
+        boolean reasoningEncrypted,
         ModelCapabilityType capabilityType,
         MediaProtocol protocol,
         ExecutionMode executionMode,
@@ -41,7 +40,7 @@ public record ModelResponse(
                 model.getModelId(),
                 model.getReasoningEffort(),
                 ReasoningEffortCodec.decode(model.getSupportedReasoningEfforts()),
-                model.getReasoningReplay(),
+                model.isReasoningEncrypted(),
                 model.getCapabilityType(),
                 model.getProtocol(),
                 model.getExecutionMode(),

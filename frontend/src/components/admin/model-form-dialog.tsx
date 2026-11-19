@@ -33,14 +33,12 @@ import type {
   ModelCapabilityType,
   ModelResponse,
   ReasoningEffort,
-  ReasoningReplayPolicy,
 } from "@/lib/api/types";
 import {
   EXECUTION_MODE_LABEL,
   MEDIA_PROTOCOL_LABEL,
   MODEL_CAPABILITY_LABEL,
   REASONING_EFFORT_LABEL,
-  REASONING_REPLAY_LABEL,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -80,12 +78,6 @@ const DEFAULT_SUPPORTED_EFFORTS: ReasoningEffort[] = [
   "HIGH",
 ];
 
-const REASONING_REPLAY_POLICIES: ReasoningReplayPolicy[] = [
-  "ENCRYPTED",
-  "ALL",
-  "NONE",
-];
-
 interface ModelFormState {
   capabilityType: ModelCapabilityType;
   displayName: string;
@@ -96,7 +88,7 @@ interface ModelFormState {
   executionMode: ExecutionMode;
   reasoningEffort: ReasoningEffort | "UNSET";
   supportedReasoningEfforts: ReasoningEffort[];
-  reasoningReplay: ReasoningReplayPolicy;
+  reasoningEncrypted: boolean;
   maxInputTokens: string;
   maxOutputTokens: string;
   priceUnits: string;
@@ -117,7 +109,7 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
       executionMode: "INLINE_RESULT",
       reasoningEffort: "MEDIUM",
       supportedReasoningEfforts: [...DEFAULT_SUPPORTED_EFFORTS],
-      reasoningReplay: "ENCRYPTED",
+      reasoningEncrypted: true,
       maxInputTokens: "32000",
       maxOutputTokens: "4096",
       priceUnits: "0",
@@ -143,7 +135,7 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
     executionMode: model.executionMode,
     reasoningEffort: effort,
     supportedReasoningEfforts: supported,
-    reasoningReplay: model.reasoningReplay,
+    reasoningEncrypted: model.reasoningEncrypted,
     maxInputTokens:
       model.maxInputTokens === null ? "" : String(model.maxInputTokens),
     maxOutputTokens:
@@ -306,7 +298,7 @@ function ModelFormContent({
           : undefined;
       const clearReasoningEffort =
         isChat && form.reasoningEffort === "UNSET" ? true : undefined;
-      const reasoningReplay = isChat ? form.reasoningReplay : undefined;
+      const reasoningEncrypted = isChat ? form.reasoningEncrypted : undefined;
 
       let saved: ModelResponse;
       if (isEdit && editingModel) {
@@ -322,7 +314,7 @@ function ModelFormContent({
           reasoningEffort,
           supportedReasoningEfforts,
           clearReasoningEffort,
-          reasoningReplay,
+          reasoningEncrypted,
           maxInputTokens,
           maxOutputTokens,
           priceUnits,
@@ -343,7 +335,7 @@ function ModelFormContent({
             form.capabilityType === "CHAT" ? "INLINE_RESULT" : form.executionMode,
           reasoningEffort,
           supportedReasoningEfforts,
-          reasoningReplay,
+          reasoningEncrypted,
           maxInputTokens,
           maxOutputTokens,
           priceUnits,
@@ -700,32 +692,24 @@ function ModelFormContent({
                 ) : null}
               </div>
 
-              <div className="space-y-1.5">
-                <Label>推理回放策略</Label>
-                <Select
-                  value={form.reasoningReplay}
-                  items={REASONING_REPLAY_LABEL}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setForm((prev) => ({
-                        ...prev,
-                        reasoningReplay: value as ReasoningReplayPolicy,
-                      }));
-                    }
-                  }}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">思维链加密</p>
+                  <p className="text-xs text-muted-foreground">
+                    开启按 encrypted_content 回放；关闭按明文 reasoning_text 回放（如 DeepSeek）
+                  </p>
+                </div>
+                <Switch
+                  checked={form.reasoningEncrypted}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      reasoningEncrypted: checked,
+                    }))
+                  }
                   disabled={submitting}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REASONING_REPLAY_POLICIES.map((policy) => (
-                      <SelectItem key={policy} value={policy}>
-                        {REASONING_REPLAY_LABEL[policy]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  aria-label="思维链加密"
+                />
               </div>
             </div>
           </div>

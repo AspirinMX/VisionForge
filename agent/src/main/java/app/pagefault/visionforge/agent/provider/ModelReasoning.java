@@ -6,8 +6,8 @@ import java.util.List;
  * One reasoning item returned by the model.
  *
  * <p>{@code encryptedContent} is the opaque stateless carrier used by OpenAI reasoning models;
- * {@code text} is the readable chain of thought returned by other providers. Only the encrypted
- * form is replayed by default — see {@code ReasoningReplayPolicy}.
+ * {@code text} is the readable chain of thought returned by providers such as DeepSeek. Which
+ * form is replayed depends on whether the model route declares its chain of thought as encrypted.
  */
 public record ModelReasoning(
         String encryptedContent,

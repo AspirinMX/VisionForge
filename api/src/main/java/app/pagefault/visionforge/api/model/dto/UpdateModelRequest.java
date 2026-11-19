@@ -6,7 +6,6 @@ import app.pagefault.visionforge.agent.model.ExecutionMode;
 import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
-import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -26,7 +25,7 @@ public record UpdateModelRequest(
         ReasoningEffort reasoningEffort,
         List<ReasoningEffort> supportedReasoningEfforts,
         Boolean clearReasoningEffort,
-        ReasoningReplayPolicy reasoningReplay,
+        Boolean reasoningEncrypted,
         @Min(value = 1, message = "最大输入 Token 必须大于 0")
         @Max(value = 2_000_000, message = "最大输入 Token 不能超过 2000000")
         Integer maxInputTokens,

@@ -14,7 +14,6 @@ import type {
   MediaProtocol,
   ModelCapabilityType,
   ReasoningEffort,
-  ReasoningReplayPolicy,
   RedemptionCodeStatus,
   UserRole,
   UserStatus,
@@ -123,12 +122,6 @@ export const REASONING_EFFORT_LABEL: Record<ReasoningEffort, string> = {
   HIGH: "高",
   XHIGH: "超高",
   MAX: "极高",
-};
-
-export const REASONING_REPLAY_LABEL: Record<ReasoningReplayPolicy, string> = {
-  ENCRYPTED: "仅回放加密推理",
-  ALL: "回放全部推理",
-  NONE: "不回放推理",
 };
 
 export const FILE_KIND_LABEL: Record<ConversationFileKind, string> = {

@@ -25,7 +25,6 @@ import app.pagefault.visionforge.agent.model.ModelConnectivityService;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
-import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
@@ -252,7 +251,7 @@ class LifecycleAndOverviewControllersTest {
         saved.setModelId("gpt-5-pro");
         saved.setReasoningEffort(ReasoningEffort.XHIGH);
         saved.setSupportedReasoningEfforts("[\"NONE\",\"LOW\",\"XHIGH\",\"MAX\"]");
-        saved.setReasoningReplay(ReasoningReplayPolicy.ENCRYPTED);
+        saved.setReasoningEncrypted(true);
         saved.setCapabilityType(ModelCapabilityType.CHAT);
         saved.setProtocol(MediaProtocol.OPENAI_RESPONSES);
         saved.setExecutionMode(ExecutionMode.INLINE_RESULT);

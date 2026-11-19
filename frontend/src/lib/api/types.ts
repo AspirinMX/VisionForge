@@ -113,8 +113,6 @@ export type ReasoningEffort =
   | "HIGH"
   | "XHIGH"
   | "MAX";
-export type ReasoningReplayPolicy = "ENCRYPTED" | "ALL" | "NONE";
-
 export interface ModelResponse {
   id: UUID;
   displayName: string;
@@ -122,7 +120,7 @@ export interface ModelResponse {
   modelId: string;
   reasoningEffort: ReasoningEffort | null;
   supportedReasoningEfforts: ReasoningEffort[];
-  reasoningReplay: ReasoningReplayPolicy;
+  reasoningEncrypted: boolean;
   capabilityType: ModelCapabilityType;
   protocol: MediaProtocol;
   executionMode: ExecutionMode;
@@ -160,7 +158,7 @@ export interface CreateModelRequest {
   modelId: string;
   reasoningEffort?: ReasoningEffort | null;
   supportedReasoningEfforts?: ReasoningEffort[];
-  reasoningReplay?: ReasoningReplayPolicy | null;
+  reasoningEncrypted?: boolean | null;
   maxInputTokens?: number | null;
   maxOutputTokens?: number | null;
   enabled?: boolean;
@@ -180,7 +178,7 @@ export interface UpdateModelRequest {
   reasoningEffort?: ReasoningEffort | null;
   supportedReasoningEfforts?: ReasoningEffort[];
   clearReasoningEffort?: boolean;
-  reasoningReplay?: ReasoningReplayPolicy | null;
+  reasoningEncrypted?: boolean | null;
   maxInputTokens?: number | null;
   maxOutputTokens?: number | null;
   enabled?: boolean;

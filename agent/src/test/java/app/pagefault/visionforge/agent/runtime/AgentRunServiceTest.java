@@ -31,7 +31,6 @@ import app.pagefault.visionforge.agent.conversation.MessageStatus;
 import app.pagefault.visionforge.agent.context.ContextCompactor;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
-import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.provider.ModelInputItem;
 import app.pagefault.visionforge.agent.skill.SkillRegistry;
 import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
@@ -248,6 +247,53 @@ class AgentRunServiceTest {
                 .noneMatch(item -> item instanceof ModelInputItem.Reasoning);
     }
 
+    @Test
+    void replaysPlaintextReasoningBeforeEveryToolCall() {
+        AgentRun run = run(AgentRunStatus.RUNNING);
+        run.setModelDefinitionId(MODEL_ID);
+        Message user = message(MessageRole.USER, "Hello", 1);
+        user.setId(USER_MESSAGE_ID);
+        run.setUserMessageId(USER_MESSAGE_ID);
+
+        AgentRunTurn turn = new AgentRunTurn();
+        turn.setAgentRunId(RUN_ID);
+        turn.setTurnNo(0);
+        turn.setAssistantText("checking");
+        turn.setReasoning(
+                "[{\"encryptedContent\":null,\"text\":\"think\",\"summary\":[]}]");
+        turn.setFunctionCalls("""
+                [{"callId":"call_1","name":"read_item","arguments":"{}"},
+                 {"callId":"call_2","name":"read_item","arguments":"{}"}]
+                """);
+        turn.setContextEpoch(0);
+
+        ToolInvocation invocation = new ToolInvocation();
+        invocation.setStatus(ToolInvocationStatus.SUCCEEDED);
+        invocation.setResult("{\"ok\":true}");
+
+        ModelDefinition model = model();
+        model.setReasoningEncrypted(false);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(modelDefinitionService.get(MODEL_ID)).thenReturn(model);
+        when(messageMapper.selectById(USER_MESSAGE_ID)).thenReturn(user);
+        when(agentRunTurnMapper.selectList(any())).thenReturn(List.of(turn));
+        when(messageMapper.selectList(any())).thenReturn(List.of(user));
+        when(toolInvocationMapper.selectOne(any())).thenReturn(invocation);
+
+        AgentModelInput input = service.buildInput(RUN_ID);
+
+        assertThat(input.input()).containsExactly(
+                new ModelInputItem.Message("user", "Hello"),
+                new ModelInputItem.Reasoning(null, "think", List.of()),
+                new ModelInputItem.Message("assistant", "checking"),
+                new ModelInputItem.Reasoning(null, "", List.of()),
+                new ModelInputItem.FunctionCall("call_1", "read_item", "{}"),
+                new ModelInputItem.FunctionCallOutput("call_1", "{\"ok\":true}"),
+                new ModelInputItem.Reasoning(null, "", List.of()),
+                new ModelInputItem.FunctionCall("call_2", "read_item", "{}"),
+                new ModelInputItem.FunctionCallOutput("call_2", "{\"ok\":true}"));
+    }
+
     private AgentModelInput buildInputWithReasoning(int turnEpoch, int currentEpoch) {
         AgentRun run = run(AgentRunStatus.RUNNING);
         run.setModelDefinitionId(MODEL_ID);
@@ -418,7 +464,7 @@ class AgentRunServiceTest {
         model.setDisplayName("Mock");
         model.setBaseUrl("https://api.example.com/v1");
         model.setModelId("mock-model");
-        model.setReasoningReplay(ReasoningReplayPolicy.ENCRYPTED);
+        model.setReasoningEncrypted(true);
         model.setMaxInputTokens(100_000);
         model.setMaxOutputTokens(100);
         model.setEnabled(true);

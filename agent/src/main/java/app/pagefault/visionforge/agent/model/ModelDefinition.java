@@ -30,7 +30,7 @@ public class ModelDefinition {
 
     private String supportedReasoningEfforts;
 
-    private ReasoningReplayPolicy reasoningReplay;
+    private boolean reasoningEncrypted;
 
     private ModelCapabilityType capabilityType;
 

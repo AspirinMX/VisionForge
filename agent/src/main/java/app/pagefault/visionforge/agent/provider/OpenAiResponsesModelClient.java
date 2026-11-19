@@ -223,11 +223,18 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                 .filter(text -> text != null && !text.isBlank())
                 .map(text -> ResponseReasoningItem.Summary.builder().text(text).build())
                 .toList();
-        return ResponseReasoningItem.builder()
+        ResponseReasoningItem.Builder builder = ResponseReasoningItem.builder()
                 .id(JsonMissing.of())
                 .summary(summaries)
-                .encryptedContent(reasoning.encryptedContent())
-                .build();
+                .encryptedContent(reasoning.encryptedContent());
+        if (reasoning.text() != null) {
+            // Plaintext providers (DeepSeek and compatible gateways) require the chain of thought
+            // back as reasoning_text content; summary and encrypted_content are not supported.
+            builder.content(List.of(ResponseReasoningItem.Content.builder()
+                    .text(reasoning.text())
+                    .build()));
+        }
+        return builder.build();
     }
 
     private EasyInputMessage.Role messageRole(String role) {

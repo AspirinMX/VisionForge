@@ -14,7 +14,7 @@ public record ModelDefinitionInput(
         ReasoningEffort reasoningEffort,
         List<ReasoningEffort> supportedReasoningEfforts,
         Boolean clearReasoningEffort,
-        ReasoningReplayPolicy reasoningReplay,
+        Boolean reasoningEncrypted,
         Integer maxInputTokens,
         Integer maxOutputTokens,
         Boolean enabled,
