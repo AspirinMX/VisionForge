@@ -18,6 +18,18 @@ VisionForge is a full-stack multimodal creative workbench combining a multi-turn
 
 ---
 
+## Demo
+
+![VisionForge studio: the agent turns a reference portrait into a 3-second 480P clip and delivers it to the task center](assets/demo_1.png)
+
+The agent reads the reference portrait, generates a 3-second 480P clip, and returns the delivered video in the conversation's task center:
+
+<video src="https://raw.githubusercontent.com/AspirinMX/VisionForge/main/assets/demo.mp4" controls muted width="100%"></video>
+
+If the inline player is unavailable, [open the generated video](assets/demo.mp4).
+
+---
+
 ## Architecture Overview
 
 ```text
@@ -58,6 +70,7 @@ Spring Boot Temporal Worker (module: worker) ◄──────────�
 | `database/` | Standalone Flyway SQL migrations |
 | `frontend/` | Next.js App Router studio & isolated admin application |
 | `scripts/` | Local development scripts (including media mock server) |
+| `assets/` | README demo screenshot and a generated video example |
 | `docs/` | Technical architecture, API contracts, design details, coding standards, and setup documentation (index in [`docs/README.md`](docs/README.md)) |
 | `pom.xml`, `mvnw`, `mvnw.cmd`, `.mvn/`, `lombok.config` | Root Maven configuration, wrapper, and Java compiler tooling |
 | `Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.frontend`, `docker-compose.yaml`, `docker-compose.prod.yaml`, `.dockerignore`, `.env.example` | Container images, Compose stacks, and environment template |

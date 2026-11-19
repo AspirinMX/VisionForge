@@ -18,6 +18,18 @@ VisionForge 将多轮工具调用 AI Agent 与交互式分镜成片工作区、�
 
 ---
 
+## 演示
+
+![VisionForge 工作台：Agent 以参考人像生成 3 秒 480P 视频并交付到任务中心](assets/demo_1.png)
+
+Agent 读取参考人像，生成 3 秒 480P 视频，并在会话的任务中心返回已交付的成片：
+
+<video src="https://raw.githubusercontent.com/AspirinMX/VisionForge/main/assets/demo.mp4" controls muted width="100%"></video>
+
+如果内联播放器不可用，可[直接打开生成的视频](assets/demo.mp4)。
+
+---
+
 ## 总体架构
 
 ```text
@@ -58,6 +70,7 @@ Spring Boot Temporal Worker（worker 模块）◄──────────�
 | `database/` | 独立执行的 Flyway 数据库迁移脚本 |
 | `frontend/` | Next.js App Router 创作工作台与独立管理后台前端应用 |
 | `scripts/` | 本地开发辅助脚本（含媒体 Mock 服务） |
+| `assets/` | README 演示截图与生成的视频案例 |
 | `docs/` | 架构、设计细节、API 契约、前后端工程规范与开发部署文档（总览见 [`docs/README.md`](docs/README.md)） |
 | `pom.xml`、`mvnw`、`mvnw.cmd`、`.mvn/`、`lombok.config` | Maven 根工程、Wrapper 与 Java 编译工具链配置 |
 | `Dockerfile.api`、`Dockerfile.worker`、`Dockerfile.frontend`、`docker-compose.yaml`、`docker-compose.prod.yaml`、`.dockerignore`、`.env.example` | 容器构建、Compose 编排与环境变量模板 |
