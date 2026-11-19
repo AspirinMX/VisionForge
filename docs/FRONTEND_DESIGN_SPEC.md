@@ -84,7 +84,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
   - 判断标准：内层容器若为了“把一组内容框起来”而重新声明 `rounded-*` 与 `border` / `bg-card` / `shadow-*` 的组合，即视为嵌套卡片。
   - 内部分层必须改用分组标题、间距、`Separator` / `divide-y` 与背景明度阶梯（`bg-muted/20`、`bg-muted/30`）表达，不得再画一张卡片。
   - 唯一例外：`Card` 内表示不同语义的**功能性内容容器**（代码块、表格外框、媒体预览）可使用 `--radius-surface-sm` 级别的浅底与描边，但不得再叠阴影或再套一层卡片；`Dialog` / `DropdownMenu` / `Sheet` 等脱离文档流的浮层本身不计入卡片层级，但其内容区同样不得用分组卡片分区。
-  - 存量待整改位置：`(studio)/account/page.tsx` 额度卡片内的统计块、兑换码面板与流水容器；`components/admin/model-form-sheet.tsx` 的「主对话模型上下文与推理策略」「能力开关组」分组卡片及其内层「支持的推理档位」网格。
+  - 存量待整改位置：`(studio)/account/page.tsx` 额度卡片内的统计块、兑换码面板与流水容器；`components/admin/model-form-dialog.tsx` 的「主对话模型上下文与推理策略」「能力开关组」分组卡片及其内层「支持的推理档位」网格。
 - 禁止在普通列表卡片上叠加重阴影；`shadow-lg` / `shadow-xl` 仅限脱离文档流的浮层（`Dialog`、`DropdownMenu`、悬浮胶囊输入框）。
 
 ### 3.3 排版密度与等宽字体边界
@@ -229,7 +229,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 后续实际改造代码时，建议按以下四个原子阶段推进，每阶段提交前须完成对应自检。截至 2026-11-20，阶段 1、阶段 2 与阶段 4 已主要落地，阶段 3 已覆盖画布开合、镜头重排与媒体淡入：
 
-1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`，并拆除存量多层卡片嵌套（[`(studio)/account/page.tsx`](../frontend/src/app/(studio)/account/page.tsx) 额度面板、[`components/admin/model-form-sheet.tsx`](../frontend/src/components/admin/model-form-sheet.tsx) 编辑抽屉）。
+1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`，并拆除存量多层卡片嵌套（[`(studio)/account/page.tsx`](../frontend/src/app/(studio)/account/page.tsx) 额度面板、[`components/admin/model-form-dialog.tsx`](../frontend/src/components/admin/model-form-dialog.tsx) 编辑对话框）。
 2. **阶段 2（工作台与后端表述去开发化）**：改造分镜、素材、任务、文件面板、灯箱及 [`ToolDisplayFormatter.java`](../agent/src/main/java/app/pagefault/visionforge/agent/runtime/ToolDisplayFormatter.java)，消灭 `vN`、`shot_01`、UUID、FFmpeg 与 JSON 源码直出，统一精简个人中心与后台文案。
 3. **阶段 3（空间连续性动效落地）**：打通工作台分栏开合/全屏过渡、分镜卡片重排 `layout` 动画、骨架屏交叉淡入与灯箱预览流畅转场。
 4. **阶段 4（系统参数配置中心重塑）**：将后台配置迁移到数据库系统参数表，交付结构化「系统参数配置」页面及单位自动换算/高危开关确认（并同步更新 [`DESIGN_DETAILS.md`](DESIGN_DETAILS.md) 与 [`API_REFERENCE.md`](API_REFERENCE.md)）。

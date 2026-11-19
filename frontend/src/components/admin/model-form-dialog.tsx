@@ -17,13 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { adminModelsApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError, type ApiError } from "@/lib/api/errors";
@@ -155,7 +155,7 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
   };
 }
 
-interface ModelFormSheetProps {
+interface ModelFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingModel: ModelResponse | null;
@@ -372,19 +372,19 @@ function ModelFormContent({
 
   return (
     <>
-      <SheetHeader>
-        <SheetTitle>
+      <DialogHeader className="border-b px-6 pt-5 pb-4 pr-12">
+        <DialogTitle>
           {isEdit ? `编辑模型 · ${editingModel?.displayName}` : "新增模型配置"}
-        </SheetTitle>
-        <SheetDescription>
+        </DialogTitle>
+        <DialogDescription>
           按能力类型配置模型接口、单次计费与默认路由。
-        </SheetDescription>
-      </SheetHeader>
+        </DialogDescription>
+      </DialogHeader>
 
       <form
         id="model-config-form"
         onSubmit={handleSubmit}
-        className="space-y-4 px-6 pb-4"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4"
       >
         <ApiErrorAlert error={error} title="模型配置校验失败" />
 
@@ -805,7 +805,7 @@ function ModelFormContent({
         </div>
       </form>
 
-      <SheetFooter className="border-t pt-4">
+      <DialogFooter className="border-t px-6 py-4">
         <Button
           type="button"
           variant="outline"
@@ -826,20 +826,20 @@ function ModelFormContent({
             "创建模型"
           )}
         </Button>
-      </SheetFooter>
+      </DialogFooter>
     </>
   );
 }
 
-export function ModelFormSheet({
+export function ModelFormDialog({
   open,
   onOpenChange,
   editingModel,
   onSaved,
-}: ModelFormSheetProps) {
+}: ModelFormDialogProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         {open ? (
           <ModelFormContent
             key={editingModel?.id ?? "create"}
@@ -848,7 +848,7 @@ export function ModelFormSheet({
             onSaved={onSaved}
           />
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

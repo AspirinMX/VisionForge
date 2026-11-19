@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ModelFormSheet } from "@/components/admin/model-form-sheet";
+import { ModelFormDialog } from "@/components/admin/model-form-dialog";
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { TablePagination } from "@/components/common/table-pagination";
 import { PageHeader } from "@/components/layout/page-header";
@@ -377,7 +377,7 @@ function ModelsAdminContent() {
         </div>
       </div>
 
-      <ModelFormSheet
+      <ModelFormDialog
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         editingModel={editingModel}
