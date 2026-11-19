@@ -2,18 +2,40 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ClapperboardIcon,
   ListTodoIcon,
   MessageSquareIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
+  Trash2Icon,
   WalletIcon,
 } from "lucide-react";
 
 import { SidebarUserMenu } from "@/components/layout/sidebar-user-menu";
 import { useConversations } from "@/components/providers/conversations-provider";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +47,7 @@ import {
   SidebarInput,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
@@ -33,6 +56,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { notifyApiError, notifyError, notifySuccess } from "@/lib/api/feedback";
 import type { ConversationResponse } from "@/lib/api/types";
 
 interface ConversationBucket {
@@ -78,9 +102,26 @@ function groupConversations(
 
 function AppSidebarContent() {
   const pathname = usePathname();
-  const { conversations, loading } = useConversations();
+  const router = useRouter();
+  const {
+    conversations,
+    loading,
+    error,
+    refresh,
+    renameConversation,
+    deleteConversation,
+  } = useConversations();
   const { isMobile, setOpenMobile } = useSidebar();
   const [search, setSearch] = useState("");
+  const [renameTarget, setRenameTarget] = useState<ConversationResponse | null>(
+    null
+  );
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ConversationResponse | null>(
+    null
+  );
+  const [deleting, setDeleting] = useState(false);
 
   const buckets = useMemo(
     () => groupConversations(conversations, search),
@@ -90,6 +131,51 @@ function AppSidebarContent() {
   const closeMobileIfNeeded = () => {
     if (isMobile) {
       setOpenMobile(false);
+    }
+  };
+
+  const handleConfirmRename = async () => {
+    if (!renameTarget || renaming) {
+      return;
+    }
+    const trimmed = renameTitle.trim();
+    if (!trimmed) {
+      notifyError("会话标题不能为空");
+      return;
+    }
+    if (trimmed.length > 200) {
+      notifyError("会话标题最多 200 个字符");
+      return;
+    }
+    setRenaming(true);
+    try {
+      await renameConversation(renameTarget.id, trimmed);
+      setRenameTarget(null);
+      notifySuccess("会话已重命名");
+    } catch (err) {
+      notifyApiError(err, "重命名会话失败");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deleting) {
+      return;
+    }
+    setDeleting(true);
+    const targetId = deleteTarget.id;
+    try {
+      await deleteConversation(targetId);
+      setDeleteTarget(null);
+      notifySuccess("会话已删除");
+      if (pathname === `/conversations/${targetId}`) {
+        router.replace("/conversations");
+      }
+    } catch (err) {
+      notifyApiError(err, "删除会话失败");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -131,7 +217,7 @@ function AppSidebarContent() {
       </SidebarHeader>
 
       <SidebarContent>
-        {loading ? (
+        {loading && conversations.length === 0 ? (
           <SidebarGroup>
             <SidebarGroupLabel>会话历史</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -141,6 +227,27 @@ function AppSidebarContent() {
                 <SidebarMenuSkeleton showIcon />
                 <SidebarMenuSkeleton showIcon />
               </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : error && conversations.length === 0 ? (
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel>会话历史</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5 text-xs">
+                <p className="text-destructive">加载会话列表失败</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {error.message}
+                </p>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={refresh}
+                >
+                  <RefreshCwIcon />
+                  <span>重试加载</span>
+                </Button>
+              </div>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : buckets.length === 0 ? (
@@ -174,6 +281,37 @@ function AppSidebarContent() {
                           <MessageSquareIcon />
                           <span>{conversation.title}</span>
                         </SidebarMenuButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <SidebarMenuAction
+                                showOnHover
+                                aria-label="会话操作"
+                              />
+                            }
+                          >
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="right" align="start">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setRenameTarget(conversation);
+                                setRenameTitle(conversation.title);
+                              }}
+                            >
+                              <PencilIcon />
+                              <span>重命名</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteTarget(conversation)}
+                            >
+                              <Trash2Icon />
+                              <span>删除会话</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </SidebarMenuItem>
                     );
                   })}
@@ -183,6 +321,92 @@ function AppSidebarContent() {
           ))
         )}
       </SidebarContent>
+
+      <Dialog
+        open={Boolean(renameTarget)}
+        onOpenChange={(open) => {
+          if (!open && !renaming) {
+            setRenameTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>重命名会话</DialogTitle>
+            <DialogDescription>
+              修改当前创作会话在侧边栏和工作区中显示的标题。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-1">
+            <Label htmlFor="rename-conversation-input">会话标题</Label>
+            <Input
+              id="rename-conversation-input"
+              maxLength={200}
+              value={renameTitle}
+              onChange={(event) => setRenameTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleConfirmRename();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={renaming}
+              onClick={() => setRenameTarget(null)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={renaming || !renameTitle.trim()}
+              onClick={() => void handleConfirmRename()}
+            >
+              {renaming ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>删除会话</DialogTitle>
+            <DialogDescription>
+              确定删除「{deleteTarget?.title}」？若会话仍有执行中的 AI
+              轮次，需先停止后再删除。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeleteTarget(null)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void handleConfirmDelete()}
+            >
+              {deleting ? "删除中..." : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SidebarFooter>
         <SidebarSeparator />

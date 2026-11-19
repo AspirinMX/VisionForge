@@ -20,6 +20,11 @@ interface ConversationsContextValue {
   error: ApiError | null;
   refresh: () => void;
   createConversation: (title?: string) => Promise<ConversationResponse>;
+  renameConversation: (
+    id: UUID,
+    title: string
+  ) => Promise<ConversationResponse>;
+  deleteConversation: (id: UUID) => Promise<void>;
   upsertConversation: (conversation: ConversationResponse) => void;
   getById: (id: UUID) => ConversationResponse | undefined;
 }
@@ -70,6 +75,23 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     [upsertConversation]
   );
 
+  const renameConversation = useCallback(
+    async (id: UUID, title: string) => {
+      const updated = await conversationsApi.rename(id, { title });
+      upsertConversation(updated);
+      return updated;
+    },
+    [upsertConversation]
+  );
+
+  const deleteConversation = useCallback(
+    async (id: UUID) => {
+      await conversationsApi.delete(id);
+      mutate((prev) => (prev ?? []).filter((item) => item.id !== id));
+    },
+    [mutate]
+  );
+
   const getById = useCallback(
     (id: UUID) => conversations.find((item) => item.id === id),
     [conversations]
@@ -82,6 +104,8 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       error,
       refresh: reload,
       createConversation,
+      renameConversation,
+      deleteConversation,
       upsertConversation,
       getById,
     }),
@@ -91,6 +115,8 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       error,
       reload,
       createConversation,
+      renameConversation,
+      deleteConversation,
       upsertConversation,
       getById,
     ]

@@ -55,9 +55,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { conversationsApi } from "@/lib/api/endpoints";
+import { agentRunsApi, conversationsApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError, type ApiError } from "@/lib/api/errors";
-import { copyToClipboard, notifyError, notifyInfo } from "@/lib/api/feedback";
+import {
+  copyToClipboard,
+  notifyApiError,
+  notifyError,
+  notifyInfo,
+  notifySuccess,
+} from "@/lib/api/feedback";
 import type {
   AgentRunProcessResponse,
   AgentStreamEvent,
@@ -263,6 +269,7 @@ export function ChatPane() {
   const [attachedAssetIds, setAttachedAssetIds] = useState<UUID[]>([]);
   const [liveStream, setLiveStream] = useState<LiveStreamState | null>(null);
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
+  const [stoppingRun, setStoppingRun] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<UUID | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
@@ -431,12 +438,41 @@ export function ChatPane() {
     void submitTurn(trimmed, assetsToSend);
   };
 
-  const handleStopStream = () => {
+  const handleStopStream = async () => {
+    if (stoppingRun) {
+      return;
+    }
+    const targetRunId = liveStream?.runId ?? activeRun?.id ?? null;
     abortControllerRef.current?.abort();
     setLiveStream(null);
     submittingRef.current = false;
-    notifyInfo("已中断前端流式接收；后台任务状态将自动同步");
-    void refreshSilent();
+
+    if (!targetRunId) {
+      notifyInfo("已停止本地流式接收");
+      void refreshSilent();
+      return;
+    }
+
+    setStoppingRun(true);
+    try {
+      await agentRunsApi.cancel(targetRunId);
+      setTrackedActiveRun(null);
+      notifySuccess("已停止当前 AI 轮次");
+      await refreshSilent();
+      refreshSidebar();
+    } catch (err) {
+      const apiErr = normalizeUnknownError(err, "停止对话轮次失败");
+      if (apiErr.status === 409) {
+        setTrackedActiveRun(null);
+        notifyInfo("当前轮次刚已完成，正在刷新结果");
+        await refreshSilent();
+        refreshSidebar();
+      } else {
+        notifyApiError(err, "停止对话轮次失败");
+      }
+    } finally {
+      setStoppingRun(false);
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -913,13 +949,14 @@ export function ChatPane() {
               className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm shadow-none focus-visible:ring-0"
             />
 
-            {liveStream ? (
+            {liveStream || activeRun ? (
               <Button
                 type="button"
                 variant="secondary"
                 size="icon"
-                onClick={handleStopStream}
-                aria-label="停止接收"
+                disabled={stoppingRun}
+                onClick={() => void handleStopStream()}
+                aria-label="停止生成"
                 className="mb-0.5 shrink-0 rounded-full"
               >
                 <SquareIcon className="size-3.5" />
@@ -928,7 +965,7 @@ export function ChatPane() {
               <Button
                 type="button"
                 size="icon"
-                disabled={!prompt.trim() || uploading || Boolean(activeRun)}
+                disabled={!prompt.trim() || uploading}
                 onClick={handleSend}
                 aria-label="发送消息"
                 className="mb-0.5 shrink-0 rounded-full"

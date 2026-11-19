@@ -45,6 +45,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAsyncData } from "@/hooks/use-async-data";
 import { assetsApi, filesApi } from "@/lib/api/endpoints";
 import { normalizeUnknownError } from "@/lib/api/errors";
@@ -72,6 +77,13 @@ const TEXT_FILE_KINDS: ConversationFileKind[] = [
   "STORYBOARD",
   "OTHER",
 ];
+
+const FILE_TITLE_MAX_LENGTH = 200;
+const FILE_CONTENT_MAX_BYTES = 1024 * 1024;
+
+function getUtf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
 
 interface FileDraft {
   baseVersion: number;
@@ -200,6 +212,9 @@ export function FilesPanel() {
   const [createTitle, setCreateTitle] = useState("分场剧本.md");
   const [createContent, setCreateContent] = useState(DEFAULT_SCRIPT_TEMPLATE);
   const [creating, setCreating] = useState(false);
+  const [pendingSwitchFileId, setPendingSwitchFileId] = useState<UUID | null>(
+    null
+  );
 
   // Version History Sheet
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -227,9 +242,44 @@ export function FilesPanel() {
 
   const displayTitle = activeDraft?.title ?? activeFile?.title ?? "";
   const displayContent = activeDraft?.content ?? activeVersion?.content ?? "";
+  const isActiveFileDirty = Boolean(
+    activeFile &&
+      activeDraft &&
+      (activeDraft.title !== activeFile.title ||
+        activeDraft.content !== (activeVersion?.content ?? ""))
+  );
+  const editContentBytes = useMemo(
+    () => getUtf8ByteLength(displayContent),
+    [displayContent]
+  );
+  const createContentBytes = useMemo(
+    () => getUtf8ByteLength(createContent),
+    [createContent]
+  );
+  const isEditInvalid =
+    !displayTitle.trim() ||
+    displayTitle.trim().length > FILE_TITLE_MAX_LENGTH ||
+    !displayContent.trim() ||
+    editContentBytes > FILE_CONTENT_MAX_BYTES;
+  const isCreateInvalid =
+    !createTitle.trim() ||
+    createTitle.trim().length > FILE_TITLE_MAX_LENGTH ||
+    !createContent.trim() ||
+    createContentBytes > FILE_CONTENT_MAX_BYTES;
 
   const setEditing = (fileId: UUID, next: boolean) => {
     setEditModeByFile((prev) => ({ ...prev, [fileId]: next }));
+  };
+
+  const handleSelectFile = (nextFileId: UUID) => {
+    if (activeFile && nextFileId === activeFile.id) {
+      return;
+    }
+    if (activeFile && isEditing && isActiveFileDirty) {
+      setPendingSwitchFileId(nextFileId);
+      return;
+    }
+    setSelectedFileId(nextFileId);
   };
 
   const updateDraft = (patch: Partial<FileDraft>) => {
@@ -267,15 +317,24 @@ export function FilesPanel() {
     title: string,
     content: string
   ) => {
+    const trimmedTitle = title.trim() || targetFile.title;
+    if (trimmedTitle.length > FILE_TITLE_MAX_LENGTH) {
+      notifyError(`文件标题不能超过 ${FILE_TITLE_MAX_LENGTH} 个字符`);
+      return;
+    }
     if (!content.trim()) {
       notifyError("文件内容不能为空");
+      return;
+    }
+    if (getUtf8ByteLength(content) > FILE_CONTENT_MAX_BYTES) {
+      notifyError("文件内容不能超过 1 MB");
       return;
     }
     setSaving(true);
     try {
       await filesApi.update(conversationId, targetFile.id, {
         baseVersion,
-        title: title.trim() || targetFile.title,
+        title: trimmedTitle,
         content,
       });
       discardDraft(targetFile.id);
@@ -316,6 +375,14 @@ export function FilesPanel() {
     const title = createTitle.trim();
     if (!title || !createContent.trim()) {
       notifyError("请填写文件名称和内容");
+      return;
+    }
+    if (title.length > FILE_TITLE_MAX_LENGTH) {
+      notifyError(`文件标题不能超过 ${FILE_TITLE_MAX_LENGTH} 个字符`);
+      return;
+    }
+    if (getUtf8ByteLength(createContent) > FILE_CONTENT_MAX_BYTES) {
+      notifyError("文件内容不能超过 1 MB");
       return;
     }
     setCreating(true);
@@ -458,31 +525,45 @@ export function FilesPanel() {
                 const selected = activeFile?.id === file.id;
                 const hasUnsaved = Boolean(draftsByFile[file.id]);
                 return (
-                  <button
-                    key={file.id}
-                    type="button"
-                    onClick={() => setSelectedFileId(file.id)}
-                    className={cn(
-                      "flex w-full flex-col gap-1 rounded-xl px-2.5 py-2 text-left transition-colors",
-                      selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/50"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <span className="truncate text-xs font-medium">
-                        {file.title}
-                      </span>
-                      {hasUnsaved ? (
-                        <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>{FILE_KIND_LABEL[file.kind]}</span>
-                      <span>·</span>
-                      <span className="font-mono tabular-nums">
-                        v{file.currentVersion}
-                      </span>
-                    </div>
-                  </button>
+                  <Tooltip key={file.id}>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          onClick={() => handleSelectFile(file.id)}
+                          title={file.title}
+                          className={cn(
+                            "flex w-full flex-col gap-1 rounded-xl px-2.5 py-2 text-left transition-colors",
+                            selected
+                              ? "bg-accent text-accent-foreground"
+                              : "hover:bg-muted/50"
+                          )}
+                        />
+                      }
+                    >
+                      <div className="flex w-full items-center justify-between gap-1.5">
+                        <span className="truncate text-xs font-medium">
+                          {file.title}
+                        </span>
+                        {hasUnsaved ? (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full bg-primary"
+                            aria-label="未保存修改"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span>{FILE_KIND_LABEL[file.kind]}</span>
+                        <span>·</span>
+                        <span className="font-mono tabular-nums">
+                          v{file.currentVersion}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <span>{file.title}</span>
+                    </TooltipContent>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -561,7 +642,7 @@ export function FilesPanel() {
                         <Button
                           type="button"
                           size="xs"
-                          disabled={saving}
+                          disabled={saving || isEditInvalid}
                           onClick={() =>
                             void handleSave(
                               activeFile,
@@ -601,18 +682,42 @@ export function FilesPanel() {
                 ) : isEditing ? (
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">
-                        文件标题
-                      </Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs text-muted-foreground">
+                          文件标题
+                        </Label>
+                        <span
+                          className={cn(
+                            "text-[11px] tabular-nums",
+                            displayTitle.trim().length > FILE_TITLE_MAX_LENGTH
+                              ? "text-destructive"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {displayTitle.trim().length}/{FILE_TITLE_MAX_LENGTH}
+                        </span>
+                      </div>
                       <Input
                         value={displayTitle}
                         onChange={(e) => updateDraft({ title: e.target.value })}
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">
-                        正文内容
-                      </Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs text-muted-foreground">
+                          正文内容
+                        </Label>
+                        <span
+                          className={cn(
+                            "text-[11px] tabular-nums",
+                            editContentBytes > FILE_CONTENT_MAX_BYTES
+                              ? "text-destructive"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {formatBytes(editContentBytes)} / 1.0 MB
+                        </span>
+                      </div>
                       <Textarea
                         rows={18}
                         value={displayContent}
@@ -725,7 +830,19 @@ export function FilesPanel() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="create-file-title">文件标题</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="create-file-title">文件标题</Label>
+                  <span
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      createTitle.trim().length > FILE_TITLE_MAX_LENGTH
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {createTitle.trim().length}/{FILE_TITLE_MAX_LENGTH}
+                  </span>
+                </div>
                 <Input
                   id="create-file-title"
                   value={createTitle}
@@ -735,7 +852,19 @@ export function FilesPanel() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="create-file-content">文件内容</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="create-file-content">文件内容</Label>
+                <span
+                  className={cn(
+                    "text-[11px] tabular-nums",
+                    createContentBytes > FILE_CONTENT_MAX_BYTES
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {formatBytes(createContentBytes)} / 1.0 MB
+                </span>
+              </div>
               <Textarea
                 id="create-file-content"
                 rows={12}
@@ -756,7 +885,7 @@ export function FilesPanel() {
             </Button>
             <Button
               type="button"
-              disabled={creating}
+              disabled={creating || isCreateInvalid}
               onClick={() => void handleCreateFile()}
             >
               {creating ? "创建中..." : "确认创建"}
@@ -901,24 +1030,68 @@ export function FilesPanel() {
             >
               采用最新版本
             </Button>
+              <Button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  if (!conflict) {
+                    return;
+                  }
+                  const target = conflict;
+                  setConflict(null);
+                  await handleSave(
+                    target.file,
+                    target.file.currentVersion,
+                    target.localTitle,
+                    target.localContent
+                  );
+                }}
+              >
+                基于 v{conflict?.file.currentVersion} 覆盖提交
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+      {/* Unsaved Draft Switch Guard */}
+      <Dialog
+        open={Boolean(pendingSwitchFileId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingSwitchFileId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>有未保存的修改</DialogTitle>
+            <DialogDescription>
+              当前文件「{activeFile?.title}」存在未保存的编辑内容。是否放弃更改并切换到另一个文件？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
             <Button
               type="button"
-              disabled={saving}
-              onClick={async () => {
-                if (!conflict) {
-                  return;
+              variant="outline"
+              onClick={() => setPendingSwitchFileId(null)}
+            >
+              继续编辑
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (activeFile) {
+                  discardDraft(activeFile.id);
+                  setEditing(activeFile.id, false);
                 }
-                const target = conflict;
-                setConflict(null);
-                await handleSave(
-                  target.file,
-                  target.file.currentVersion,
-                  target.localTitle,
-                  target.localContent
-                );
+                if (pendingSwitchFileId) {
+                  setSelectedFileId(pendingSwitchFileId);
+                }
+                setPendingSwitchFileId(null);
               }}
             >
-              基于 v{conflict?.file.currentVersion} 覆盖提交
+              放弃修改并切换
             </Button>
           </DialogFooter>
         </DialogContent>

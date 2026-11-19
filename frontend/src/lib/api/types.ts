@@ -62,6 +62,34 @@ export interface ChangeRoleRequest {
   role: UserRole;
 }
 
+export interface UpdateProfileRequest {
+  displayName: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface AdminCreateUserRequest {
+  email: string;
+  password: string;
+  displayName: string;
+  role: UserRole;
+}
+
+export interface ChangeUserStatusRequest {
+  status: UserStatus;
+}
+
+export interface AdminResetPasswordRequest {
+  newPassword: string;
+}
+
+export interface RevokeSessionsResponse {
+  revokedCount: number;
+}
+
 // --- Models ---
 
 export type ModelCapabilityType = "CHAT" | "IMAGE" | "VIDEO";
@@ -168,6 +196,10 @@ export interface CreateConversationRequest {
   title?: string;
 }
 
+export interface RenameConversationRequest {
+  title: string;
+}
+
 export type MessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 export type MessageStatus = "COMPLETED" | "FAILED";
 export type ToolInvocationStatus =
@@ -226,7 +258,12 @@ export interface AgentTurnResponse {
   userMessageId: UUID;
 }
 
-export type AgentRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+export type AgentRunStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED";
 
 export interface AgentRunResponse {
   id: UUID;
@@ -529,7 +566,13 @@ export interface CompositionTaskResponse {
 
 // --- Account & Credit ---
 
-export type CreditLedgerEntryType = "GRANT" | "RESERVE" | "SETTLE" | "RELEASE";
+export type CreditLedgerEntryType =
+  | "GRANT"
+  | "RESERVE"
+  | "SETTLE"
+  | "RELEASE"
+  | "ADJUST"
+  | "REDEEM";
 
 export interface CreditSummaryResponse {
   balanceUnits: number;
@@ -546,7 +589,20 @@ export interface CreditLedgerEntryResponse {
   taskId: UUID | null;
   taskType: GenerationType | null;
   taskStatus: GenerationStatus | null;
+  remark: string | null;
   createdAt: string;
+}
+
+export interface RedeemCodeRequest {
+  code: string;
+}
+
+export interface RedeemCodeResponse {
+  ledgerId: UUID;
+  code: string;
+  amountUnits: number;
+  newBalanceUnits: number;
+  newAvailableUnits: number;
 }
 
 export interface CreditUsageBucket {
@@ -656,4 +712,174 @@ export interface StoryboardDocument {
   language?: string | null;
   style?: string | null;
   shots: StoryboardShot[];
+}
+
+// --- Admin Overview, Model Probe, Billing, Audit, Nacos Config & Alerts ---
+
+export interface ModelTestResponse {
+  ok: boolean;
+  reachable: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  protocol: string;
+  detail: string;
+}
+
+export interface AdminOverviewResponse {
+  totalUsers: number;
+  activeUsers: number;
+  disabledUsers: number;
+  activeConversations: number;
+  enabledModels: number;
+  activeAgentRuns: number;
+  failedAgentRuns: number;
+  activeGenerationTasks: number;
+  archiveFailedGenerationTasks: number;
+  pendingReconciliationTasks: number;
+  activeCompositionTasks: number;
+  failedCompositionTasks: number;
+  failedWorkflowStarts: number;
+}
+
+export type RedemptionCodeStatus = "ACTIVE" | "VOIDED";
+
+export interface AdjustCreditRequest {
+  deltaUnits: number;
+  idempotencyKey: string;
+  remark?: string;
+}
+
+export interface AdminCreditLedgerResponse {
+  id: UUID;
+  userId: UUID;
+  reservationId: UUID | null;
+  entryType: CreditLedgerEntryType;
+  amountUnits: number;
+  businessKey: string | null;
+  remark: string | null;
+  createdAt: string;
+}
+
+export interface RedemptionCodeResponse {
+  id: UUID;
+  batchName: string;
+  code: string;
+  amountUnits: number;
+  maxUses: number;
+  redeemedCount: number;
+  perUserLimit: number;
+  status: RedemptionCodeStatus;
+  expiresAt: string | null;
+  createdBy: UUID;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateRedemptionBatchRequest {
+  batchName: string;
+  count: number;
+  amountUnits: number;
+  maxUsesPerCode: number;
+  perUserLimit: number;
+  customPrefix?: string;
+  expiresAt?: string | null;
+}
+
+export interface AuditLogResponse {
+  id: UUID;
+  type: string;
+  subType: string;
+  bizNo: string | null;
+  operatorId: UUID | null;
+  operatorName: string | null;
+  success: boolean;
+  detail: string | null;
+  extra: string | null;
+  traceId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface ConfigEntryResponse {
+  dataId: string;
+  group: string;
+  namespace: string;
+  description: string;
+  content: string;
+  defaultContent: string;
+  md5: string;
+  source: string;
+  nacosEnabled: boolean;
+  nacosConnected: boolean;
+  updatedAt: string | null;
+}
+
+export interface ConfigCenterOverviewResponse {
+  enabled: boolean;
+  connected: boolean;
+  serverAddr: string;
+  namespace: string;
+  group: string;
+  source: string;
+  entries: ConfigEntryResponse[];
+}
+
+export interface UpdateConfigRequest {
+  content: string;
+}
+
+export type AlertChannelType = "EMAIL" | "WEBHOOK";
+export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL";
+export type AlertDeliveryStatus = "SENT" | "FAILED" | "SKIPPED";
+
+export interface AlertChannelResponse {
+  id: UUID;
+  name: string;
+  channelType: AlertChannelType;
+  target: string;
+  secretConfigured: boolean;
+  subscribedEvents: string;
+  minSeverity: AlertSeverity;
+  enabled: boolean;
+  createdBy: UUID | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertDeliveryResponse {
+  id: UUID;
+  channelId: UUID;
+  channelName: string;
+  channelType: AlertChannelType;
+  eventType: string;
+  severity: AlertSeverity;
+  title: string;
+  summary: string | null;
+  bizNo: string | null;
+  traceId: string | null;
+  status: AlertDeliveryStatus;
+  httpStatus: number | null;
+  attemptCount: number;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface CreateAlertChannelRequest {
+  name: string;
+  channelType: AlertChannelType;
+  target: string;
+  secret?: string;
+  subscribedEvents?: string;
+  minSeverity?: AlertSeverity;
+  enabled?: boolean;
+}
+
+export interface UpdateAlertChannelRequest {
+  name?: string;
+  channelType?: AlertChannelType;
+  target?: string;
+  secret?: string;
+  subscribedEvents?: string;
+  minSeverity?: AlertSeverity;
+  enabled?: boolean;
 }

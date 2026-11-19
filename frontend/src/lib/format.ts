@@ -1,7 +1,11 @@
 import type {
   AgentRunStatus,
+  AlertChannelType,
+  AlertDeliveryStatus,
+  AlertSeverity,
   CompositionStatus,
   ConversationFileKind,
+  CreditLedgerEntryType,
   ExecutionMode,
   GenerationBillingStatus,
   GenerationCancelStatus,
@@ -11,6 +15,7 @@ import type {
   ModelCapabilityType,
   ReasoningEffort,
   ReasoningReplayPolicy,
+  RedemptionCodeStatus,
   UserRole,
   UserStatus,
 } from "@/lib/api/types";
@@ -139,6 +144,7 @@ export const AGENT_RUN_STATUS_LABEL: Record<AgentRunStatus, string> = {
   RUNNING: "执行中",
   COMPLETED: "已完成",
   FAILED: "执行失败",
+  CANCELLED: "已取消",
 };
 
 export const GENERATION_STATUS_LABEL: Record<GenerationStatus, string> = {
@@ -189,4 +195,44 @@ export const COMPOSITION_STATUS_LABEL: Record<CompositionStatus, string> = {
   SUCCEEDED: "成片已就绪",
   FAILED: "合成失败",
   CANCELLED: "已取消",
+};
+
+export const CREDIT_ENTRY_LABEL: Record<CreditLedgerEntryType, string> = {
+  GRANT: "初始授予",
+  RESERVE: "预占",
+  SETTLE: "结算扣费",
+  RELEASE: "释放预占",
+  ADJUST: "人工调账",
+  REDEEM: "兑换码充值",
+};
+
+export const CREDIT_ENTRY_HINT: Record<CreditLedgerEntryType, string> = {
+  GRANT: "可用余额增加",
+  RESERVE: "冻结，不影响总余额",
+  SETTLE: "总余额与预占同时减少",
+  RELEASE: "仅释放冻结",
+  ADJUST: "管理员人工调账记录",
+  REDEEM: "兑换码激活入账",
+};
+
+export const REDEMPTION_STATUS_LABEL: Record<RedemptionCodeStatus, string> = {
+  ACTIVE: "有效",
+  VOIDED: "已作废",
+};
+
+export const ALERT_CHANNEL_TYPE_LABEL: Record<AlertChannelType, string> = {
+  EMAIL: "邮件 (SMTP)",
+  WEBHOOK: "Webhook",
+};
+
+export const ALERT_SEVERITY_LABEL: Record<AlertSeverity, string> = {
+  INFO: "提示 (INFO)",
+  WARNING: "警告 (WARNING)",
+  CRITICAL: "严重 (CRITICAL)",
+};
+
+export const ALERT_DELIVERY_STATUS_LABEL: Record<AlertDeliveryStatus, string> = {
+  SENT: "已投递",
+  FAILED: "投递失败",
+  SKIPPED: "已跳过",
 };

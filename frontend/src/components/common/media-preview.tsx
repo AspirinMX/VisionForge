@@ -1,21 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { DownloadIcon, ExpandIcon, FileIcon, RefreshCwIcon } from "lucide-react";
+import {
+  CopyIcon,
+  DownloadIcon,
+  ExpandIcon,
+  FileIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncData } from "@/hooks/use-async-data";
-import { notifyApiError } from "@/lib/api/feedback";
+import {
+  copyToClipboard,
+  notifyApiError,
+  notifyError,
+  notifySuccess,
+} from "@/lib/api/feedback";
 import type { UUID } from "@/lib/api/types";
 import { getAssetDownloadUrl } from "@/lib/studio/asset-cache";
 import { cn } from "@/lib/utils";
+
+const MAX_AUTO_PRESIGN_RETRY = 2;
 
 interface AssetMediaPreviewProps {
   assetId: UUID;
@@ -33,6 +47,11 @@ export function AssetMediaPreview({
   allowLightbox = true,
 }: AssetMediaPreviewProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [retryState, setRetryState] = useState<{
+    assetId: UUID;
+    count: number;
+    exhausted: boolean;
+  }>({ assetId, count: 0, exhausted: false });
 
   const { data: url, loading, error, reload } = useAsyncData(
     () => getAssetDownloadUrl(assetId),
@@ -43,6 +62,39 @@ export function AssetMediaPreview({
     }
   );
 
+  const activeRetry =
+    retryState.assetId === assetId
+      ? retryState
+      : { assetId, count: 0, exhausted: false };
+
+  const handleMediaError = () => {
+    if (activeRetry.count >= MAX_AUTO_PRESIGN_RETRY) {
+      setRetryState({ assetId, count: activeRetry.count, exhausted: true });
+      return;
+    }
+    setRetryState({
+      assetId,
+      count: activeRetry.count + 1,
+      exhausted: false,
+    });
+    void getAssetDownloadUrl(assetId, true)
+      .then(() => reload())
+      .catch(() => {
+        setRetryState((prev) =>
+          prev.assetId === assetId
+            ? { ...prev, exhausted: true }
+            : { assetId, count: 1, exhausted: true }
+        );
+      });
+  };
+
+  const handleManualReload = () => {
+    setRetryState({ assetId, count: 0, exhausted: false });
+    void getAssetDownloadUrl(assetId, true)
+      .catch(() => undefined)
+      .finally(() => reload());
+  };
+
   const handleDownload = async () => {
     try {
       const freshUrl = await getAssetDownloadUrl(assetId, true);
@@ -52,11 +104,25 @@ export function AssetMediaPreview({
     }
   };
 
+  const handleCopyUrl = async () => {
+    try {
+      const freshUrl = await getAssetDownloadUrl(assetId, false);
+      const copied = await copyToClipboard(freshUrl);
+      if (copied) {
+        notifySuccess("已复制媒体访问链接");
+      } else {
+        notifyError("当前浏览器不支持剪贴板复制");
+      }
+    } catch (err) {
+      notifyApiError(err, "获取媒体链接失败");
+    }
+  };
+
   if (loading && !url) {
     return <Skeleton className={cn("h-36 w-full rounded-xl", className)} />;
   }
 
-  if (error || !url) {
+  if (error || !url || activeRetry.exhausted) {
     return (
       <div
         className={cn(
@@ -64,8 +130,12 @@ export function AssetMediaPreview({
           className
         )}
       >
-        <span>媒体暂不可预览（URL 未取到或非可播放格式）</span>
-        <Button type="button" variant="ghost" size="xs" onClick={reload}>
+        <span>
+          {activeRetry.exhausted
+            ? "媒体链接刷新后仍无法加载，请手动重试"
+            : "媒体暂不可预览（URL 未取到或非可播放格式）"}
+        </span>
+        <Button type="button" variant="ghost" size="xs" onClick={handleManualReload}>
           <RefreshCwIcon />
           <span>重试加载</span>
         </Button>
@@ -87,13 +157,11 @@ export function AssetMediaPreview({
           <img
             src={url}
             alt={alt}
-            onError={() => {
-              void getAssetDownloadUrl(assetId, true).then(() => reload());
-            }}
+            onError={handleMediaError}
             className="h-full w-full object-cover"
           />
           {allowLightbox ? (
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100">
+            <div className="absolute top-2 right-2 flex gap-1 opacity-100 transition-opacity motion-reduce:transition-none sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
               <Button
                 type="button"
                 size="icon-xs"
@@ -120,16 +188,41 @@ export function AssetMediaPreview({
           <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
             <DialogContent className="sm:max-w-3xl">
               <DialogHeader>
-                <DialogTitle>{alt}</DialogTitle>
+                <DialogTitle className="truncate pr-6">{alt}</DialogTitle>
               </DialogHeader>
-              <div className="flex max-h-[72vh] items-center justify-center overflow-hidden rounded-xl bg-muted/40">
+              <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-xl bg-muted/40">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={url}
                   alt={alt}
-                  className="max-h-[70vh] w-auto object-contain"
+                  onError={handleMediaError}
+                  className="max-h-[68vh] w-auto object-contain"
                 />
               </div>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  资产 ID：{assetId}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleCopyUrl()}
+                  >
+                    <CopyIcon />
+                    <span>复制链接</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleDownload()}
+                  >
+                    <DownloadIcon />
+                    <span>下载原图</span>
+                  </Button>
+                </div>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         ) : null}
@@ -141,7 +234,7 @@ export function AssetMediaPreview({
     return (
       <div
         className={cn(
-          "relative overflow-hidden rounded-xl border bg-black",
+          "group relative overflow-hidden rounded-xl border bg-black",
           className
         )}
       >
@@ -150,11 +243,20 @@ export function AssetMediaPreview({
           controls
           playsInline
           preload="metadata"
-          onError={() => {
-            void getAssetDownloadUrl(assetId, true).then(() => reload());
-          }}
+          onError={handleMediaError}
           className="h-full w-full object-contain"
         />
+        <div className="absolute top-2 right-2 flex gap-1 opacity-100 transition-opacity motion-reduce:transition-none sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="secondary"
+            onClick={() => void handleDownload()}
+            aria-label="下载视频"
+          >
+            <DownloadIcon />
+          </Button>
+        </div>
       </div>
     );
   }

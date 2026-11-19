@@ -4,9 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  DownloadIcon,
   ExternalLinkIcon,
+  KeyRoundIcon,
   LogOutIcon,
+  PencilIcon,
   RefreshCwIcon,
+  TicketIcon,
   WalletIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,36 +29,35 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncData } from "@/hooks/use-async-data";
-import { accountApi } from "@/lib/api/endpoints";
-import { notifyApiError } from "@/lib/api/feedback";
-import type {
-  CreditLedgerEntryResponse,
-  CreditLedgerEntryType,
-} from "@/lib/api/types";
+import { accountApi, authApi } from "@/lib/api/endpoints";
 import {
+  notifyApiError,
+  notifyError,
+  notifySuccess,
+} from "@/lib/api/feedback";
+import type { CreditLedgerEntryResponse } from "@/lib/api/types";
+import {
+  CREDIT_ENTRY_HINT,
+  CREDIT_ENTRY_LABEL,
   formatDateTime,
   GENERATION_BILLING_LABEL,
   GENERATION_STATUS_LABEL,
   USER_ROLE_LABEL,
   USER_STATUS_LABEL,
 } from "@/lib/format";
-
-const CREDIT_ENTRY_LABEL: Record<CreditLedgerEntryType, string> = {
-  GRANT: "初始授予",
-  RESERVE: "预占",
-  SETTLE: "结算扣费",
-  RELEASE: "释放预占",
-};
-
-const CREDIT_ENTRY_HINT: Record<CreditLedgerEntryType, string> = {
-  GRANT: "可用余额增加",
-  RESERVE: "冻结，不影响总余额",
-  SETTLE: "总余额与预占同时减少",
-  RELEASE: "仅释放冻结",
-};
 
 const LEDGER_PAGE_SIZE = 50;
 
@@ -70,6 +73,16 @@ export default function AccountPage() {
 
   const [refreshingUser, setRefreshingUser] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [redeemCodeInput, setRedeemCodeInput] = useState("");
+  const [redeemingCode, setRedeemingCode] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [ledgerGeneration, setLedgerGeneration] = useState(0);
   const [extraLedger, setExtraLedger] = useState<{
     baseKey: string;
@@ -181,6 +194,92 @@ export default function AccountPage() {
     router.replace("/login");
   };
 
+  const handleSaveProfile = async () => {
+    const trimmed = displayNameDraft.trim();
+    if (!trimmed) {
+      notifyError("显示名称不能为空");
+      return;
+    }
+    if (trimmed.length > 100) {
+      notifyError("显示名称最多 100 个字符");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await authApi.updateProfile({ displayName: trimmed });
+      await refreshUser();
+      setProfileDialogOpen(false);
+      notifySuccess("个人资料已更新");
+    } catch (err) {
+      notifyApiError(err, "更新个人资料失败");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      notifyError("请完整填写当前密码和新密码");
+      return;
+    }
+    if (newPassword.length < 12 || newPassword.length > 72) {
+      notifyError("新密码长度必须在 12 到 72 个字符之间");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      notifyError("两次输入的新密码不一致");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await authApi.changePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      notifySuccess("密码已修改，请使用新密码重新登录");
+      await logout();
+      router.replace("/login");
+    } catch (err) {
+      notifyApiError(err, "修改密码失败");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const handleRedeemCode = async () => {
+    const code = redeemCodeInput.trim();
+    if (!code) {
+      notifyError("请输入兑换码");
+      return;
+    }
+    setRedeemingCode(true);
+    try {
+      const result = await accountApi.redeemCode({ code });
+      setRedeemCodeInput("");
+      handleRefreshBilling();
+      notifySuccess(
+        `成功兑换 +${result.amountUnits} 额度`,
+        `当前可用余额：${result.newAvailableUnits}`
+      );
+    } catch (err) {
+      notifyApiError(err, "兑换码无效或已达到限制");
+    } finally {
+      setRedeemingCode(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportingCsv(true);
+    try {
+      const filename = await accountApi.exportLedgerCsv(2000);
+      notifySuccess(`已导出 ${filename}`);
+    } catch (err) {
+      notifyApiError(err, "导出额度流水失败");
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader title="账户与额度" />
@@ -193,20 +292,34 @@ export default function AccountPage() {
                 <CardTitle>个人资料</CardTitle>
                 <CardDescription>当前登录账号信息</CardDescription>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshProfile}
-                disabled={refreshingUser}
-              >
-                <RefreshCwIcon
-                  className={
-                    refreshingUser ? "animate-spin motion-reduce:animate-none" : ""
-                  }
-                />
-                <span>刷新信息</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDisplayNameDraft(user?.displayName ?? "");
+                    setProfileDialogOpen(true);
+                  }}
+                >
+                  <PencilIcon />
+                  <span>修改资料</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshProfile}
+                  disabled={refreshingUser}
+                >
+                  <RefreshCwIcon
+                    className={
+                      refreshingUser ? "animate-spin motion-reduce:animate-none" : ""
+                    }
+                  />
+                  <span>刷新信息</span>
+                </Button>
+              </div>
             </CardHeader>
 
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -322,12 +435,59 @@ export default function AccountPage() {
 
               <Separator />
 
+              <div className="rounded-2xl border bg-muted/20 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1 space-y-1.5">
+                    <Label
+                      htmlFor="redeem-code-input"
+                      className="flex items-center gap-1.5 text-xs font-medium"
+                    >
+                      <TicketIcon className="size-3.5" />
+                      <span>使用兑换码（CDK）充值额度</span>
+                    </Label>
+                    <Input
+                      id="redeem-code-input"
+                      value={redeemCodeInput}
+                      onChange={(e) => setRedeemCodeInput(e.target.value)}
+                      placeholder="输入兑换码，例如 VF-XXXX-XXXX"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          void handleRedeemCode();
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={redeemingCode || !redeemCodeInput.trim()}
+                    onClick={() => void handleRedeemCode()}
+                  >
+                    <TicketIcon />
+                    <span>{redeemingCode ? "兑换中..." : "立即兑换"}</span>
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">消费流水</h3>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    已加载 {allLedgerEntries.length} 条
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      已加载 {allLedgerEntries.length} 条
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      disabled={exportingCsv}
+                      onClick={() => void handleExportCsv()}
+                    >
+                      <DownloadIcon />
+                      <span>{exportingCsv ? "导出中..." : "导出 CSV"}</span>
+                    </Button>
+                  </div>
                 </div>
                 <ApiErrorAlert error={ledgerError} title="读取额度流水失败" />
                 {loadingLedger && !ledger ? (
@@ -362,6 +522,11 @@ export default function AccountPage() {
                             <span className="text-muted-foreground">
                               {CREDIT_ENTRY_HINT[entry.entryType]}
                             </span>
+                            {entry.remark ? (
+                              <span className="text-foreground/80">
+                                · {entry.remark}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-muted-foreground tabular-nums">
                             {entry.taskType ? (
@@ -448,6 +613,65 @@ export default function AccountPage() {
 
           <Card>
             <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRoundIcon className="size-4" />
+                <span>修改密码</span>
+              </CardTitle>
+              <CardDescription>
+                修改登录密码需 12-72 个字符；修改后将吊销所有活跃会话并需重新登录。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="pwd-current">当前密码</Label>
+                <Input
+                  id="pwd-current"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pwd-new">新密码（12-72 位）</Label>
+                <Input
+                  id="pwd-new"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pwd-confirm">确认新密码</Label>
+                <Input
+                  id="pwd-confirm"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </CardContent>
+            <CardFooter className="justify-end border-t pt-4">
+              <Button
+                type="button"
+                disabled={
+                  changingPassword ||
+                  !currentPassword ||
+                  !newPassword ||
+                  !confirmPassword
+                }
+                onClick={() => void handleChangePassword()}
+              >
+                <KeyRoundIcon />
+                <span>{changingPassword ? "提交中..." : "更新密码"}</span>
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>退出登录</CardTitle>
               <CardDescription>
                 退出当前设备上的账号登录状态。
@@ -468,6 +692,41 @@ export default function AccountPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>修改个人资料</DialogTitle>
+            <DialogDescription>更新您的公开显示名称（最多 100 个字符）。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-1">
+            <Label htmlFor="profile-display-name">显示名称</Label>
+            <Input
+              id="profile-display-name"
+              maxLength={100}
+              value={displayNameDraft}
+              onChange={(e) => setDisplayNameDraft(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={savingProfile}
+              onClick={() => setProfileDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={savingProfile || !displayNameDraft.trim()}
+              onClick={() => void handleSaveProfile()}
+            >
+              {savingProfile ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
