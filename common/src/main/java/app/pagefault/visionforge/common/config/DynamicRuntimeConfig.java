@@ -6,11 +6,17 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import app.pagefault.visionforge.common.audit.BizLog;
@@ -25,7 +31,11 @@ import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Holds hot-reloaded dynamic runtime configuration synchronized with Nacos (or local fallback).
+ * Holds hot-reloaded business runtime configuration backed by PostgreSQL.
+ *
+ * <p>Each API or worker instance keeps an in-process snapshot. A lightweight scheduled refresh
+ * compares row versions so configuration published by the admin console reaches every instance
+ * without an external config center.</p>
  */
 @Slf4j
 public class DynamicRuntimeConfig {
@@ -34,6 +44,8 @@ public class DynamicRuntimeConfig {
     public static final String DATA_ID_SECURITY = "visionforge-security.json";
     public static final String DATA_ID_BILLING = "visionforge-billing.json";
     public static final String DATA_ID_ALERT = "visionforge-alert.json";
+
+    private static final String SOURCE = "DATABASE";
 
     private static final List<ConfigSpec> SPECS = List.of(
             new ConfigSpec(
@@ -71,16 +83,19 @@ public class DynamicRuntimeConfig {
                             "smtpSslEnabled", true,
                             "webhookAllowPrivateNetwork", false)));
 
-    private final NacosSettings settings;
-    private final ConfigCenterGateway gateway;
+    private final ConfigStore store;
+    private final long refreshIntervalMs;
     private final Clock clock;
     private final ObjectMapper objectMapper;
     private final Map<String, StoredConfig> rawConfigs = new ConcurrentHashMap<>();
     private final AtomicReference<Map<String, Object>> mergedValues = new AtomicReference<>(Map.of());
+    private final AtomicReference<Map<String, Long>> versions = new AtomicReference<>(Map.of());
+    private final AtomicBoolean connected = new AtomicBoolean(true);
+    private volatile ScheduledExecutorService scheduler;
 
-    public DynamicRuntimeConfig(NacosSettings settings, ConfigCenterGateway gateway, Clock clock) {
-        this.settings = settings;
-        this.gateway = gateway;
+    public DynamicRuntimeConfig(ConfigStore store, long refreshIntervalMs, Clock clock) {
+        this.store = store;
+        this.refreshIntervalMs = refreshIntervalMs;
         this.clock = clock;
         this.objectMapper = JsonMapper.builder()
                 .enable(SerializationFeature.INDENT_OUTPUT)
@@ -90,25 +105,32 @@ public class DynamicRuntimeConfig {
 
     public void init() {
         for (ConfigSpec spec : SPECS) {
-            String remote = gateway.getConfig(spec.dataId());
-            if (remote != null && !remote.isBlank()) {
-                applyUpdate(spec.dataId(), remote, gateway.sourceName());
-            } else {
-                String defaultJson = toPrettyJson(spec.defaults());
-                if (settings.enabled() && gateway.isRemoteActive()) {
-                    gateway.publishConfig(spec.dataId(), defaultJson, "json");
-                }
-                applyUpdate(spec.dataId(), defaultJson, gateway.sourceName());
-            }
-            gateway.addListener(spec.dataId(), updated -> applyUpdate(spec.dataId(), updated, "NACOS_PUSH"));
+            store.ensure(spec.dataId(), toPrettyJson(spec.defaults()));
+        }
+        reloadAll();
+        if (refreshIntervalMs > 0) {
+            scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "dynamic-config-refresh");
+                thread.setDaemon(true);
+                return thread;
+            });
+            scheduler.scheduleWithFixedDelay(
+                    this::refreshIfChanged,
+                    refreshIntervalMs,
+                    refreshIntervalMs,
+                    TimeUnit.MILLISECONDS);
         }
     }
 
     public void close() {
-        gateway.close();
+        ScheduledExecutorService current = scheduler;
+        if (current != null) {
+            current.shutdownNow();
+        }
     }
 
     public List<ConfigEntry> listEntries() {
+        refreshIfChanged();
         List<ConfigEntry> entries = new ArrayList<>(SPECS.size());
         for (ConfigSpec spec : SPECS) {
             entries.add(buildEntry(spec));
@@ -118,12 +140,7 @@ public class DynamicRuntimeConfig {
 
     public ConfigEntry getEntry(String dataId) {
         ConfigSpec spec = requireSpec(dataId);
-        if (settings.enabled() && gateway.isRemoteActive()) {
-            String remote = gateway.getConfig(dataId);
-            if (remote != null && !remote.isBlank()) {
-                applyUpdate(dataId, remote, "NACOS");
-            }
-        }
+        refreshIfChanged();
         return buildEntry(spec);
     }
 
@@ -131,21 +148,14 @@ public class DynamicRuntimeConfig {
             type = "ADMIN_CONFIG",
             subType = "PUBLISH",
             bizNo = "#dataId",
-            success = "管理员发布 Nacos 动态配置 {{#dataId}}",
-            fail = "发布动态配置 {{#dataId}} 失败：{{#errorMessage}}",
+            success = "管理员发布系统参数 {{#dataId}}",
+            fail = "发布系统参数 {{#dataId}} 失败：{{#errorMessage}}",
             sync = true)
-    public ConfigEntry publish(String dataId, String content) {
+    public ConfigEntry publish(UUID updatedBy, String dataId, String content) {
         ConfigSpec spec = requireSpec(dataId);
         String formatted = normalizeAndValidateJson(content);
-        if (settings.enabled()) {
-            boolean published = gateway.publishConfig(dataId, formatted, "json");
-            if (!published) {
-                throw new BusinessException(CommonErrorCode.SERVICE_UNAVAILABLE, "发布配置到 Nacos 失败，请检查 Nacos 状态");
-            }
-        } else {
-            gateway.publishConfig(dataId, formatted, "json");
-        }
-        applyUpdate(dataId, formatted, gateway.sourceName());
+        StoredConfig saved = save(dataId, formatted, updatedBy);
+        applyUpdate(dataId, saved);
         return buildEntry(spec);
     }
 
@@ -153,21 +163,13 @@ public class DynamicRuntimeConfig {
             type = "ADMIN_CONFIG",
             subType = "RESET",
             bizNo = "#dataId",
-            success = "管理员将配置 {{#dataId}} 重置为默认值",
-            fail = "重置配置 {{#dataId}} 失败：{{#errorMessage}}",
+            success = "管理员将系统参数 {{#dataId}} 重置为默认值",
+            fail = "重置系统参数 {{#dataId}} 失败：{{#errorMessage}}",
             sync = true)
-    public ConfigEntry reset(String dataId) {
+    public ConfigEntry reset(UUID updatedBy, String dataId) {
         ConfigSpec spec = requireSpec(dataId);
-        String defaultJson = toPrettyJson(spec.defaults());
-        if (settings.enabled()) {
-            boolean published = gateway.publishConfig(dataId, defaultJson, "json");
-            if (!published) {
-                throw new BusinessException(CommonErrorCode.SERVICE_UNAVAILABLE, "重置 Nacos 配置失败，请检查 Nacos 状态");
-            }
-        } else {
-            gateway.publishConfig(dataId, defaultJson, "json");
-        }
-        applyUpdate(dataId, defaultJson, gateway.sourceName());
+        StoredConfig saved = save(dataId, toPrettyJson(spec.defaults()), updatedBy);
+        applyUpdate(dataId, saved);
         return buildEntry(spec);
     }
 
@@ -244,29 +246,81 @@ public class DynamicRuntimeConfig {
     }
 
     public Status statusSummary() {
-        return new Status(
-                settings.enabled(),
-                gateway.isRemoteActive(),
-                settings.serverAddr(),
-                settings.namespace(),
-                settings.group(),
-                gateway.sourceName());
+        refreshIfChanged();
+        return new Status(true, connected.get(), SOURCE);
+    }
+
+    private StoredConfig save(String dataId, String content, UUID updatedBy) {
+        try {
+            ConfigStore.StoredConfig persisted = store.save(dataId, content, updatedBy);
+            StoredConfig saved = new StoredConfig(
+                    persisted.content(),
+                    md5(persisted.content()),
+                    SOURCE,
+                    persisted.version(),
+                    persisted.updatedAt());
+            Map<String, Long> next = new HashMap<>(versions.get());
+            next.put(dataId, saved.version());
+            versions.set(Map.copyOf(next));
+            return saved;
+        } catch (RuntimeException exception) {
+            log.error("Failed to persist dynamic config dataId={}", dataId, exception);
+            throw new BusinessException(
+                    CommonErrorCode.SERVICE_UNAVAILABLE,
+                    "保存系统参数失败，请稍后重试");
+        }
+    }
+
+    private void refreshIfChanged() {
+        try {
+            Map<String, Long> current = store.versions();
+            if (!current.equals(versions.get())) {
+                reloadAll();
+            }
+            connected.set(true);
+        } catch (RuntimeException exception) {
+            connected.set(false);
+            log.warn("Failed to refresh dynamic config versions: {}", exception.getMessage());
+        }
+    }
+
+    private synchronized void reloadAll() {
+        Map<String, ConfigStore.StoredConfig> rows = store.loadAll();
+        Map<String, Long> nextVersions = new HashMap<>();
+        rows.forEach((dataId, row) -> nextVersions.put(dataId, row.version()));
+        for (ConfigSpec spec : SPECS) {
+            ConfigStore.StoredConfig row = rows.get(spec.dataId());
+            if (row == null) {
+                applyUpdate(spec.dataId(), new StoredConfig(
+                        toPrettyJson(spec.defaults()), md5(toPrettyJson(spec.defaults())),
+                        SOURCE, 0, clock.instant()));
+                nextVersions.put(spec.dataId(), 0L);
+            } else {
+                applyUpdate(spec.dataId(), new StoredConfig(
+                        row.content(), md5(row.content()), SOURCE, row.version(), row.updatedAt()));
+            }
+        }
+        versions.set(Map.copyOf(nextVersions));
+        connected.set(true);
     }
 
     private void seedLocalDefaults() {
         for (ConfigSpec spec : SPECS) {
             String defaultJson = toPrettyJson(spec.defaults());
-            rawConfigs.put(spec.dataId(), new StoredConfig(defaultJson, md5(defaultJson), "DEFAULT", clock.instant()));
+            rawConfigs.put(spec.dataId(), new StoredConfig(
+                    defaultJson, md5(defaultJson), SOURCE, 0, clock.instant()));
         }
         rebuildMergedSnapshot();
     }
 
-    void applyUpdate(String dataId, String content, String source) {
+    private void applyUpdate(String dataId, StoredConfig stored) {
         try {
-            String formatted = normalizeAndValidateJson(content);
-            rawConfigs.put(dataId, new StoredConfig(formatted, md5(formatted), source, clock.instant()));
+            String formatted = normalizeAndValidateJson(stored.content());
+            rawConfigs.put(dataId, new StoredConfig(
+                    formatted, md5(formatted), stored.source(), stored.version(), stored.updatedAt()));
             rebuildMergedSnapshot();
-            log.info("Dynamic config updated: dataId={}, source={}", dataId, source);
+            log.info("Dynamic config updated: dataId={}, source={}, version={}",
+                    dataId, stored.source(), stored.version());
         } catch (RuntimeException exception) {
             log.warn("Ignoring invalid config update for dataId={}: {}", dataId, exception.getMessage());
         }
@@ -296,19 +350,17 @@ public class DynamicRuntimeConfig {
         StoredConfig stored = rawConfigs.get(spec.dataId());
         String content = stored == null ? toPrettyJson(spec.defaults()) : stored.content();
         String md5 = stored == null ? md5(content) : stored.md5();
-        String source = stored == null ? gateway.sourceName() : stored.source();
+        String source = stored == null ? SOURCE : stored.source();
+        long version = stored == null ? 0 : stored.version();
         Instant updatedAt = stored == null ? clock.instant() : stored.updatedAt();
         return new ConfigEntry(
                 spec.dataId(),
-                settings.group(),
-                settings.namespace(),
                 spec.description(),
                 content,
                 toPrettyJson(spec.defaults()),
                 md5,
                 source,
-                settings.enabled(),
-                gateway.isRemoteActive(),
+                version,
                 updatedAt);
     }
 
@@ -418,29 +470,21 @@ public class DynamicRuntimeConfig {
     private record ConfigSpec(String dataId, String description, Map<String, Object> defaults) {
     }
 
-    private record StoredConfig(String content, String md5, String source, Instant updatedAt) {
+    private record StoredConfig(
+            String content, String md5, String source, long version, Instant updatedAt) {
     }
 
     public record ConfigEntry(
             String dataId,
-            String group,
-            String namespace,
             String description,
             String content,
             String defaultContent,
             String md5,
             String source,
-            boolean nacosEnabled,
-            boolean nacosConnected,
+            long version,
             Instant updatedAt) {
     }
 
-    public record Status(
-            boolean enabled,
-            boolean connected,
-            String serverAddr,
-            String namespace,
-            String group,
-            String source) {
+    public record Status(boolean enabled, boolean connected, String source) {
     }
 }

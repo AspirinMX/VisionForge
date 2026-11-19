@@ -64,14 +64,8 @@ visionforge:
       initial-delay-ms: ${WORKER_START_COMPENSATION_INITIAL_DELAY_MS:5000}
       batch-size: ${WORKER_START_COMPENSATION_BATCH_SIZE:20}
       max-attempts: ${WORKER_START_COMPENSATION_MAX_ATTEMPTS:20}
-  nacos:
-    enabled: ${NACOS_ENABLED:false}
-    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-    namespace: ${NACOS_NAMESPACE:public}
-    group: ${NACOS_GROUP:VISIONFORGE_GROUP}
-    username: ${NACOS_USERNAME:nacos}
-    password: ${NACOS_PASSWORD:}
-    timeout-ms: ${NACOS_TIMEOUT_MS:5000}
+  config:
+    refresh-interval-ms: ${CONFIG_REFRESH_INTERVAL_MS:5000}
   alert:
     enabled: ${ALERT_ENABLED:true}
     webhook-allow-private-network: ${ALERT_WEBHOOK_ALLOW_PRIVATE_NETWORK:false}

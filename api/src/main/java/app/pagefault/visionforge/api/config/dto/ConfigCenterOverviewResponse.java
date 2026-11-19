@@ -7,9 +7,6 @@ import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 public record ConfigCenterOverviewResponse(
         boolean enabled,
         boolean connected,
-        String serverAddr,
-        String namespace,
-        String group,
         String source,
         List<ConfigEntryResponse> entries) {
 
@@ -19,9 +16,6 @@ public record ConfigCenterOverviewResponse(
         return new ConfigCenterOverviewResponse(
                 status.enabled(),
                 status.connected(),
-                status.serverAddr(),
-                status.namespace(),
-                status.group(),
                 status.source(),
                 entries.stream().map(ConfigEntryResponse::from).toList());
     }

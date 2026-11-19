@@ -2,6 +2,7 @@ package app.pagefault.visionforge.api.config;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import app.pagefault.visionforge.api.security.SecurityConfiguration;
 import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -27,6 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = AdminConfigController.class)
 @Import(SecurityConfiguration.class)
 class AdminConfigControllerTest {
+
+    private static final UUID ADMIN_ID =
+            UUID.fromString("0193b2c4-7f2a-7c3e-9d10-000000000001");
 
     @Autowired
     private MockMvc mockMvc;
@@ -64,22 +69,20 @@ class AdminConfigControllerTest {
 
         DynamicRuntimeConfig.ConfigEntry entry = new DynamicRuntimeConfig.ConfigEntry(
                 "visionforge-billing.json",
-                "VISIONFORGE_GROUP",
-                "public",
-                "billing",
+                "计费与初始额度策略",
                 "{\"initialCreditUnits\":20000}",
                 "{\"initialCreditUnits\":10000}",
                 "abc123",
-                "NACOS",
-                true,
-                true,
+                "DATABASE",
+                2,
                 Instant.parse("2026-11-19T00:00:00Z"));
         when(dynamicRuntimeConfig.statusSummary()).thenReturn(
-                new DynamicRuntimeConfig.Status(true, true, "127.0.0.1:8848", "public", "VISIONFORGE_GROUP", "NACOS"));
+                new DynamicRuntimeConfig.Status(true, true, "DATABASE"));
         when(dynamicRuntimeConfig.listEntries()).thenReturn(List.of(entry));
-        when(dynamicRuntimeConfig.publish("visionforge-billing.json", "{\"initialCreditUnits\":20000}"))
+        when(dynamicRuntimeConfig.publish(
+                eq(ADMIN_ID), eq("visionforge-billing.json"), eq("{\"initialCreditUnits\":20000}")))
                 .thenReturn(entry);
-        when(dynamicRuntimeConfig.reset("visionforge-billing.json")).thenReturn(entry);
+        when(dynamicRuntimeConfig.reset(ADMIN_ID, "visionforge-billing.json")).thenReturn(entry);
 
         mockMvc.perform(get("/api/v1/admin/configs")
                         .header("Authorization", "Bearer admin-jwt"))
@@ -92,7 +95,7 @@ class AdminConfigControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"{\\\"initialCreditUnits\\\":20000}\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.source").value("NACOS"));
+                .andExpect(jsonPath("$.data.source").value("DATABASE"));
 
         mockMvc.perform(post("/api/v1/admin/configs/visionforge-billing.json/reset")
                         .header("Authorization", "Bearer admin-jwt"))

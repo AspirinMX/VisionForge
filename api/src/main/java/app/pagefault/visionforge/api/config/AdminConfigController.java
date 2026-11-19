@@ -1,6 +1,8 @@
 package app.pagefault.visionforge.api.config;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +17,7 @@ import app.pagefault.visionforge.api.config.dto.UpdateConfigRequest;
 import app.pagefault.visionforge.common.alert.AlertEvent;
 import app.pagefault.visionforge.common.alert.AlertPublisher;
 import app.pagefault.visionforge.common.alert.AlertSeverity;
+import app.pagefault.visionforge.api.identity.AuthenticatedUser;
 import app.pagefault.visionforge.common.api.ApiResponse;
 import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 
@@ -44,8 +47,10 @@ public class AdminConfigController {
     @PutMapping("/{dataId}")
     public ApiResponse<ConfigEntryResponse> publish(
             @PathVariable String dataId,
-            @Valid @RequestBody UpdateConfigRequest request) {
-        DynamicRuntimeConfig.ConfigEntry published = dynamicRuntimeConfig.publish(dataId, request.content());
+            @Valid @RequestBody UpdateConfigRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        DynamicRuntimeConfig.ConfigEntry published = dynamicRuntimeConfig.publish(
+                AuthenticatedUser.id(jwt), dataId, request.content());
         AlertPublisher publisher = alertPublisherProvider.getIfAvailable();
         if (publisher != null) {
             publisher.publish(AlertEvent.of(
@@ -60,7 +65,10 @@ public class AdminConfigController {
     }
 
     @PostMapping("/{dataId}/reset")
-    public ApiResponse<ConfigEntryResponse> reset(@PathVariable String dataId) {
-        return ApiResponse.success(ConfigEntryResponse.from(dynamicRuntimeConfig.reset(dataId)));
+    public ApiResponse<ConfigEntryResponse> reset(
+            @PathVariable String dataId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return ApiResponse.success(ConfigEntryResponse.from(
+                dynamicRuntimeConfig.reset(AuthenticatedUser.id(jwt), dataId)));
     }
 }

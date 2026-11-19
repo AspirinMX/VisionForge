@@ -6,29 +6,21 @@ import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 
 public record ConfigEntryResponse(
         String dataId,
-        String group,
-        String namespace,
         String description,
         String content,
         String defaultContent,
-        String md5,
         String source,
-        boolean nacosEnabled,
-        boolean nacosConnected,
+        long version,
         Instant updatedAt) {
 
     public static ConfigEntryResponse from(DynamicRuntimeConfig.ConfigEntry entry) {
         return new ConfigEntryResponse(
                 entry.dataId(),
-                entry.group(),
-                entry.namespace(),
                 entry.description(),
                 entry.content(),
                 entry.defaultContent(),
-                entry.md5(),
                 entry.source(),
-                entry.nacosEnabled(),
-                entry.nacosConnected(),
+                entry.version(),
                 entry.updatedAt());
     }
 }

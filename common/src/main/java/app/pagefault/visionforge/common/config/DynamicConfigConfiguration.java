@@ -2,42 +2,33 @@ package app.pagefault.visionforge.common.config;
 
 import java.time.Clock;
 
+import javax.sql.DataSource;
+
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Registers Nacos-backed runtime configuration with graceful local fallback when Nacos is disabled.
+ * Registers PostgreSQL-backed runtime configuration with per-instance version refresh.
  */
 @Configuration(proxyBeanMethods = false)
 public class DynamicConfigConfiguration {
 
     @Bean
-    public NacosSettings nacosSettings(
-            @Value("${visionforge.nacos.enabled:false}") boolean enabled,
-            @Value("${visionforge.nacos.server-addr:127.0.0.1:8848}") String serverAddr,
-            @Value("${visionforge.nacos.namespace:public}") String namespace,
-            @Value("${visionforge.nacos.group:VISIONFORGE_GROUP}") String group,
-            @Value("${visionforge.nacos.username:nacos}") String username,
-            @Value("${visionforge.nacos.password:}") String password,
-            @Value("${visionforge.nacos.timeout-ms:5000}") long timeoutMs) {
-        return new NacosSettings(enabled, serverAddr, namespace, group, username, password, timeoutMs);
-    }
-
-    @Bean
-    public ConfigCenterGateway configCenterGateway(NacosSettings settings) {
-        return settings.enabled()
-                ? new NacosConfigGateway(settings)
-                : new LocalConfigGateway();
+    public ConfigStore configStore(DataSource dataSource) {
+        return new JdbcConfigStore(new JdbcTemplate(dataSource));
     }
 
     @Bean(initMethod = "init", destroyMethod = "close")
     public DynamicRuntimeConfig dynamicRuntimeConfig(
-            NacosSettings settings,
-            ConfigCenterGateway configCenterGateway,
+            ConfigStore configStore,
+            @Value("${visionforge.config.refresh-interval-ms:5000}") long refreshIntervalMs,
             ObjectProvider<Clock> clockProvider) {
         return new DynamicRuntimeConfig(
-                settings, configCenterGateway, clockProvider.getIfAvailable(Clock::systemUTC));
+                configStore,
+                refreshIntervalMs,
+                clockProvider.getIfAvailable(Clock::systemUTC));
     }
 }

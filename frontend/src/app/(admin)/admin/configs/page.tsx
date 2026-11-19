@@ -587,7 +587,7 @@ export default function AdminSettingsPage() {
 
           {offline ? (
             <p className="rounded-surface-sm bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              当前处于本地运行配置模式，修改将在服务恢复同步后由后端接管。
+              配置存储暂不可用，当前显示上次加载的参数；恢复后会自动同步。
             </p>
           ) : null}
 

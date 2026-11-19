@@ -1,10 +1,10 @@
 # VisionForge 核心设计细节
 
-本文档阐述 VisionForge 的关键领域设计决策，涵盖数据库 Schema 演进（`V1`–`V19`）、生成任务四轴生命周期与额度账本、本地上下文压缩与无状态推理重放、结构化分镜 Schema v1、FFmpeg 合成流水线，以及前端工作台与管理后台的设计架构。
+本文档阐述 VisionForge 的关键领域设计决策，涵盖数据库 Schema 演进（`V1`–`V21`）、生成任务四轴生命周期与额度账本、本地上下文压缩与无状态推理重放、结构化分镜 Schema v1、FFmpeg 合成流水线，以及前端工作台与管理后台的设计架构。
 
 ---
 
-## 1. 数据库 Schema 演进与核心实体关系（Flyway `V1`–`V19`）
+## 1. 数据库 Schema 演进与核心实体关系（Flyway `V1`–`V21`）
 
 所有业务迁移脚本由 `database/src/main/resources/db/migration/` 统一管理，全部主键采用应用侧生成的 **UUIDv7**（`common.id.UuidV7Generator`，48-bit 毫秒时间戳 + `version=7`、`variant=2`），全部时间字段使用 PostgreSQL `TIMESTAMPTZ` 存储 UTC 时间。
 
@@ -25,6 +25,8 @@
 | `V17` | 扩充 `credit_ledger`（支持 `ADJUST` / `REDEEM` 与 `remark`），创建 `credit_redemption_code` / `credit_redemption_record` 兑换码体系 |
 | `V18` | 创建邮件与 Webhook 告警通道表 `alert_channel`（HMAC 密钥加密存储）与投递流水表 `alert_delivery` |
 | `V19` | 标准化模型推理强度为 `NONE/LOW/MEDIUM/HIGH/XHIGH/MAX`（历史 `MINIMAL` 迁移为 `LOW`），并新增 `model_definition.supported_reasoning_efforts` |
+| `V20` | 为运维总览的时间范围聚合补充 `model_invocation`、`credit_ledger`、`agent_run`、`user_account`、`conversation` 索引 |
+| `V21` | 创建业务系统参数表 `system_config`（JSONB 内容、版本号与操作人），替代外部 Nacos 配置中心 |
 
 ### 1.2 核心约束摘要
 

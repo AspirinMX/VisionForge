@@ -25,7 +25,7 @@
 
 1. **【禁止】向用户暴露内部编号、版本号与底层引擎细节**：除明确的“历史版本时间线”二级面板与“审计技术诊断折叠区”外，禁止在默认界面呈现数据库/乐观锁版本号（`v12`）、分镜内部 ID（`shot_01` / `scene-1`）、36 位 UUID（`assetId` / `fileId` / `modelDefinitionId`）、HTTP 状态码（`409`）、后端枚举常量（`ADJUST`、`ARCHIVE_FAILED`、`USER_UPLOAD`）或 `FFmpeg` / `Preset` / `CRF` 等引擎参数。
 2. **【禁止】表单标签附加 JSON Schema 字段名与冗长解释文案**：禁止出现 `(firstFrame)`、`(selectedVideo)`、`(prompt)`、`priceUnits` 等括号标注，禁止在常规创作主路径暴露“JSON 源码切换”；界面文案须简洁直接，禁止科普后端实现机制或重复陈述流水类型。
-3. **【禁止】在管理后台复制基础设施控制台**：Nacos 集群与原始配置文件管理归属原生 Nacos 控制台，禁止在 `(admin)` 界面展示「Nacos 配置中心」、Server Addr、Namespace、Group、MD5 或裸 JSON 文本编辑框；系统运行参数统一封装为面向业务运维的结构化「系统参数配置」表单（详见 [`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md#六管理后台系统参数配置中心重塑规范)）。
+3. **【禁止】在管理后台复制基础设施控制台**：禁止在 `(admin)` 界面展示外部配置中心字样、Server Addr、Namespace、Group、MD5 或裸 JSON 文本编辑框；系统运行参数统一持久化在 `system_config`，并以面向业务运维的结构化「系统参数配置」表单呈现（详见 [`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md#六管理后台系统参数配置中心重塑规范)）。
 
 ---
 

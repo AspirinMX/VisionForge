@@ -86,13 +86,13 @@
 
 > 额度指标仅统计媒体生成任务的 `SETTLE` 流水；对话 Token 只计量、不计费。
 
-### 3.4 Nacos 配置中心控制台 (`AdminConfigController`, `/api/v1/admin/configs`)
+### 3.4 系统参数配置 (`AdminConfigController`, `/api/v1/admin/configs`)
 
 | 方法与路径 | 状态码 | 权限 | 请求体 / 说明 | 响应 `data` |
 | --- | --- | --- | --- | --- |
-| `GET /api/v1/admin/configs` | `200` | `ADMIN` | 返回 Nacos 连接状态与全部受管 JSON 配置项（`visionforge-runtime/security/billing/alert.json`） | `ConfigCenterOverviewResponse` |
+| `GET /api/v1/admin/configs` | `200` | `ADMIN` | 返回数据库配置存储状态与全部受管 JSON 配置项（`visionforge-runtime/security/billing/alert.json`） | `ConfigCenterOverviewResponse` |
 | `GET /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | 读取指定 `dataId` 的最新配置与默认模板 | `ConfigEntryResponse` |
-| `PUT /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | `{ content }`（校验 JSON 对象后发布至 Nacos 并热刷新） | `ConfigEntryResponse` |
+| `PUT /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | `{ content }`（校验 JSON 对象后写入 `system_config`；各 API/Worker 实例在 `CONFIG_REFRESH_INTERVAL_MS` 内刷新） | `ConfigEntryResponse` |
 | `POST /api/v1/admin/configs/{dataId}/reset` | `200` | `ADMIN` | 还原该 `dataId` 为内置默认 JSON 配置 | `ConfigEntryResponse` |
 
 ### 3.5 邮件与 Webhook 告警管理 (`AdminAlertController`, `/api/v1/admin/alerts`)

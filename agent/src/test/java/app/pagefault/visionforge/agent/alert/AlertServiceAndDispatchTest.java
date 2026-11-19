@@ -8,9 +8,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,9 +26,8 @@ import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.model.ApiKeyCipher;
 import app.pagefault.visionforge.common.alert.AlertEvent;
 import app.pagefault.visionforge.common.alert.AlertSeverity;
+import app.pagefault.visionforge.common.config.ConfigStore;
 import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
-import app.pagefault.visionforge.common.config.LocalConfigGateway;
-import app.pagefault.visionforge.common.config.NacosSettings;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
@@ -60,8 +62,8 @@ class AlertServiceAndDispatchTest {
         deliveryMapper = mock(AlertDeliveryMapper.class);
         String key = Base64.getEncoder().encodeToString(new byte[32]);
         apiKeyCipher = new ApiKeyCipher(key);
-        NacosSettings nacosSettings = new NacosSettings(false, "127.0.0.1:8848", "public", "VISIONFORGE_GROUP", "", "", 5000);
-        runtimeConfig = new DynamicRuntimeConfig(nacosSettings, new LocalConfigGateway(), Clock.fixed(NOW, ZoneOffset.UTC));
+        runtimeConfig = new DynamicRuntimeConfig(
+                new InMemoryConfigStore(), 0, Clock.fixed(NOW, ZoneOffset.UTC));
         runtimeConfig.init();
         alertProperties = new AlertProperties();
         IdGenerator idGenerator = UUID::randomUUID;
@@ -156,6 +158,7 @@ class AlertServiceAndDispatchTest {
                 .thenReturn(okResponse);
 
         runtimeConfig.publish(
+                null,
                 DynamicRuntimeConfig.DATA_ID_ALERT,
                 "{\"alertsEnabled\":true,\"smtpHost\":\"smtp.example.com\",\"smtpPort\":587,\"smtpFrom\":\"noreply@example.com\"}");
 
@@ -230,6 +233,37 @@ class AlertServiceAndDispatchTest {
         @Override
         public void execute(Runnable command) {
             command.run();
+        }
+    }
+
+    private static final class InMemoryConfigStore implements ConfigStore {
+
+        private final Map<String, StoredConfig> rows = new ConcurrentHashMap<>();
+
+        @Override
+        public void ensure(String dataId, String content) {
+            rows.putIfAbsent(dataId, new StoredConfig(content, 1, NOW));
+        }
+
+        @Override
+        public Map<String, StoredConfig> loadAll() {
+            return Map.copyOf(rows);
+        }
+
+        @Override
+        public Map<String, Long> versions() {
+            Map<String, Long> versions = new LinkedHashMap<>();
+            rows.forEach((dataId, row) -> versions.put(dataId, row.version()));
+            return versions;
+        }
+
+        @Override
+        public StoredConfig save(String dataId, String content, UUID updatedBy) {
+            StoredConfig current = rows.get(dataId);
+            long nextVersion = current == null ? 1 : current.version() + 1;
+            StoredConfig saved = new StoredConfig(content, nextVersion, NOW);
+            rows.put(dataId, saved);
+            return saved;
         }
     }
 }

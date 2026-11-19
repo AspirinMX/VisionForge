@@ -218,7 +218,7 @@ public class AlertDispatchService implements AlertPublisher {
         MailConfig mailConfig = resolveMailConfig();
         if (mailConfig.host().isBlank()) {
             delivery.setStatus(AlertDeliveryStatus.FAILED);
-            delivery.setErrorMessage("SMTP host 未配置（请通过 Nacos visionforge-alert.json 或环境变量 ALERT_MAIL_HOST 配置）");
+            delivery.setErrorMessage("SMTP host 未配置（请通过系统参数配置或环境变量 ALERT_MAIL_HOST 配置）");
             return;
         }
         String[] recipients = Arrays.stream(channel.getTarget().split(","))

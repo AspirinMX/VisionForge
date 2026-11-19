@@ -1,18 +1,14 @@
 package app.pagefault.visionforge.common.config;
 
-import java.lang.reflect.Proxy;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
-
-import com.alibaba.nacos.api.config.ConfigService;
-import com.alibaba.nacos.api.config.listener.Listener;
 
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
@@ -25,10 +21,10 @@ class DynamicRuntimeConfigTest {
     private static final Instant NOW = Instant.parse("2026-11-19T00:00:00Z");
 
     @Test
-    void localFallbackSeedsDefaultsAndHotReloadsValidJson() {
-        NacosSettings settings = new NacosSettings(false, "127.0.0.1:8848", "public", "VISIONFORGE_GROUP", "", "", 5000);
-        LocalConfigGateway gateway = new LocalConfigGateway();
-        DynamicRuntimeConfig config = new DynamicRuntimeConfig(settings, gateway, Clock.fixed(NOW, ZoneOffset.UTC));
+    void seedsDefaultsAndHotReloadsValidJsonFromTheDatabaseStore() {
+        InMemoryConfigStore store = new InMemoryConfigStore();
+        DynamicRuntimeConfig config = new DynamicRuntimeConfig(
+                store, 0, Clock.fixed(NOW, ZoneOffset.UTC));
 
         config.init();
 
@@ -38,67 +34,71 @@ class DynamicRuntimeConfigTest {
         assertThat(config.listEntries()).hasSize(4);
 
         DynamicRuntimeConfig.ConfigEntry updated = config.publish(
+                null,
                 DynamicRuntimeConfig.DATA_ID_SECURITY,
                 "{\"registrationEnabled\":false,\"rateLimitAuthPerMinute\":5}");
 
-        assertThat(updated.source()).isEqualTo("LOCAL_FALLBACK");
+        assertThat(updated.source()).isEqualTo("DATABASE");
+        assertThat(updated.version()).isEqualTo(2);
         assertThat(config.registrationEnabled(true)).isFalse();
         assertThat(config.rateLimitAuthPerMinute(20)).isEqualTo(5);
 
-        assertThatThrownBy(() -> config.publish(DynamicRuntimeConfig.DATA_ID_SECURITY, "[1,2,3]"))
+        assertThatThrownBy(() -> config.publish(
+                null, DynamicRuntimeConfig.DATA_ID_SECURITY, "[1,2,3]"))
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_ARGUMENT));
 
-        config.reset(DynamicRuntimeConfig.DATA_ID_SECURITY);
+        config.reset(null, DynamicRuntimeConfig.DATA_ID_SECURITY);
         assertThat(config.registrationEnabled(true)).isTrue();
+        config.close();
     }
 
     @Test
-    void nacosGatewayBridgesInitialLoadPushListenerAndPublish() {
-        NacosSettings settings = new NacosSettings(true, "nacos:8848", "public", "VISIONFORGE_GROUP", "nacos", "nacos", 3000);
-        Map<String, String> remoteStore = new ConcurrentHashMap<>();
-        remoteStore.put(DynamicRuntimeConfig.DATA_ID_BILLING, "{\"initialCreditUnits\":50000}");
-        AtomicReference<Listener> billingListener = new AtomicReference<>();
-        AtomicBoolean shutDownCalled = new AtomicBoolean(false);
-
-        ConfigService nacosClient = (ConfigService) Proxy.newProxyInstance(
-                ConfigService.class.getClassLoader(),
-                new Class<?>[]{ConfigService.class},
-                (proxy, method, args) -> switch (method.getName()) {
-                    case "getServerStatus" -> "UP";
-                    case "getConfig" -> remoteStore.get((String) args[0]);
-                    case "publishConfig" -> {
-                        remoteStore.put((String) args[0], (String) args[2]);
-                        yield true;
-                    }
-                    case "addListener" -> {
-                        if (DynamicRuntimeConfig.DATA_ID_BILLING.equals(args[0])) {
-                            billingListener.set((Listener) args[2]);
-                        }
-                        yield null;
-                    }
-                    case "shutDown" -> {
-                        shutDownCalled.set(true);
-                        yield null;
-                    }
-                    default -> null;
-                });
-
-        NacosConfigGateway gateway = new NacosConfigGateway(settings, nacosClient);
-        DynamicRuntimeConfig config = new DynamicRuntimeConfig(settings, gateway, Clock.fixed(NOW, ZoneOffset.UTC));
+    void refreshPicksUpChangesWrittenByAnotherInstance() {
+        InMemoryConfigStore store = new InMemoryConfigStore();
+        DynamicRuntimeConfig config = new DynamicRuntimeConfig(
+                store, 0, Clock.fixed(NOW, ZoneOffset.UTC));
         config.init();
 
+        store.save(
+                DynamicRuntimeConfig.DATA_ID_BILLING,
+                "{\"initialCreditUnits\":50000}",
+                null);
+
+        config.listEntries();
+
         assertThat(config.initialCreditUnits(10_000L)).isEqualTo(50_000L);
-        assertThat(billingListener.get()).isNotNull();
-
-        billingListener.get().receiveConfigInfo("{\"initialCreditUnits\":88000}");
-        assertThat(config.initialCreditUnits(10_000L)).isEqualTo(88_000L);
-
-        config.publish(DynamicRuntimeConfig.DATA_ID_RUNTIME, "{\"streamTimeoutMs\":600000}");
-        assertThat(remoteStore.get(DynamicRuntimeConfig.DATA_ID_RUNTIME)).contains("600000");
-        assertThat(config.streamTimeoutMs(300_000L)).isEqualTo(600_000L);
-
         config.close();
-        assertThat(shutDownCalled.get()).isTrue();
+    }
+
+    private static final class InMemoryConfigStore implements ConfigStore {
+
+        private final Map<String, StoredConfig> rows = new ConcurrentHashMap<>();
+
+        @Override
+        public void ensure(String dataId, String content) {
+            rows.putIfAbsent(dataId, new StoredConfig(content, 1, NOW));
+        }
+
+        @Override
+        public Map<String, StoredConfig> loadAll() {
+            return Map.copyOf(rows);
+        }
+
+        @Override
+        public Map<String, Long> versions() {
+            Map<String, Long> versions = new LinkedHashMap<>();
+            rows.forEach((dataId, row) -> versions.put(dataId, row.version()));
+            return versions;
+        }
+
+        @Override
+        public StoredConfig save(String dataId, String content, UUID updatedBy) {
+            StoredConfig current = rows.get(dataId);
+            long nextVersion = current == null ? 1 : current.version() + 1;
+            StoredConfig saved = new StoredConfig(content, nextVersion, NOW);
+            rows.put(dataId, saved);
+            return saved;
+        }
     }
 }

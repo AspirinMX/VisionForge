@@ -2,7 +2,7 @@
 
 本文档与 [`FRONTEND_DEV_STANDARDS.md`](FRONTEND_DEV_STANDARDS.md) 共同构成 VisionForge 前端（`(auth)`、`(studio)`、`(admin)`）的**视觉几何、动效体系、产品文案与管理端信息架构规范**，作为后续全站重构与新增页面评审的统一设计规范。
 
-> **基线状态说明**：本规范于 2026-11-20 针对现有前端的视觉圆角、开发者术语泄露、动效割裂及后台 Nacos 配置错位问题制定。同日落地的改造提交已完成圆角与 Motion Token 体系、基础原语映射、多层卡片拆除、创作端与管理端文案去开发者化、画布/镜头列表/媒体加载连续性动效，以及结构化「系统参数配置」页面；Tabs 内容交叉淡入、告警与审计高级筛选收纳等细项继续按 §7 推进。
+> **基线状态说明**：本规范于 2026-11-20 针对现有前端的视觉圆角、开发者术语泄露、动效割裂及后台配置管理错位问题制定。同日落地的改造提交已完成圆角与 Motion Token 体系、基础原语映射、多层卡片拆除、创作端与管理端文案去开发者化、画布/镜头列表/媒体加载连续性动效，以及结构化「系统参数配置」页面；Tabs 内容交叉淡入、告警与审计高级筛选收纳等细项继续按 §7 推进。
 
 ---
 
@@ -13,7 +13,7 @@ VisionForge 的核心界面（对话与分镜工作台 `(studio)`、运营管理
 1. **几何即秩序（苹果式比例与同心圆角）**：圆角弧度必须与组件高度、容器层级及内外间距成比例并保持同心关系，辅以连续曲率平滑（Squircle）。
 2. **动效即因果（全局物理规律）**：动效必须解释状态切换、空间位置与操作反馈，由统一的物理令牌驱动，禁止零散硬编码或全局失调。
 3. **语言即产品（彻底去开发者化）**：面向创作者与运营人员表达人类意图，严禁在界面中暴露内部 ID、数据库枚举、版本号、底层引擎名称与原始 JSON。
-4. **后台即业务控制面（聚焦业务参数）**：基础设施运维交还给专业控制台（如 Nacos 原生控制台），管理后台仅保留面向业务运营的语义化开关与参数表单。
+4. **后台即业务控制面（聚焦业务参数）**：系统参数持久化在 PostgreSQL `system_config`，管理后台仅保留面向业务运营的语义化开关与参数表单，不暴露底层存储、连接串或原始 JSON 差异。
 
 ---
 
@@ -175,10 +175,10 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 ## 六、管理后台「系统参数配置中心」重塑规范
 
-### 6.1 废除 Nacos 控制台套壳（【强制】）
+### 6.1 配置页只面向业务参数（【强制】）
 
-- **【禁止】** 在管理后台侧栏（[`admin-shell.tsx`](../frontend/src/components/admin/admin-shell.tsx)）、总览卡片（[`admin/page.tsx`](../frontend/src/app/(admin)/admin/page.tsx)）及配置页面（[`admin/configs/page.tsx`](../frontend/src/app/(admin)/admin/configs/page.tsx)）中出现「Nacos 配置中心」字样、Server Addr、Namespace、Group、MD5、配置来源或 `visionforge-*.json` 原始文本编辑器。
-- Nacos 的集群与原始文件管理归属基础设施原生控制台（`:8848/nacos`）；管理后台 `/admin/configs`（推荐别名或迁移路径 `/admin/settings`）必须重塑为 **「系统参数配置」**。
+- **【禁止】** 在管理后台侧栏（[`admin-shell.tsx`](../frontend/src/components/admin/admin-shell.tsx)）、总览卡片（[`admin/page.tsx`](../frontend/src/app/(admin)/admin/page.tsx)）及配置页面（[`admin/configs/page.tsx`](../frontend/src/app/(admin)/admin/configs/page.tsx)）中出现外部配置中心字样、Server Addr、Namespace、Group、MD5、配置来源或 `visionforge-*.json` 原始文本编辑器。
+- 系统参数持久化在 PostgreSQL `system_config`；管理后台 `/admin/configs`（推荐别名或迁移路径 `/admin/settings`）必须保持 **「系统参数配置」** 的结构化业务表单。
 
 ### 6.2 结构化业务参数映射规范（【目标规范】）
 
@@ -232,7 +232,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`，并拆除存量多层卡片嵌套（[`(studio)/account/page.tsx`](../frontend/src/app/(studio)/account/page.tsx) 额度面板、[`components/admin/model-form-sheet.tsx`](../frontend/src/components/admin/model-form-sheet.tsx) 编辑抽屉）。
 2. **阶段 2（工作台与后端表述去开发化）**：改造分镜、素材、任务、文件面板、灯箱及 [`ToolDisplayFormatter.java`](../agent/src/main/java/app/pagefault/visionforge/agent/runtime/ToolDisplayFormatter.java)，消灭 `vN`、`shot_01`、UUID、FFmpeg 与 JSON 源码直出，统一精简个人中心与后台文案。
 3. **阶段 3（空间连续性动效落地）**：打通工作台分栏开合/全屏过渡、分镜卡片重排 `layout` 动画、骨架屏交叉淡入与灯箱预览流畅转场。
-4. **阶段 4（系统参数配置中心重塑）**：废除后台「Nacos 配置中心」，交付结构化「系统参数配置」页面及单位自动换算/高危开关确认（并同步更新 [`DESIGN_DETAILS.md`](DESIGN_DETAILS.md) 与 [`API_REFERENCE.md`](API_REFERENCE.md)）。
+4. **阶段 4（系统参数配置中心重塑）**：将后台配置迁移到数据库系统参数表，交付结构化「系统参数配置」页面及单位自动换算/高危开关确认（并同步更新 [`DESIGN_DETAILS.md`](DESIGN_DETAILS.md) 与 [`API_REFERENCE.md`](API_REFERENCE.md)）。
 
 每阶段提交前必须通过门禁：
 - `pnpm --dir frontend lint` 零错误；

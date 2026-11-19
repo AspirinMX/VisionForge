@@ -725,7 +725,7 @@ export interface StoryboardDocument {
   shots: StoryboardShot[];
 }
 
-// --- Admin Overview, Model Probe, Billing, Audit, Nacos Config & Alerts ---
+// --- Admin Overview, Model Probe, Billing, Audit, System Config & Alerts ---
 
 export interface ModelTestResponse {
   ok: boolean;
@@ -873,24 +873,17 @@ export interface AuditLogResponse {
 
 export interface ConfigEntryResponse {
   dataId: string;
-  group: string;
-  namespace: string;
   description: string;
   content: string;
   defaultContent: string;
-  md5: string;
   source: string;
-  nacosEnabled: boolean;
-  nacosConnected: boolean;
+  version: number;
   updatedAt: string | null;
 }
 
 export interface ConfigCenterOverviewResponse {
   enabled: boolean;
   connected: boolean;
-  serverAddr: string;
-  namespace: string;
-  group: string;
   source: string;
   entries: ConfigEntryResponse[];
 }
