@@ -75,11 +75,11 @@ import {
 } from "@/lib/format";
 
 const ALERT_EVENT_OPTIONS = [
-  { id: "WORKFLOW_START_EXHAUSTED", label: "Workflow 启动补偿耗尽" },
+  { id: "WORKFLOW_START_EXHAUSTED", label: "工作流启动补偿耗尽" },
   { id: "MODEL_PROVIDER_ERROR", label: "主模型上游异常" },
   { id: "MEDIA_PROVIDER_ERROR", label: "媒体生成上游异常" },
-  { id: "GENERATION_ARCHIVE_FAILED", label: "产物归档失败 (ARCHIVE_FAILED)" },
-  { id: "BILLING_PENDING_RECONCILIATION", label: "待核账异常 (UNKNOWN)" },
+  { id: "GENERATION_ARCHIVE_FAILED", label: "产物保存失败" },
+  { id: "BILLING_PENDING_RECONCILIATION", label: "额度待确认异常" },
   { id: "COMPOSITION_FAILED", label: "视频合成失败" },
   { id: "ADMIN_SECURITY_CHANGE", label: "管理员安全与配置变更" },
   { id: "SYSTEM_INTERNAL_ERROR", label: "系统未处理 5xx 异常" },
@@ -958,8 +958,8 @@ export default function AdminAlertsPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{detailDelivery?.title}</DialogTitle>
-            <DialogDescription className="font-mono text-xs">
-              {detailDelivery?.eventType} · {detailDelivery?.channelName} ·{" "}
+            <DialogDescription className="text-xs tabular-nums">
+              {detailDelivery?.channelName} ·{" "}
               {formatDateTime(detailDelivery?.createdAt)}
             </DialogDescription>
           </DialogHeader>
@@ -970,7 +970,7 @@ export default function AdminAlertsPage() {
                   {ALERT_DELIVERY_STATUS_LABEL[detailDelivery.status]}
                 </Badge>
                 <Badge variant={severityBadgeVariant(detailDelivery.severity)}>
-                  {detailDelivery.severity}
+                  {ALERT_SEVERITY_LABEL[detailDelivery.severity]}
                 </Badge>
                 {detailDelivery.httpStatus ? (
                   <Badge variant="outline">
@@ -1000,10 +1000,13 @@ export default function AdminAlertsPage() {
                 </div>
               ) : null}
 
-              <div className="grid gap-1 font-mono text-[11px] text-muted-foreground">
-                <div>bizNo: {detailDelivery.bizNo ?? "—"}</div>
-                <div>traceId: {detailDelivery.traceId ?? "—"}</div>
-              </div>
+              <details className="rounded-surface-sm bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+                <summary className="cursor-pointer select-none">技术诊断信息</summary>
+                <div className="mt-2 grid gap-1 font-mono">
+                  <div>业务编号：{detailDelivery.bizNo ?? "—"}</div>
+                  <div>追踪编号：{detailDelivery.traceId ?? "—"}</div>
+                </div>
+              </details>
             </div>
           ) : null}
         </DialogContent>

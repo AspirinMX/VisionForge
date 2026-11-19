@@ -66,6 +66,33 @@ function toIsoMaybe(localValue: string): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+const AUDIT_TYPE_LABEL: Record<string, string> = {
+  IDENTITY: "身份与权限",
+  USER: "用户管理",
+  MODEL: "模型配置",
+  BILLING: "计费与额度",
+  CONFIG: "系统参数",
+  SECURITY: "安全事件",
+};
+
+const AUDIT_SUBTYPE_LABEL: Record<string, string> = {
+  LOGIN: "登录",
+  ROLE_CHANGE: "角色变更",
+  STATUS_CHANGE: "状态变更",
+  PASSWORD_RESET: "重置密码",
+  CREDIT_ADJUST: "额度调整",
+  CONFIG_PUBLISH: "参数发布",
+  MODEL_UPDATE: "模型更新",
+};
+
+function auditTypeLabel(type: string): string {
+  return AUDIT_TYPE_LABEL[type] ?? "其他操作";
+}
+
+function auditSubTypeLabel(subType: string): string {
+  return AUDIT_SUBTYPE_LABEL[subType] ?? "明细";
+}
+
 export default function AdminAuditLogsPage() {
   const [page, setPage] = useState(1);
 
@@ -198,31 +225,31 @@ export default function AdminAuditLogsPage() {
             <Input
               value={typeInput}
               onChange={(e) => setTypeInput(e.target.value)}
-              placeholder="业务大类 type（如 IDENTITY / MODEL）"
+              placeholder="业务大类（如身份 / 模型）"
               className="h-8 text-xs"
             />
             <Input
               value={subTypeInput}
               onChange={(e) => setSubTypeInput(e.target.value)}
-              placeholder="操作子类 subType（如 ROLE_CHANGE）"
+              placeholder="操作子类（如角色变更）"
               className="h-8 text-xs"
             />
             <Input
               value={bizNoInput}
               onChange={(e) => setBizNoInput(e.target.value)}
-              placeholder="业务编号 bizNo"
+              placeholder="业务编号"
               className="h-8 font-mono text-xs"
             />
             <Input
               value={traceIdInput}
               onChange={(e) => setTraceIdInput(e.target.value)}
-              placeholder="链路 TraceId"
+              placeholder="链路追踪编号"
               className="h-8 font-mono text-xs"
             />
             <Input
               value={operatorIdInput}
               onChange={(e) => setOperatorIdInput(e.target.value)}
-              placeholder="操作者 UUID"
+              placeholder="操作者编号"
               className="h-8 font-mono text-xs"
             />
             <Select
@@ -291,7 +318,6 @@ export default function AdminAuditLogsPage() {
                       <TableHead>操作分类</TableHead>
                       <TableHead>操作者</TableHead>
                       <TableHead>结果</TableHead>
-                      <TableHead>业务号 / TraceId</TableHead>
                       <TableHead>详情摘要</TableHead>
                       <TableHead className="text-right">操作</TableHead>
                     </TableRow>
@@ -308,14 +334,16 @@ export default function AdminAuditLogsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
-                            <Badge variant="outline">{row.type}</Badge>
+                            <Badge variant="outline">
+                              {auditTypeLabel(row.type)}
+                            </Badge>
                             <Badge variant="secondary" className="text-[10px]">
-                              {row.subType}
+                              {auditSubTypeLabel(row.subType)}
                             </Badge>
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">
-                          {row.operatorName || row.operatorId || "SYSTEM"}
+                          {row.operatorName || "系统"}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -323,12 +351,6 @@ export default function AdminAuditLogsPage() {
                           >
                             {row.success ? "成功" : "失败"}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-44 font-mono text-[11px] text-muted-foreground">
-                          <div className="truncate">{row.bizNo ?? "—"}</div>
-                          <div className="truncate opacity-70">
-                            {row.traceId ?? "—"}
-                          </div>
                         </TableCell>
                         <TableCell className="max-w-xs truncate text-xs">
                           {row.detail ?? row.errorMessage ?? "—"}
@@ -398,13 +420,16 @@ export default function AdminAuditLogsPage() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{detailRow?.type}</Badge>
-              <Badge variant="secondary">{detailRow?.subType}</Badge>
+              <Badge variant="outline">
+                {detailRow ? auditTypeLabel(detailRow.type) : "审计详情"}
+              </Badge>
+              <Badge variant="secondary">
+                {detailRow ? auditSubTypeLabel(detailRow.subType) : "明细"}
+              </Badge>
               <span>审计详情</span>
             </DialogTitle>
             <DialogDescription className="tabular-nums">
-              {formatDateTime(detailRow?.createdAt)} · TraceId:{" "}
-              {detailRow?.traceId ?? "—"}
+              {formatDateTime(detailRow?.createdAt)}
             </DialogDescription>
           </DialogHeader>
 
@@ -413,15 +438,7 @@ export default function AdminAuditLogsPage() {
               <div className="grid gap-2 rounded-surface-sm bg-muted/20 p-3 sm:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">操作者：</span>
-                  <span>{detailRow.operatorName ?? "—"}</span>
-                </div>
-                <div className="font-mono">
-                  <span className="text-muted-foreground">operatorId：</span>
-                  <span>{detailRow.operatorId ?? "—"}</span>
-                </div>
-                <div className="font-mono">
-                  <span className="text-muted-foreground">bizNo：</span>
-                  <span>{detailRow.bizNo ?? "—"}</span>
+                  <span>{detailRow.operatorName ?? "系统"}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">结果：</span>
@@ -449,16 +466,21 @@ export default function AdminAuditLogsPage() {
                 </div>
               ) : null}
 
-              {detailRow.extra ? (
-                <div className="space-y-1">
-                  <p className="font-medium text-muted-foreground">
-                    附加上下文 (extra)
-                  </p>
-                  <pre className="max-h-60 overflow-auto rounded-surface-sm bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
+              <details className="rounded-surface-sm bg-muted/20 px-3 py-2 text-muted-foreground">
+                <summary className="cursor-pointer select-none">
+                  技术诊断信息
+                </summary>
+                <div className="mt-2 grid gap-1 font-mono text-[11px]">
+                  <div>操作者编号：{detailRow.operatorId ?? "—"}</div>
+                  <div>业务编号：{detailRow.bizNo ?? "—"}</div>
+                  <div>追踪编号：{detailRow.traceId ?? "—"}</div>
+                </div>
+                {detailRow.extra ? (
+                  <pre className="mt-2 max-h-60 overflow-auto rounded-surface-sm bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
                     {formatJsonMaybe(detailRow.extra)}
                   </pre>
-                </div>
-              ) : null}
+                ) : null}
+              </details>
             </div>
           ) : null}
         </DialogContent>

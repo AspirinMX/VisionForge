@@ -97,14 +97,14 @@ function AdminSidebarContent() {
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip="Nacos 动态配置中心"
+                  tooltip="系统参数配置"
                   isActive={pathname.startsWith("/admin/configs")}
                   render={
                     <Link href="/admin/configs" onClick={closeMobileIfNeeded} />
                   }
                 >
                   <SlidersHorizontalIcon />
-                  <span>Nacos 配置中心</span>
+                  <span>系统参数配置</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

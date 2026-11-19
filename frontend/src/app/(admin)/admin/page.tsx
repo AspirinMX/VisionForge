@@ -87,13 +87,13 @@ export default function AdminOverviewPage() {
   const anomalyCards: MetricCardItem[] = data
     ? [
         {
-          label: "ARCHIVE_FAILED 归档失败",
+          label: "保存异常任务",
           value: data.archiveFailedGenerationTasks,
           hint: "对象存储归档未完成的生成任务",
           dangerWhenPositive: true,
         },
         {
-          label: "PENDING_RECONCILIATION 待核账",
+          label: "状态待确认任务",
           value: data.pendingReconciliationTasks,
           hint: "需人工或定时核对的额度预占单",
           dangerWhenPositive: true,
@@ -101,7 +101,7 @@ export default function AdminOverviewPage() {
         {
           label: "工作流启动补偿失败",
           value: data.failedWorkflowStarts,
-          hint: "Temporal Workflow 启动补偿耗尽记录",
+          hint: "工作流启动补偿耗尽的记录",
           dangerWhenPositive: true,
         },
       ]
@@ -116,8 +116,8 @@ export default function AdminOverviewPage() {
     },
     {
       href: "/admin/configs",
-      title: "Nacos 配置中心",
-      desc: "动态发布安全策略、限流阈值、默认配额及告警配置",
+      title: "系统参数配置",
+      desc: "调整注册配额、限流阈值、上下文策略及告警设置",
       icon: SlidersHorizontalIcon,
     },
     {
@@ -141,7 +141,7 @@ export default function AdminOverviewPage() {
     {
       href: "/admin/audit-logs",
       title: "审计日志台",
-      desc: "按 TraceId/BizNo 检索管理员与业务操作并导出 CSV",
+      desc: "按操作人、业务分类与时间范围检索操作记录并导出 CSV",
       icon: ScrollTextIcon,
     },
   ];

@@ -393,11 +393,7 @@ function ModelFormContent({
             <Label>能力类型</Label>
             <Select
               value={form.capabilityType}
-              items={{
-                CHAT: `${MODEL_CAPABILITY_LABEL.CHAT} (CHAT)`,
-                IMAGE: `${MODEL_CAPABILITY_LABEL.IMAGE} (IMAGE)`,
-                VIDEO: `${MODEL_CAPABILITY_LABEL.VIDEO} (VIDEO)`,
-              }}
+              items={MODEL_CAPABILITY_LABEL}
               onValueChange={(value) => {
                 if (value) {
                   handleCapabilityChange(value as ModelCapabilityType);
@@ -410,13 +406,13 @@ function ModelFormContent({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="CHAT">
-                  {MODEL_CAPABILITY_LABEL.CHAT} (CHAT)
+                  {MODEL_CAPABILITY_LABEL.CHAT}
                 </SelectItem>
                 <SelectItem value="IMAGE">
-                  {MODEL_CAPABILITY_LABEL.IMAGE} (IMAGE)
+                  {MODEL_CAPABILITY_LABEL.IMAGE}
                 </SelectItem>
                 <SelectItem value="VIDEO">
-                  {MODEL_CAPABILITY_LABEL.VIDEO} (VIDEO)
+                  {MODEL_CAPABILITY_LABEL.VIDEO}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -736,7 +732,7 @@ function ModelFormContent({
         ) : null}
 
         <div className="space-y-1.5">
-          <Label htmlFor="model-price">单任务扣费额度（最小计量单位）</Label>
+          <Label htmlFor="model-price">单任务扣费额度</Label>
           <Input
             id="model-price"
             type="number"

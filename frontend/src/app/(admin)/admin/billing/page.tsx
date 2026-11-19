@@ -418,7 +418,7 @@ export default function AdminBillingPage() {
                             <TableCell className="text-xs">
                               {item.batchName}
                             </TableCell>
-                            <TableCell className="text-right font-mono font-medium tabular-nums">
+                            <TableCell className="text-right font-medium tabular-nums">
                               +{item.amountUnits}
                             </TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
@@ -510,7 +510,7 @@ export default function AdminBillingPage() {
                       applyLedgerUserFilter();
                     }
                   }}
-                  placeholder="按用户 UUID 过滤..."
+                  placeholder="按用户编号过滤..."
                   className="h-9 max-w-xs font-mono text-xs"
                 />
                 <Select
@@ -570,10 +570,9 @@ export default function AdminBillingPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>时间</TableHead>
-                          <TableHead>用户 ID</TableHead>
                           <TableHead>类型</TableHead>
                           <TableHead className="text-right">额度变更</TableHead>
-                          <TableHead>业务幂等键</TableHead>
+                          <TableHead>关联单号</TableHead>
                           <TableHead>备注</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -583,18 +582,15 @@ export default function AdminBillingPage() {
                             <TableCell className="text-xs text-muted-foreground tabular-nums">
                               {formatDateTime(row.createdAt)}
                             </TableCell>
-                            <TableCell className="max-w-44 truncate font-mono text-[11px]">
-                              {row.userId}
-                            </TableCell>
                             <TableCell>
                               <Badge variant="outline">
                                 {CREDIT_ENTRY_LABEL[row.entryType]}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right font-mono font-medium tabular-nums">
+                            <TableCell className="text-right font-medium tabular-nums">
                               {row.amountUnits}
                             </TableCell>
-                            <TableCell className="max-w-xs truncate font-mono text-[11px] text-muted-foreground">
+                            <TableCell className="max-w-xs truncate text-[11px] text-muted-foreground">
                               {row.businessKey ?? "—"}
                             </TableCell>
                             <TableCell className="max-w-xs truncate text-xs text-muted-foreground">

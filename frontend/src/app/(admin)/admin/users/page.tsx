@@ -854,9 +854,9 @@ function UsersAdminContent() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>人工调整用户额度</DialogTitle>
+            <DialogTitle>调整额度 · {creditTarget?.displayName}</DialogTitle>
             <DialogDescription>
-              向「{creditTarget?.displayName}」（{creditTarget?.email}）追加或扣减可用额度，流水类型记为 ADJUST。
+              正数增加可用额度，负数扣减；变更将立即生效并记入账单流水。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-1">
