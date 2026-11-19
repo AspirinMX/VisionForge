@@ -259,6 +259,14 @@ function ModelsAdminContent() {
                           {model.supportsImageInput ? (
                             <Badge variant="outline">支持图片输入</Badge>
                           ) : null}
+                          {model.capabilityType === "CHAT" &&
+                          model.supportedReasoningEfforts.length > 0 ? (
+                            <Badge variant="outline" className="font-mono text-[11px]">
+                              {`推理: ${model.supportedReasoningEfforts
+                                .map((effort) => effort.toLowerCase())
+                                .join("/")}`}
+                            </Badge>
+                          ) : null}
                           {probeResults[model.id] ? (
                             <Tooltip>
                               <TooltipTrigger

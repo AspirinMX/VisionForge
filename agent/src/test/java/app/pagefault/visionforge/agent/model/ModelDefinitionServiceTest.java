@@ -85,8 +85,8 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existing);
 
         ModelDefinition updated = service.update(MODEL_ID, new ModelDefinitionInput(
-                "Renamed", null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null));
+                "Renamed", null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null));
 
         assertThat(updated.getDisplayName()).isEqualTo("Renamed");
         assertThat(updated.getApiKeyCiphertext()).isEqualTo(ciphertext);
@@ -98,8 +98,8 @@ class ModelDefinitionServiceTest {
         when(mapper.selectById(MODEL_ID)).thenReturn(existingModel());
 
         assertThatThrownBy(() -> service.update(MODEL_ID, new ModelDefinitionInput(
-                null, null, " ", null, null, null, null, null, null, null,
-                null, null, null, null, null)))
+                null, null, " ", null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null)))
                 .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_API_KEY_REQUIRED));
     }
 
@@ -145,6 +145,71 @@ class ModelDefinitionServiceTest {
                 .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_CONFIG_INVALID));
     }
 
+    @Test
+    void normalizesSupportedReasoningEffortsAndValidatesDefault() {
+        when(mapper.selectCount(any())).thenReturn(0L);
+
+        ModelDefinition created = service.create(new ModelDefinitionInput(
+                "Reasoning Pro",
+                "https://api.example.com/v1",
+                "sk-secret",
+                "gpt-5-pro",
+                ReasoningEffort.XHIGH,
+                List.of(ReasoningEffort.MAX, ReasoningEffort.LOW, ReasoningEffort.XHIGH, ReasoningEffort.LOW),
+                null,
+                ReasoningReplayPolicy.ENCRYPTED,
+                128_000,
+                16_000,
+                true,
+                true,
+                ModelCapabilityType.CHAT,
+                MediaProtocol.OPENAI_RESPONSES,
+                ExecutionMode.INLINE_RESULT,
+                0L,
+                true));
+
+        assertThat(ReasoningEffortCodec.decode(created.getSupportedReasoningEfforts()))
+                .containsExactly(ReasoningEffort.LOW, ReasoningEffort.XHIGH, ReasoningEffort.MAX);
+        assertThat(created.getReasoningEffort()).isEqualTo(ReasoningEffort.XHIGH);
+
+        assertThatThrownBy(() -> service.create(new ModelDefinitionInput(
+                "Invalid Reasoning",
+                "https://api.example.com/v1",
+                "sk-secret",
+                "gpt-5",
+                ReasoningEffort.HIGH,
+                List.of(ReasoningEffort.NONE, ReasoningEffort.LOW),
+                null,
+                ReasoningReplayPolicy.ENCRYPTED,
+                128_000,
+                16_000,
+                true,
+                false,
+                ModelCapabilityType.CHAT,
+                MediaProtocol.OPENAI_RESPONSES,
+                ExecutionMode.INLINE_RESULT,
+                0L,
+                true)))
+                .satisfies(exception -> assertError(exception, AgentErrorCode.MODEL_CONFIG_INVALID));
+    }
+
+    @Test
+    void updateCanClearReasoningEffortAndSwitchSupportedEfforts() {
+        ModelDefinition existing = existingModel();
+        when(mapper.selectById(MODEL_ID)).thenReturn(existing);
+
+        ModelDefinition updated = service.update(MODEL_ID, new ModelDefinitionInput(
+                null, null, null, null,
+                null,
+                List.of(ReasoningEffort.HIGH, ReasoningEffort.MAX),
+                true,
+                null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(updated.getReasoningEffort()).isNull();
+        assertThat(ReasoningEffortCodec.decode(updated.getSupportedReasoningEfforts()))
+                .containsExactly(ReasoningEffort.HIGH, ReasoningEffort.MAX);
+    }
+
     private ModelDefinitionInput mediaInput(
             ModelCapabilityType capability,
             MediaProtocol protocol,
@@ -154,6 +219,8 @@ class ModelDefinitionServiceTest {
                 "https://media.example.com/api/v1",
                 "sk-media",
                 "media-model",
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -174,6 +241,8 @@ class ModelDefinitionServiceTest {
                 apiKey,
                 "mock-model",
                 ReasoningEffort.MEDIUM,
+                List.of(ReasoningEffort.NONE, ReasoningEffort.LOW, ReasoningEffort.MEDIUM, ReasoningEffort.HIGH),
+                null,
                 ReasoningReplayPolicy.ENCRYPTED,
                 8_000,
                 1_000,
@@ -194,6 +263,7 @@ class ModelDefinitionServiceTest {
         model.setApiKeyCiphertext(cipher.encrypt("sk-old"));
         model.setModelId("mock-model");
         model.setReasoningEffort(ReasoningEffort.MEDIUM);
+        model.setSupportedReasoningEfforts("[\"NONE\",\"LOW\",\"MEDIUM\",\"HIGH\"]");
         model.setCapabilityType(ModelCapabilityType.CHAT);
         model.setProtocol(MediaProtocol.OPENAI_RESPONSES);
         model.setExecutionMode(ExecutionMode.INLINE_RESULT);

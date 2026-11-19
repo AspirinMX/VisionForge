@@ -106,7 +106,13 @@ export type MediaProtocol =
   | "STUB";
 
 export type ExecutionMode = "INLINE_RESULT" | "REMOTE_TASK";
-export type ReasoningEffort = "NONE" | "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
+export type ReasoningEffort =
+  | "NONE"
+  | "LOW"
+  | "MEDIUM"
+  | "HIGH"
+  | "XHIGH"
+  | "MAX";
 export type ReasoningReplayPolicy = "ENCRYPTED" | "ALL" | "NONE";
 
 export interface ModelResponse {
@@ -115,6 +121,7 @@ export interface ModelResponse {
   baseUrl: string;
   modelId: string;
   reasoningEffort: ReasoningEffort | null;
+  supportedReasoningEfforts: ReasoningEffort[];
   reasoningReplay: ReasoningReplayPolicy;
   capabilityType: ModelCapabilityType;
   protocol: MediaProtocol;
@@ -141,6 +148,7 @@ export interface PublicModelResponse {
   supportsImageInput: boolean;
   defaultModel: boolean;
   reasoningEffort: ReasoningEffort | null;
+  supportedReasoningEfforts: ReasoningEffort[];
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
 }
@@ -151,6 +159,7 @@ export interface CreateModelRequest {
   apiKey: string;
   modelId: string;
   reasoningEffort?: ReasoningEffort | null;
+  supportedReasoningEfforts?: ReasoningEffort[];
   reasoningReplay?: ReasoningReplayPolicy | null;
   maxInputTokens?: number | null;
   maxOutputTokens?: number | null;
@@ -169,6 +178,8 @@ export interface UpdateModelRequest {
   apiKey?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort | null;
+  supportedReasoningEfforts?: ReasoningEffort[];
+  clearReasoningEffort?: boolean;
   reasoningReplay?: ReasoningReplayPolicy | null;
   maxInputTokens?: number | null;
   maxOutputTokens?: number | null;

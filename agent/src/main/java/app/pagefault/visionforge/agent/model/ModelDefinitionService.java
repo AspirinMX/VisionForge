@@ -119,7 +119,7 @@ public class ModelDefinitionService {
         model.setBaseUrl(baseUrl);
         model.setApiKeyCiphertext(apiKeyCipher.encrypt(input.apiKey().trim()));
         model.setModelId(modelId);
-        model.setReasoningEffort(input.reasoningEffort());
+        applyCreateReasoning(model, capability, input);
         model.setReasoningReplay(input.reasoningReplay() == null
                 ? ReasoningReplayPolicy.ENCRYPTED
                 : input.reasoningReplay());
@@ -170,15 +170,13 @@ public class ModelDefinitionService {
             }
             model.setApiKeyCiphertext(apiKeyCipher.encrypt(input.apiKey().trim()));
         }
-        if (input.reasoningEffort() != null) {
-            model.setReasoningEffort(input.reasoningEffort());
-        }
         if (input.reasoningReplay() != null) {
             model.setReasoningReplay(input.reasoningReplay());
         }
         if (input.capabilityType() != null) {
             model.setCapabilityType(input.capabilityType());
         }
+        applyUpdateReasoning(model, input);
         if (input.protocol() != null) {
             model.setProtocol(input.protocol());
         }
@@ -428,5 +426,53 @@ public class ModelDefinitionService {
                     field + "必须在 1 到 " + limit + " 之间");
         }
         return value;
+    }
+
+    private void applyCreateReasoning(
+            ModelDefinition model, ModelCapabilityType capability, ModelDefinitionInput input) {
+        if (capability != ModelCapabilityType.CHAT) {
+            model.setReasoningEffort(null);
+            model.setSupportedReasoningEfforts("[]");
+            return;
+        }
+        ReasoningEffort effort = input.reasoningEffort();
+        List<ReasoningEffort> supported = input.supportedReasoningEfforts() != null
+                ? ReasoningEffortCodec.normalize(input.supportedReasoningEfforts())
+                : (effort != null ? List.of(effort) : List.of());
+        validateReasoningSelection(effort, supported);
+        model.setReasoningEffort(effort);
+        model.setSupportedReasoningEfforts(ReasoningEffortCodec.encode(supported));
+    }
+
+    private void applyUpdateReasoning(ModelDefinition model, ModelDefinitionInput input) {
+        if (model.getCapabilityType() != ModelCapabilityType.CHAT) {
+            model.setReasoningEffort(null);
+            model.setSupportedReasoningEfforts("[]");
+            return;
+        }
+        boolean touchedReasoning = input.reasoningEffort() != null
+                || input.supportedReasoningEfforts() != null
+                || Boolean.TRUE.equals(input.clearReasoningEffort());
+        if (!touchedReasoning) {
+            return;
+        }
+        List<ReasoningEffort> supported = input.supportedReasoningEfforts() != null
+                ? ReasoningEffortCodec.normalize(input.supportedReasoningEfforts())
+                : ReasoningEffortCodec.decode(model.getSupportedReasoningEfforts());
+        ReasoningEffort effort = Boolean.TRUE.equals(input.clearReasoningEffort())
+                ? null
+                : (input.reasoningEffort() != null ? input.reasoningEffort() : model.getReasoningEffort());
+        validateReasoningSelection(effort, supported);
+        model.setReasoningEffort(effort);
+        model.setSupportedReasoningEfforts(ReasoningEffortCodec.encode(supported));
+    }
+
+    private void validateReasoningSelection(
+            ReasoningEffort effort, List<ReasoningEffort> supported) {
+        if (effort != null && !supported.contains(effort)) {
+            throw new BusinessException(
+                    AgentErrorCode.MODEL_CONFIG_INVALID,
+                    "默认推理强度必须在支持的推理档位范围内");
+        }
     }
 }

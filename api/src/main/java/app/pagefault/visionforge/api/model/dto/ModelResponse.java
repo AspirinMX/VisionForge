@@ -1,6 +1,7 @@
 package app.pagefault.visionforge.api.model.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.model.ExecutionMode;
@@ -8,6 +9,7 @@ import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
+import app.pagefault.visionforge.agent.model.ReasoningEffortCodec;
 import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 
 public record ModelResponse(
@@ -16,6 +18,7 @@ public record ModelResponse(
         String baseUrl,
         String modelId,
         ReasoningEffort reasoningEffort,
+        List<ReasoningEffort> supportedReasoningEfforts,
         ReasoningReplayPolicy reasoningReplay,
         ModelCapabilityType capabilityType,
         MediaProtocol protocol,
@@ -37,6 +40,7 @@ public record ModelResponse(
                 model.getBaseUrl(),
                 model.getModelId(),
                 model.getReasoningEffort(),
+                ReasoningEffortCodec.decode(model.getSupportedReasoningEfforts()),
                 model.getReasoningReplay(),
                 model.getCapabilityType(),
                 model.getProtocol(),

@@ -16,8 +16,14 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import app.pagefault.visionforge.agent.conversation.Conversation;
 import app.pagefault.visionforge.agent.conversation.ConversationService;
+import app.pagefault.visionforge.agent.model.ExecutionMode;
+import app.pagefault.visionforge.agent.model.MediaProtocol;
+import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ModelConnectivityService;
+import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ModelDefinitionService;
+import app.pagefault.visionforge.agent.model.ReasoningEffort;
+import app.pagefault.visionforge.agent.model.ReasoningReplayPolicy;
 import app.pagefault.visionforge.agent.runtime.AgentProcessReader;
 import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
@@ -33,6 +39,9 @@ import app.pagefault.visionforge.api.security.SecurityConfiguration;
 import app.pagefault.visionforge.api.stream.AgentRunStreamService;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -174,5 +183,78 @@ class LifecycleAndOverviewControllersTest {
         mockMvc.perform(get("/api/v1/admin/overview")
                         .header("Authorization", "Bearer user-jwt"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanCreateAndUpdateSupportedReasoningEfforts() throws Exception {
+        UUID modelId = UUID.randomUUID();
+        ModelDefinition saved = new ModelDefinition();
+        saved.setId(modelId);
+        saved.setDisplayName("GPT-5 Pro");
+        saved.setBaseUrl("https://api.example.com/v1");
+        saved.setModelId("gpt-5-pro");
+        saved.setReasoningEffort(ReasoningEffort.XHIGH);
+        saved.setSupportedReasoningEfforts("[\"NONE\",\"LOW\",\"XHIGH\",\"MAX\"]");
+        saved.setReasoningReplay(ReasoningReplayPolicy.ENCRYPTED);
+        saved.setCapabilityType(ModelCapabilityType.CHAT);
+        saved.setProtocol(MediaProtocol.OPENAI_RESPONSES);
+        saved.setExecutionMode(ExecutionMode.INLINE_RESULT);
+        saved.setPriceUnits(0L);
+        saved.setSupportsImageInput(true);
+        saved.setMaxInputTokens(128_000);
+        saved.setMaxOutputTokens(16_000);
+        saved.setEnabled(true);
+        saved.setDefaultModel(false);
+        saved.setCreatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+        saved.setUpdatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+
+        when(modelDefinitionService.create(any())).thenReturn(saved);
+        when(modelDefinitionService.update(eq(modelId), any())).thenReturn(saved);
+
+        mockMvc.perform(post("/api/v1/admin/models")
+                        .header("Authorization", "Bearer admin-jwt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName":"GPT-5 Pro",
+                                  "baseUrl":"https://api.example.com/v1",
+                                  "apiKey":"sk-secret",
+                                  "modelId":"gpt-5-pro",
+                                  "reasoningEffort":"XHIGH",
+                                  "supportedReasoningEfforts":["NONE","LOW","XHIGH","MAX"],
+                                  "maxInputTokens":128000,
+                                  "maxOutputTokens":16000
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.reasoningEffort").value("XHIGH"))
+                .andExpect(jsonPath("$.data.supportedReasoningEfforts[0]").value("NONE"))
+                .andExpect(jsonPath("$.data.supportedReasoningEfforts[2]").value("XHIGH"))
+                .andExpect(jsonPath("$.data.supportedReasoningEfforts[3]").value("MAX"));
+
+        verify(modelDefinitionService).create(argThat(input ->
+                input.reasoningEffort() == ReasoningEffort.XHIGH
+                        && java.util.List.of(
+                                ReasoningEffort.NONE,
+                                ReasoningEffort.LOW,
+                                ReasoningEffort.XHIGH,
+                                ReasoningEffort.MAX)
+                        .equals(input.supportedReasoningEfforts())));
+
+        mockMvc.perform(patch("/api/v1/admin/models/" + modelId)
+                        .header("Authorization", "Bearer admin-jwt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "supportedReasoningEfforts":["HIGH","MAX"],
+                                  "clearReasoningEffort":true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(modelDefinitionService).update(eq(modelId), argThat(input ->
+                Boolean.TRUE.equals(input.clearReasoningEffort())
+                        && java.util.List.of(ReasoningEffort.HIGH, ReasoningEffort.MAX)
+                        .equals(input.supportedReasoningEfforts())));
     }
 }

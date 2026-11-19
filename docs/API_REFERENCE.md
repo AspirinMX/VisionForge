@@ -72,8 +72,8 @@
 | --- | --- | --- | --- | --- |
 | `GET /api/v1/admin/models` | `200` | `ADMIN` | — | `ModelResponse[]`（仅含 `apiKeyConfigured`） |
 | `GET /api/v1/admin/models/{id}` | `200` | `ADMIN` | — | `ModelResponse` |
-| `POST /api/v1/admin/models` | `201` | `ADMIN` | `displayName(<=100)`, `baseUrl(<=500)`, `apiKey(<=1000)`, `modelId(<=200)`, `reasoningEffort`, `reasoningReplay`, `capabilityType`, `protocol`, `executionMode`, `priceUnits(>=0)`, `supportsImageInput`, `maxInputTokens(1..2000000)`, `maxOutputTokens(1..1000000)`, `enabled`, `defaultModel` | `ModelResponse` |
-| `PATCH /api/v1/admin/models/{id}` | `200` | `ADMIN` | 同上字段全可选 | `ModelResponse` |
+| `POST /api/v1/admin/models` | `201` | `ADMIN` | `displayName(<=100)`, `baseUrl(<=500)`, `apiKey(<=1000)`, `modelId(<=200)`, `reasoningEffort` (`NONE\|LOW\|MEDIUM\|HIGH\|XHIGH\|MAX`), `supportedReasoningEfforts` (`ReasoningEffort[]`), `reasoningReplay`, `capabilityType`, `protocol`, `executionMode`, `priceUnits(>=0)`, `supportsImageInput`, `maxInputTokens(1..2000000)`, `maxOutputTokens(1..1000000)`, `enabled`, `defaultModel` | `ModelResponse` |
+| `PATCH /api/v1/admin/models/{id}` | `200` | `ADMIN` | 同上字段全可选（额外支持 `clearReasoningEffort: true` 清空默认推理强度） | `ModelResponse` |
 | `POST /api/v1/admin/models/{id}/default` | `200` | `ADMIN` | —（按 `capabilityType` 设置唯一默认） | `ModelResponse` |
 | `POST /api/v1/admin/models/{id}/test` | `200` | `ADMIN` | —（脱敏探测模型网关连通性与鉴权） | `ModelTestResponse { ok, reachable, statusCode, latencyMs, protocol, detail }` |
 

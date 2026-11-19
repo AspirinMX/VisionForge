@@ -117,11 +117,12 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
 };
 
 export const REASONING_EFFORT_LABEL: Record<ReasoningEffort, string> = {
-  NONE: "关闭 (NONE)",
-  MINIMAL: "极简 (MINIMAL)",
-  LOW: "低 (LOW)",
-  MEDIUM: "中 (MEDIUM)",
-  HIGH: "高 (HIGH)",
+  NONE: "关闭 (none)",
+  LOW: "低 (low)",
+  MEDIUM: "中 (medium)",
+  HIGH: "高 (high)",
+  XHIGH: "超高 (xhigh)",
+  MAX: "极高 (max)",
 };
 
 export const REASONING_REPLAY_LABEL: Record<ReasoningReplayPolicy, string> = {

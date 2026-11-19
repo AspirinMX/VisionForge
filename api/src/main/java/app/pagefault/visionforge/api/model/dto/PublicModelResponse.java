@@ -1,5 +1,6 @@
 package app.pagefault.visionforge.api.model.dto;
 
+import java.util.List;
 import java.util.UUID;
 
 import app.pagefault.visionforge.agent.model.ExecutionMode;
@@ -7,6 +8,7 @@ import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.agent.model.ModelCapabilityType;
 import app.pagefault.visionforge.agent.model.ModelDefinition;
 import app.pagefault.visionforge.agent.model.ReasoningEffort;
+import app.pagefault.visionforge.agent.model.ReasoningEffortCodec;
 
 /**
  * End-user view of an enabled model. Credentials and upstream base URLs stay in the admin API.
@@ -22,6 +24,7 @@ public record PublicModelResponse(
         boolean supportsImageInput,
         boolean defaultModel,
         ReasoningEffort reasoningEffort,
+        List<ReasoningEffort> supportedReasoningEfforts,
         Integer maxInputTokens,
         Integer maxOutputTokens) {
 
@@ -37,6 +40,7 @@ public record PublicModelResponse(
                 model.isSupportsImageInput(),
                 model.isDefaultModel(),
                 model.getReasoningEffort(),
+                ReasoningEffortCodec.decode(model.getSupportedReasoningEfforts()),
                 model.getMaxInputTokens(),
                 model.getMaxOutputTokens());
     }

@@ -289,10 +289,11 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         }
         return switch (effort) {
             case NONE -> null;
-            case MINIMAL -> ReasoningEffort.MINIMAL;
             case LOW -> ReasoningEffort.LOW;
             case MEDIUM -> ReasoningEffort.MEDIUM;
             case HIGH -> ReasoningEffort.HIGH;
+            case XHIGH -> ReasoningEffort.XHIGH;
+            case MAX -> ReasoningEffort.MAX;
         };
     }
 

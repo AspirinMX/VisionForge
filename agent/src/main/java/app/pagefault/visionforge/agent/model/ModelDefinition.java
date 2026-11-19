@@ -28,6 +28,8 @@ public class ModelDefinition {
 
     private ReasoningEffort reasoningEffort;
 
+    private String supportedReasoningEfforts;
+
     private ReasoningReplayPolicy reasoningReplay;
 
     private ModelCapabilityType capabilityType;

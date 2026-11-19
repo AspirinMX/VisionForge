@@ -1,5 +1,7 @@
 package app.pagefault.visionforge.api.model.dto;
 
+import java.util.List;
+
 import app.pagefault.visionforge.agent.model.ExecutionMode;
 import app.pagefault.visionforge.agent.model.MediaProtocol;
 import app.pagefault.visionforge.agent.model.ModelCapabilityType;
@@ -22,6 +24,8 @@ public record UpdateModelRequest(
         @Size(max = 200, message = "模型 ID 不能超过 200 个字符")
         String modelId,
         ReasoningEffort reasoningEffort,
+        List<ReasoningEffort> supportedReasoningEfforts,
+        Boolean clearReasoningEffort,
         ReasoningReplayPolicy reasoningReplay,
         @Min(value = 1, message = "最大输入 Token 必须大于 0")
         @Max(value = 2_000_000, message = "最大输入 Token 不能超过 2000000")

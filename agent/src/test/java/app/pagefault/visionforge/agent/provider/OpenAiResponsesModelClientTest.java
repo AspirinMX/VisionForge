@@ -245,6 +245,47 @@ class OpenAiResponsesModelClientTest {
         }
     }
 
+    @Test
+    void mapsExtendedReasoningEffortsXhighAndMax() throws Exception {
+        for (ReasoningEffort effort : List.of(ReasoningEffort.XHIGH, ReasoningEffort.MAX)) {
+            AtomicReference<String> capturedBody = new AtomicReference<>();
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/v1/responses", exchange -> {
+                capturedBody.set(new String(
+                        exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                byte[] payload = "{\"error\":{\"message\":\"stub\"}}"
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(400, payload.length);
+                try (OutputStream output = exchange.getResponseBody()) {
+                    output.write(payload);
+                }
+            });
+            server.start();
+            try {
+                OpenAiResponsesModelClient client = new OpenAiResponsesModelClient();
+                ModelRequest request = new ModelRequest(
+                        baseUrl(server),
+                        "test-key",
+                        "test-model",
+                        effort,
+                        128,
+                        null,
+                        List.of(new ModelInputItem.Message("user", "hello")),
+                        List.of(),
+                        null);
+                assertThatThrownBy(() -> client.stream(request, ModelStreamListener.NOOP))
+                        .isInstanceOf(ModelProviderException.class);
+                JsonNode body = objectMapper.readTree(capturedBody.get());
+                assertThat(body.path("reasoning").path("effort").asText())
+                        .isEqualTo(effort.name().toLowerCase(java.util.Locale.ROOT));
+                assertThat(body.path("reasoning").path("summary").asText()).isEqualTo("auto");
+            } finally {
+                server.stop(0);
+            }
+        }
+    }
+
     private String baseUrl(HttpServer server) {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
     }

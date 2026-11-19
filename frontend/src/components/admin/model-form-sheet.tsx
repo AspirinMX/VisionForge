@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,6 +42,7 @@ import {
   REASONING_EFFORT_LABEL,
   REASONING_REPLAY_LABEL,
 } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const PROTOCOLS_BY_CAPABILITY: Record<ModelCapabilityType, MediaProtocol[]> = {
   CHAT: ["OPENAI_RESPONSES"],
@@ -55,7 +57,24 @@ const PROTOCOLS_BY_CAPABILITY: Record<ModelCapabilityType, MediaProtocol[]> = {
 
 const REASONING_EFFORTS: ReasoningEffort[] = [
   "NONE",
-  "MINIMAL",
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "XHIGH",
+  "MAX",
+];
+
+const REASONING_EFFORT_SHORT_LABEL: Record<ReasoningEffort, string> = {
+  NONE: "none",
+  LOW: "low",
+  MEDIUM: "medium",
+  HIGH: "high",
+  XHIGH: "xhigh",
+  MAX: "max",
+};
+
+const DEFAULT_SUPPORTED_EFFORTS: ReasoningEffort[] = [
+  "NONE",
   "LOW",
   "MEDIUM",
   "HIGH",
@@ -76,6 +95,7 @@ interface ModelFormState {
   protocol: MediaProtocol;
   executionMode: ExecutionMode;
   reasoningEffort: ReasoningEffort | "UNSET";
+  supportedReasoningEfforts: ReasoningEffort[];
   reasoningReplay: ReasoningReplayPolicy;
   maxInputTokens: string;
   maxOutputTokens: string;
@@ -96,6 +116,7 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
       protocol: "OPENAI_RESPONSES",
       executionMode: "INLINE_RESULT",
       reasoningEffort: "MEDIUM",
+      supportedReasoningEfforts: [...DEFAULT_SUPPORTED_EFFORTS],
       reasoningReplay: "ENCRYPTED",
       maxInputTokens: "32000",
       maxOutputTokens: "4096",
@@ -105,6 +126,13 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
       defaultModel: false,
     };
   }
+  const supported = REASONING_EFFORTS.filter((effort) =>
+    model.supportedReasoningEfforts.includes(effort)
+  );
+  const effort =
+    model.reasoningEffort && supported.includes(model.reasoningEffort)
+      ? model.reasoningEffort
+      : "UNSET";
   return {
     capabilityType: model.capabilityType,
     displayName: model.displayName,
@@ -113,7 +141,8 @@ function buildInitialState(model: ModelResponse | null): ModelFormState {
     apiKey: "",
     protocol: model.protocol,
     executionMode: model.executionMode,
-    reasoningEffort: model.reasoningEffort ?? "UNSET",
+    reasoningEffort: effort,
+    supportedReasoningEfforts: supported,
     reasoningReplay: model.reasoningReplay,
     maxInputTokens:
       model.maxInputTokens === null ? "" : String(model.maxInputTokens),
@@ -189,6 +218,26 @@ function ModelFormContent({
     }));
   };
 
+  const handleToggleSupportedEffort = (
+    effort: ReasoningEffort,
+    checked: boolean
+  ) => {
+    setForm((prev) => {
+      const nextSupported = REASONING_EFFORTS.filter((item) =>
+        item === effort ? checked : prev.supportedReasoningEfforts.includes(item)
+      );
+      const nextDefault =
+        !checked && prev.reasoningEffort === effort
+          ? "UNSET"
+          : prev.reasoningEffort;
+      return {
+        ...prev,
+        supportedReasoningEfforts: nextSupported,
+        reasoningEffort: nextDefault,
+      };
+    });
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -247,12 +296,17 @@ function ModelFormContent({
     setSubmitting(true);
 
     try {
+      const isChat = form.capabilityType === "CHAT";
+      const supportedReasoningEfforts = isChat
+        ? form.supportedReasoningEfforts
+        : undefined;
       const reasoningEffort =
-        form.capabilityType === "CHAT" && form.reasoningEffort !== "UNSET"
+        isChat && form.reasoningEffort !== "UNSET"
           ? form.reasoningEffort
           : undefined;
-      const reasoningReplay =
-        form.capabilityType === "CHAT" ? form.reasoningReplay : undefined;
+      const clearReasoningEffort =
+        isChat && form.reasoningEffort === "UNSET" ? true : undefined;
+      const reasoningReplay = isChat ? form.reasoningReplay : undefined;
 
       let saved: ModelResponse;
       if (isEdit && editingModel) {
@@ -266,6 +320,8 @@ function ModelFormContent({
           executionMode:
             form.capabilityType === "CHAT" ? "INLINE_RESULT" : form.executionMode,
           reasoningEffort,
+          supportedReasoningEfforts,
+          clearReasoningEffort,
           reasoningReplay,
           maxInputTokens,
           maxOutputTokens,
@@ -286,6 +342,7 @@ function ModelFormContent({
           executionMode:
             form.capabilityType === "CHAT" ? "INLINE_RESULT" : form.executionMode,
           reasoningEffort,
+          supportedReasoningEfforts,
           reasoningReplay,
           maxInputTokens,
           maxOutputTokens,
@@ -553,12 +610,71 @@ function ModelFormContent({
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <Label>支持的推理档位</Label>
+                <span className="text-[11px] text-muted-foreground">
+                  勾选模型支持的 effort 档位
+                </span>
+              </div>
+              <div
+                role="group"
+                aria-label="支持的推理档位"
+                className="grid grid-cols-3 divide-x divide-y overflow-hidden rounded-xl border bg-muted/20 sm:grid-cols-6 sm:divide-y-0"
+              >
+                {REASONING_EFFORTS.map((effort) => {
+                  const checked =
+                    form.supportedReasoningEfforts.includes(effort);
+                  return (
+                    <label
+                      key={effort}
+                      className={cn(
+                        "relative flex cursor-pointer items-center justify-center gap-1 overflow-hidden px-1.5 py-2 text-xs select-none transition-colors motion-reduce:transition-none",
+                        checked
+                          ? "bg-primary/10 font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        submitting && "pointer-events-none opacity-50"
+                      )}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        disabled={submitting}
+                        onCheckedChange={(nextChecked) =>
+                          handleToggleSupportedEffort(
+                            effort,
+                            Boolean(nextChecked)
+                          )
+                        }
+                        className="size-3.5 shrink-0"
+                      />
+                      <span className="font-mono text-[11px]">
+                        {REASONING_EFFORT_SHORT_LABEL[effort]}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {fieldErrors.supportedReasoningEfforts ? (
+                <p className="text-xs text-destructive">
+                  {fieldErrors.supportedReasoningEfforts}
+                </p>
+              ) : null}
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>推理强度</Label>
+                <Label>默认推理强度</Label>
                 <Select
                   value={form.reasoningEffort}
-                  items={{ UNSET: "不指定", ...REASONING_EFFORT_LABEL }}
+                  items={{
+                    UNSET: "不指定",
+                    ...Object.fromEntries(
+                      form.supportedReasoningEfforts.map((effort) => [
+                        effort,
+                        REASONING_EFFORT_LABEL[effort],
+                      ])
+                    ),
+                  }}
                   onValueChange={(value) => {
                     if (value) {
                       setForm((prev) => ({
@@ -574,13 +690,18 @@ function ModelFormContent({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="UNSET">不指定</SelectItem>
-                    {REASONING_EFFORTS.map((effort) => (
+                    {form.supportedReasoningEfforts.map((effort) => (
                       <SelectItem key={effort} value={effort}>
                         {REASONING_EFFORT_LABEL[effort]}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {fieldErrors.reasoningEffort ? (
+                  <p className="text-xs text-destructive">
+                    {fieldErrors.reasoningEffort}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
