@@ -16,6 +16,7 @@ Options:
     --poll-count             polls before a task succeeds (default 2)
     --slow-poll-count        polls for prompts containing [mock:slow] (default 4)
     --video-file             use an existing MP4 instead of generating one
+    --ffmpeg-path            path to ffmpeg executable or bin directory (env: FFMPEG_PATH)
     --cert / --key           serve HTTPS with the given certificate
     --api-key                require this bearer token (default: accept any)
 
@@ -222,39 +223,66 @@ def dashscope_text(value: object) -> str:
     return " ".join(parts)
 
 
-def prepare_video(path: str | None) -> bytes | None:
+def resolve_ffmpeg(ffmpeg_path: str | None = None) -> tuple[str | None, str]:
+    """Resolve the ffmpeg executable from --ffmpeg-path, FFMPEG_PATH, or PATH."""
+    raw = (ffmpeg_path or "").strip() or os.environ.get("FFMPEG_PATH", "").strip()
+    candidate = raw or "ffmpeg"
+    if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {'"', "'"}:
+        candidate = candidate[1:-1].strip()
+    expanded = os.path.expandvars(os.path.expanduser(candidate))
+
+    if os.path.isdir(expanded):
+        names = ("ffmpeg.exe", "ffmpeg") if os.name == "nt" else ("ffmpeg",)
+        for name in names:
+            joined = os.path.join(expanded, name)
+            if os.path.isfile(joined):
+                return joined, expanded
+        return None, expanded
+
+    if os.path.isfile(expanded):
+        return expanded, expanded
+
+    return shutil.which(expanded), expanded
+
+
+def prepare_video(path: str | None, ffmpeg_path: str | None = None) -> bytes | None:
     if path:
         with open(path, "rb") as handle:
             return handle.read()
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg, candidate = resolve_ffmpeg(ffmpeg_path)
     if not ffmpeg:
-        print("[mock] ffmpeg not found; video endpoints will return 503")
+        detail = f" (checked '{candidate}')" if candidate != "ffmpeg" else ""
+        print(
+            f"[mock] ffmpeg not found{detail}; set --ffmpeg-path, FFMPEG_PATH, "
+            "PATH, or pass --video-file; video endpoints will return 503"
+        )
         return None
-    output = os.path.join(tempfile.mkdtemp(prefix="visionforge-mock-"), "mock.mp4")
-    command = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        "testsrc=size=640x360:rate=24",
-        "-t",
-        "2",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        output,
-    ]
-    try:
-        subprocess.run(command, check=True)
-        with open(output, "rb") as handle:
-            return handle.read()
-    except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"[mock] could not generate the test video: {exc}")
-        return None
+    with tempfile.TemporaryDirectory(prefix="visionforge-mock-") as tmpdir:
+        output = os.path.join(tmpdir, "mock.mp4")
+        command = [
+            ffmpeg,
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=640x360:rate=24",
+            "-t",
+            "2",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            output,
+        ]
+        try:
+            subprocess.run(command, check=True)
+            with open(output, "rb") as handle:
+                return handle.read()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"[mock] could not generate the test video with '{ffmpeg}': {exc}")
+            return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -328,6 +356,13 @@ class Handler(BaseHTTPRequestHandler):
     def _video_ready(self) -> bool:
         with LOCK:
             return "mock.mp4" in MEDIA
+
+    def _video_unavailable(self) -> None:
+        self._error(
+            503,
+            "MockVideoUnavailable",
+            "ffmpeg is required (set --ffmpeg-path, FFMPEG_PATH, PATH, or --video-file)",
+        )
 
     # -- routing ----------------------------------------------------------
 
@@ -455,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _ark_video_task(self, request: dict) -> None:
         if not self._video_ready():
-            return self._error(503, "MockVideoUnavailable", "ffmpeg is required")
+            return self._video_unavailable()
         prompt = ark_text(request.get("content"))
         task_id = new_task("ark-video", prompt, str(request.get("model", "")))
         self._json(200, {"id": task_id, "model": request.get("model", "mock-seedance")})
@@ -524,7 +559,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dashscope_task(self, request: dict, kind: str, prompt_field: str) -> None:
         if kind == "ds-video" and not self._video_ready():
-            return self._error(503, "MockVideoUnavailable", "ffmpeg is required")
+            return self._video_unavailable()
         value = request.get("input", {})
         prompt = str(value.get(prompt_field, "")) if isinstance(value, dict) else ""
         if not prompt and isinstance(value, dict):
@@ -644,6 +679,7 @@ def main() -> None:
     parser.add_argument("--poll-count", type=int, default=2)
     parser.add_argument("--slow-poll-count", type=int, default=4)
     parser.add_argument("--video-file", default=None)
+    parser.add_argument("--ffmpeg-path", default=None)
     parser.add_argument("--cert", default=None)
     parser.add_argument("--key", default=None)
     parser.add_argument("--api-key", default=None)
@@ -653,7 +689,7 @@ def main() -> None:
     CONFIG["slow_poll_count"] = max(CONFIG["poll_count"], args.slow_poll_count)
     CONFIG["api_key"] = args.api_key
 
-    video = prepare_video(args.video_file)
+    video = prepare_video(args.video_file, args.ffmpeg_path)
     if video:
         MEDIA["mock.mp4"] = ("video/mp4", video)
 

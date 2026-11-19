@@ -136,7 +136,7 @@ pnpm --dir frontend dev
 | `CONTEXT_COMPACT_THRESHOLD` | `0.8` | 触发本地上下文压缩的预算占比阈值 |
 | `CONTEXT_COMPACT_KEEP_RATIO` | `0.25` | 压缩时尾部保留未压缩消息的预算占比 |
 | `CONTEXT_SUMMARY_MAX_OUTPUT_TOKENS` | `1024` | 压缩摘要最大输出 Token |
-| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | 可执行文件路径 |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | 可执行文件路径（Mock 脚本亦会读取 `FFMPEG_PATH`） |
 | `COMPOSITION_PART_SIZE_BYTES` | `8388608` | 合成输出 S3 分片大小（>= 5 MiB） |
 | `COMPOSITION_TIMEOUT` / `COMPOSITION_PRESIGN_TTL` | `30m` / `2h` | 成片超时与源片读取预签名有效期 |
 | `MEDIA_ALLOW_HTTP` | `false` | **仅限本地开发**：允许 Worker 通过明文 HTTP 下载结果 |
@@ -164,7 +164,7 @@ python scripts/mock_media_server.py --port 8000
 - `ARK_IMAGES` / `ARK_VIDEO_TASKS`：`http://127.0.0.1:8000`
 - `DASHSCOPE_*`：`http://127.0.0.1:8000/api/v1`
 
-支持提示词故障注入标记：`[mock:fail]`（触发上游失败）、`[mock:slow]`（延迟响应）、`[mock:empty]`（空结果，用于测边界）。默认生成 2 秒 MP4，可通过 `--video-file <path>` 指定更长测试样片。
+支持提示词故障注入标记：`[mock:fail]`（触发上游失败）、`[mock:slow]`（延迟响应）、`[mock:empty]`（空结果，用于测边界）。默认使用 `--ffmpeg-path`、`FFMPEG_PATH` 或 `PATH` 中的 `ffmpeg`（可传可执行文件路径或 `bin` 目录）生成 2 秒 MP4，也可通过 `--video-file <path>` 直接指定现成样片。
 
 ---
 

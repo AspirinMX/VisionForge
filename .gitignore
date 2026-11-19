@@ -41,3 +41,7 @@ build/
 ### Environment variables ###
 .env*
 !.env.example
+
+### Python ###
+__pycache__/
+*.py[cod]

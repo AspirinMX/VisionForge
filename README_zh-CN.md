@@ -131,7 +131,7 @@ pnpm --dir frontend dev
 访问 [http://localhost:3000](http://localhost:3000)。浏览器 `/api/v1/*` 请求由 `frontend/src/app/api/v1/[...path]/route.ts` 反向代理至后端（通过运行期变量 `VISIONFORGE_API_BASE_URL` 配置）。
 
 > [!NOTE]
-> **本地媒体 Mock**：执行 `python scripts/mock_media_server.py --port 8000` 并在 Worker 设置 `MEDIA_ALLOW_HTTP=true`，即可在本地免付费联调生图、生视频与成片。**生产环境严禁开启 `MEDIA_ALLOW_HTTP`**。
+> **本地媒体 Mock**：执行 `python scripts/mock_media_server.py --port 8000`（若 `ffmpeg` 不在 `PATH` 中，可传 `--ffmpeg-path <路径>`、设置 `FFMPEG_PATH`，或直接传 `--video-file <样片.mp4>`）并在 Worker 设置 `MEDIA_ALLOW_HTTP=true`，即可在本地免付费联调生图、生视频与成片。**生产环境严禁开启 `MEDIA_ALLOW_HTTP`**。
 
 ### 5. 验证与全栈容器部署
 

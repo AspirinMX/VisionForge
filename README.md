@@ -131,7 +131,7 @@ pnpm --dir frontend dev
 Open [http://localhost:3000](http://localhost:3000). `/api/v1/*` requests proxy cleanly via `frontend/src/app/api/v1/[...path]/route.ts` (target controlled by `VISIONFORGE_API_BASE_URL`).
 
 > [!NOTE]
-> **Local Media Mock**: Run `python scripts/mock_media_server.py --port 8000` with `MEDIA_ALLOW_HTTP=true` in the worker to test image/video pipelines locally without paid calls. Keep `MEDIA_ALLOW_HTTP` disabled in production.
+> **Local Media Mock**: Run `python scripts/mock_media_server.py --port 8000` (pass `--ffmpeg-path <path>` or set `FFMPEG_PATH` if `ffmpeg` is not on `PATH`, or use `--video-file <sample.mp4>`) with `MEDIA_ALLOW_HTTP=true` in the worker to test image/video pipelines locally without paid calls. Keep `MEDIA_ALLOW_HTTP` disabled in production.
 
 ### 5. Build, Test & Full Stack Deployment
 
