@@ -64,15 +64,16 @@ import {
   notifyInfo,
   notifySuccess,
 } from "@/lib/api/feedback";
-import type {
-  AgentRunProcessResponse,
-  AgentStreamEvent,
-  AgentTurnProcessResponse,
-  ToolCallProcessResponse,
-  UUID,
-} from "@/lib/api/types";
+import type { AgentStreamEvent, UUID } from "@/lib/api/types";
 import { draftHandoff } from "@/lib/storage/draft-handoff";
 import { uploadConversationAsset } from "@/lib/studio/asset-cache";
+import {
+  applyStreamEvent,
+  buildLivePresentation,
+  isLiveUserMessagePersisted,
+  maxMessageSeq,
+  type LiveStreamState,
+} from "@/lib/studio/live-stream";
 import { cn } from "@/lib/utils";
 
 const MAX_CHAT_IMAGES = 8;
@@ -82,152 +83,6 @@ const STARTER_PROMPTS = [
   "请为一段深夜咖啡馆偶遇的 20 秒故事生成 Markdown 分场剧本，并拆分为 4 个可执行分镜。",
   "根据我刚上传的参考图设定主角视觉风格，给出完整分镜草案。",
 ];
-
-interface LiveTurnState {
-  turnNo: number;
-  reasoning: string;
-  text: string;
-  tools: ToolCallProcessResponse[];
-}
-
-interface LiveStreamState {
-  prompt: string;
-  assetIds: UUID[];
-  runId: UUID | null;
-  turns: LiveTurnState[];
-  activeTurnNo: number;
-}
-
-function upsertLiveTurn(
-  turns: LiveTurnState[],
-  turnNo: number,
-  updater: (turn: LiveTurnState) => LiveTurnState
-): LiveTurnState[] {
-  const index = turns.findIndex((item) => item.turnNo === turnNo);
-  if (index === -1) {
-    const next = [
-      ...turns,
-      updater({ turnNo, reasoning: "", text: "", tools: [] }),
-    ];
-    return next.sort((a, b) => a.turnNo - b.turnNo);
-  }
-  return turns.map((item, idx) => (idx === index ? updater(item) : item));
-}
-
-function applyStreamEvent(
-  prev: LiveStreamState,
-  event: AgentStreamEvent
-): LiveStreamState {
-  switch (event.type) {
-    case "accepted":
-      return { ...prev, runId: event.runId };
-    case "turn_start":
-      return {
-        ...prev,
-        activeTurnNo: event.turnNo,
-        turns: upsertLiveTurn(prev.turns, event.turnNo, (turn) => turn),
-      };
-    case "reasoning":
-    case "reasoning_summary":
-      return {
-        ...prev,
-        turns: upsertLiveTurn(prev.turns, prev.activeTurnNo, (turn) => ({
-          ...turn,
-          reasoning: turn.reasoning + event.content,
-        })),
-      };
-    case "delta":
-      return {
-        ...prev,
-        turns: upsertLiveTurn(prev.turns, prev.activeTurnNo, (turn) => ({
-          ...turn,
-          text: turn.text + event.content,
-        })),
-      };
-    case "tool_start":
-    case "tool_waiting":
-    case "tool_done":
-      return {
-        ...prev,
-        turns: upsertLiveTurn(prev.turns, event.turnNo, (turn) => {
-          const nextTool: ToolCallProcessResponse = {
-            callId: event.callId,
-            toolName: event.toolName,
-            action: event.action,
-            target: event.target,
-            status: event.status,
-            fileId: event.fileId ?? null,
-            taskId: event.taskId ?? null,
-            errorMessage: event.message ?? null,
-          };
-          const existingIdx = turn.tools.findIndex(
-            (t) => t.callId === event.callId
-          );
-          const nextTools =
-            existingIdx === -1
-              ? [...turn.tools, nextTool]
-              : turn.tools.map((t, idx) => (idx === existingIdx ? nextTool : t));
-          return { ...turn, tools: nextTools };
-        }),
-      };
-    default:
-      return prev;
-  }
-}
-
-function buildLivePresentation(liveStream: LiveStreamState): {
-  process: AgentRunProcessResponse | null;
-  answerMarkdown: string;
-} {
-  if (liveStream.turns.length === 0) {
-    return { process: null, answerMarkdown: "" };
-  }
-
-  const lastIndex = liveStream.turns.length - 1;
-  const processTurns: AgentTurnProcessResponse[] = [];
-  let answerMarkdown = "";
-
-  liveStream.turns.forEach((turn, idx) => {
-    const isLast = idx === lastIndex;
-    const isAnsweringTurn = isLast && turn.tools.length === 0;
-    const trimmedReasoning = turn.reasoning.trim();
-    const trimmedText = turn.text.trim();
-
-    if (isAnsweringTurn) {
-      answerMarkdown = turn.text;
-      if (trimmedReasoning) {
-        processTurns.push({
-          turnNo: turn.turnNo,
-          reasoning: trimmedReasoning,
-          stepText: null,
-          toolCalls: [],
-        });
-      }
-      return;
-    }
-
-    if (trimmedReasoning || trimmedText || turn.tools.length > 0) {
-      processTurns.push({
-        turnNo: turn.turnNo,
-        reasoning: trimmedReasoning || null,
-        stepText: trimmedText || null,
-        toolCalls: turn.tools,
-      });
-    }
-  });
-
-  return {
-    process:
-      processTurns.length > 0
-        ? {
-            runId: liveStream.runId ?? "live",
-            durationMs: null,
-            turns: processTurns,
-          }
-        : null,
-    answerMarkdown,
-  };
-}
 
 function MessageAttachments({ assetIds }: { assetIds: UUID[] }) {
   if (assetIds.length === 0) {
@@ -244,6 +99,23 @@ function MessageAttachments({ assetIds }: { assetIds: UUID[] }) {
           className="size-20 rounded-xl"
         />
       ))}
+    </div>
+  );
+}
+
+function UserMessageBubble({
+  content,
+  assetIds,
+}: {
+  content: string;
+  assetIds: UUID[];
+}) {
+  return (
+    <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2">
+      <MessageAttachments assetIds={assetIds} />
+      <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
+        <div className="whitespace-pre-wrap">{content}</div>
+      </div>
     </div>
   );
 }
@@ -287,6 +159,13 @@ export function ChatPane() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const handoffCheckedRef = useRef(false);
   const submittingRef = useRef(false);
+  const latestMaxSeqRef = useRef(0);
+  const initialLoadingRef = useRef(initialLoading);
+
+  useEffect(() => {
+    latestMaxSeqRef.current = maxMessageSeq(messages);
+    initialLoadingRef.current = initialLoading;
+  }, [initialLoading, messages]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     nearBottomRef.current = true;
@@ -353,9 +232,14 @@ export function ChatPane() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      const baselineSeq = initialLoadingRef.current
+        ? null
+        : latestMaxSeqRef.current;
+
       setLiveStream({
         prompt: trimmed,
         assetIds,
+        baselineSeq,
         runId: null,
         turns: [],
         activeTurnNo: 0,
@@ -616,6 +500,11 @@ export function ChatPane() {
     [liveStream]
   );
 
+  const isLiveUserPersisted = useMemo(
+    () => isLiveUserMessagePersisted(messages, liveStream, initialLoading),
+    [initialLoading, liveStream, messages]
+  );
+
   const columnWidthClass = canvasOpen
     ? "mx-auto w-full max-w-2xl"
     : "mx-auto w-full max-w-3xl";
@@ -686,15 +575,11 @@ export function ChatPane() {
 
             if (message.role === "USER") {
               return (
-                <div
+                <UserMessageBubble
                   key={message.id}
-                  className="ml-auto flex max-w-[82%] flex-col items-end gap-2"
-                >
-                  <MessageAttachments assetIds={attached} />
-                  <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  </div>
-                </div>
+                  content={message.content}
+                  assetIds={attached}
+                />
               );
             }
 
@@ -747,12 +632,12 @@ export function ChatPane() {
 
           {liveStream ? (
             <>
-              <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2">
-                <MessageAttachments assetIds={liveStream.assetIds} />
-                <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
-                  <div className="whitespace-pre-wrap">{liveStream.prompt}</div>
-                </div>
-              </div>
+              {!isLiveUserPersisted ? (
+                <UserMessageBubble
+                  content={liveStream.prompt}
+                  assetIds={liveStream.assetIds}
+                />
+              ) : null}
 
               <div className="flex flex-col gap-1">
                 {livePresentation?.process ? (
