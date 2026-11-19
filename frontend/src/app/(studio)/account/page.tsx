@@ -389,13 +389,13 @@ export default function AccountPage() {
 
               {loadingCredit && !credit ? (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <Skeleton className="h-20 rounded-2xl" />
-                  <Skeleton className="h-20 rounded-2xl" />
-                  <Skeleton className="h-20 rounded-2xl" />
+                  <Skeleton className="h-20 rounded-surface-md" />
+                  <Skeleton className="h-20 rounded-surface-md" />
+                  <Skeleton className="h-20 rounded-surface-md" />
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border p-3.5">
+                  <div className="rounded-surface-md border p-3.5">
                     <p className="text-xs text-muted-foreground">可用余额</p>
                     <p className="mt-1 text-xl font-semibold tabular-nums">
                       {credit?.availableUnits ?? 0}
@@ -405,7 +405,7 @@ export default function AccountPage() {
                       {formatDateTime(credit?.updatedAt)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border p-3.5">
+                  <div className="rounded-surface-md border p-3.5">
                     <p className="text-xs text-muted-foreground">当前预占中</p>
                     <p className="mt-1 text-xl font-semibold tabular-nums">
                       {credit?.reservedUnits ?? 0}
@@ -414,7 +414,7 @@ export default function AccountPage() {
                       进行中任务冻结的额度
                     </p>
                   </div>
-                  <div className="rounded-2xl border p-3.5">
+                  <div className="rounded-surface-md border p-3.5">
                     <p className="text-xs text-muted-foreground">
                       最近 {usage?.window ?? 100} 条任务额度
                     </p>
@@ -435,7 +435,7 @@ export default function AccountPage() {
 
               <Separator />
 
-              <div className="rounded-2xl border bg-muted/20 p-4">
+              <div className="rounded-surface-md border bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-1.5">
                     <Label
@@ -491,14 +491,14 @@ export default function AccountPage() {
                 </div>
                 <ApiErrorAlert error={ledgerError} title="读取额度流水失败" />
                 {loadingLedger && !ledger ? (
-                  <Skeleton className="h-24 rounded-2xl" />
+                  <Skeleton className="h-24 rounded-surface-md" />
                 ) : allLedgerEntries.length === 0 ? (
-                  <p className="rounded-2xl border px-3.5 py-6 text-center text-xs text-muted-foreground">
+                  <p className="rounded-surface-md border px-3.5 py-6 text-center text-xs text-muted-foreground">
                     暂无额度流水；首次生成或访问本页后会出现初始授予记录。
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    <div className="divide-y rounded-2xl border">
+                    <div className="divide-y rounded-surface-md border">
                       {allLedgerEntries.map((entry) => (
                         <div
                           key={entry.id}
@@ -582,7 +582,7 @@ export default function AccountPage() {
                 </h3>
                 <ApiErrorAlert error={usageError} title="读取近期任务汇总失败" />
                 {loadingUsage && !usage ? (
-                  <Skeleton className="h-16 rounded-2xl" />
+                  <Skeleton className="h-16 rounded-surface-md" />
                 ) : (usage?.buckets ?? []).length === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     尚无媒体生成任务。
@@ -592,7 +592,7 @@ export default function AccountPage() {
                     {(usage?.buckets ?? []).map((bucket) => (
                       <div
                         key={bucket.billingStatus}
-                        className="rounded-2xl border p-3"
+                        className="rounded-surface-md border p-3"
                       >
                         <p className="text-xs text-muted-foreground">
                           {GENERATION_BILLING_LABEL[bucket.billingStatus]}

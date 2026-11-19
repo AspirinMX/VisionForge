@@ -194,7 +194,7 @@ export default function AdminAuditLogsPage() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto w-full max-w-7xl space-y-4">
           {/* Filter panel */}
-          <div className="grid gap-2 rounded-2xl border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 rounded-surface-md border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
             <Input
               value={typeInput}
               onChange={(e) => setTypeInput(e.target.value)}
@@ -276,14 +276,14 @@ export default function AdminAuditLogsPage() {
           <ApiErrorAlert error={error} title="审计日志查询失败" />
 
           {loading && !data ? (
-            <Skeleton className="h-64 w-full rounded-2xl" />
+            <Skeleton className="h-64 w-full rounded-surface-md" />
           ) : !data || data.items.length === 0 ? (
-            <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+            <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
               暂无符合筛选条件的审计日志。
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border bg-card">
+              <div className="rounded-surface-md border bg-card">
                 <Table>
                   <TableHeader>
                     <TableRow>

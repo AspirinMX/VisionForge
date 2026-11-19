@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -45,6 +44,13 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --radius-control-xs: 4px;
+    --radius-control-sm: 6px;
+    --radius-control-md: 8px;
+    --radius-surface-sm: 12px;
+    --radius-surface-md: 16px;
+    --radius-surface-lg: 20px;
+    --radius-pill: 9999px;
 }
 
 :root {
@@ -72,6 +78,11 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
+    --motion-micro: 140ms;
+    --motion-control-enter: 180ms;
+    --motion-control-exit: 120ms;
+    --motion-surface-enter: 240ms;
+    --motion-surface-exit: 170ms;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -131,5 +142,11 @@
   ::selection {
     background-color: color-mix(in oklch, var(--primary) 16%, transparent);
     color: var(--foreground);
+  }
+}
+
+@supports (corner-shape: squircle) {
+  [data-squircle="true"] {
+    corner-shape: squircle;
   }
 }

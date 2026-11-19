@@ -98,7 +98,7 @@ export default function RegisterPage() {
   return (
     <Card className="w-full max-w-[420px]">
       <CardHeader className="items-center text-center">
-        <div className="mb-1 flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+        <div className="mb-1 flex size-10 items-center justify-center rounded-surface-md bg-primary text-primary-foreground">
           <ClapperboardIcon className="size-5" />
         </div>
         <CardTitle className="text-xl">注册 VisionForge</CardTitle>

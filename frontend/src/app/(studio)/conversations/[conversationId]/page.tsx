@@ -40,8 +40,8 @@ function ConversationWorkspaceFallback() {
     <div className="flex flex-1 flex-col gap-4 p-4">
       <Skeleton className="h-12 w-full rounded-xl" />
       <div className="mx-auto w-full max-w-3xl space-y-4 pt-6">
-        <Skeleton className="ml-auto h-14 w-2/3 rounded-2xl" />
-        <Skeleton className="h-28 w-4/5 rounded-2xl" />
+        <Skeleton className="ml-auto h-14 w-2/3 rounded-surface-md" />
+        <Skeleton className="h-28 w-4/5 rounded-surface-md" />
       </div>
     </div>
   );

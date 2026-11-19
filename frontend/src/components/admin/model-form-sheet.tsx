@@ -556,7 +556,7 @@ function ModelFormContent({
         </div>
 
         {form.capabilityType === "CHAT" ? (
-          <div className="space-y-4 rounded-2xl border p-3.5">
+          <div className="space-y-4 rounded-surface-md border p-3.5">
             <p className="text-xs font-medium text-muted-foreground">
               主对话模型上下文与推理策略
             </p>
@@ -754,7 +754,7 @@ function ModelFormContent({
           ) : null}
         </div>
 
-        <div className="space-y-3 rounded-2xl border p-3.5">
+        <div className="space-y-3 rounded-surface-md border p-3.5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium">支持图片输入</p>

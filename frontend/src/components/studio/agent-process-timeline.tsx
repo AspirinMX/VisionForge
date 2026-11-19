@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ShimmeringText } from "@animate-ui/react/primitives/texts/shimmering";
 import { motion } from "motion/react";
+
+import { MICRO } from "@/lib/motion";
 import {
   AlertCircleIcon,
   AtomIcon,
@@ -131,7 +133,7 @@ function ThinkingSection({
         )}
         <ChevronDownIcon
           className={cn(
-            "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
+            "size-3.5 transition-transform duration-[var(--motion-micro)] motion-reduce:transition-none",
             !open && "-rotate-90"
           )}
         />
@@ -242,7 +244,7 @@ export function AgentProcessTimeline({
                         type="button"
                         initial={{ opacity: 0, y: 4 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.14, ease: "easeOut" }}
+                        transition={MICRO.transition}
                         onClick={() => handleToolClick(tool)}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-left text-xs transition-colors motion-reduce:transition-none hover:bg-muted",
@@ -260,7 +262,7 @@ export function AgentProcessTimeline({
                       key={tool.callId}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14, ease: "easeOut" }}
+                      transition={MICRO.transition}
                       className={cn(
                         "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-xs",
                         tool.status === "FAILED" && "bg-destructive/8"

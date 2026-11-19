@@ -12,6 +12,8 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ShimmeringText } from "@animate-ui/react/primitives/texts/shimmering";
+
+import { CONTROL } from "@/lib/motion";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -113,7 +115,7 @@ function UserMessageBubble({
   return (
     <div className="ml-auto flex max-w-[82%] flex-col items-end gap-2">
       <MessageAttachments assetIds={assetIds} />
-      <div className="rounded-3xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
+      <div className="rounded-surface-lg bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground">
         <div className="whitespace-pre-wrap">{content}</div>
       </div>
     </div>
@@ -519,9 +521,9 @@ export function ChatPane() {
         <div className={cn("flex min-h-full flex-col gap-6", columnWidthClass)}>
           {initialLoading ? (
             <div className="space-y-4">
-              <Skeleton className="ml-auto h-11 w-1/2 rounded-3xl" />
-              <Skeleton className="h-24 w-4/5 rounded-2xl" />
-              <Skeleton className="ml-auto h-11 w-2/5 rounded-3xl" />
+              <Skeleton className="ml-auto h-11 w-1/2 rounded-surface-lg" />
+              <Skeleton className="h-24 w-4/5 rounded-surface-lg" />
+              <Skeleton className="ml-auto h-11 w-2/5 rounded-surface-lg" />
             </div>
           ) : null}
 
@@ -530,7 +532,7 @@ export function ChatPane() {
           !liveStream &&
           !activeRun ? (
             <div className="my-auto flex flex-col items-center justify-center gap-6 py-12 text-center">
-              <div className="flex size-11 items-center justify-center rounded-2xl bg-muted/60">
+              <div className="flex size-11 items-center justify-center rounded-surface-lg bg-muted/60">
                 <SparklesIcon className="size-5 text-foreground/80" />
               </div>
               <div className="max-w-md space-y-1.5">
@@ -550,7 +552,7 @@ export function ChatPane() {
                       setPrompt(starter);
                       textareaRef.current?.focus();
                     }}
-                    className="rounded-2xl border border-border/70 bg-background p-3.5 text-xs leading-relaxed text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                    className="rounded-surface-sm border border-border/70 bg-background p-3.5 text-xs leading-relaxed text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-muted/50 hover:text-foreground"
                   >
                     {starter}
                   </button>
@@ -596,7 +598,7 @@ export function ChatPane() {
 
                 <MarkdownView content={message.content} />
 
-                <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100 focus-within:opacity-100">
                   <Tooltip>
                     <TooltipTrigger
                       render={
@@ -711,7 +713,7 @@ export function ChatPane() {
               initial={{ opacity: 0, y: 6, scale: 0.94 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.94 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
+              transition={CONTROL.enter}
               className="pointer-events-auto mb-2.5"
             >
               <Button
@@ -733,7 +735,7 @@ export function ChatPane() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "pointer-events-auto rounded-3xl border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors motion-reduce:transition-none",
+            "pointer-events-auto rounded-pill border border-border/80 bg-card/95 p-2.5 shadow-lg backdrop-blur-md transition-colors motion-reduce:transition-none",
             isDragging && "border-primary bg-accent/40",
             columnWidthClass
           )}
@@ -884,7 +886,7 @@ export function ChatPane() {
                   <div
                     key={item.assetId}
                     className={cn(
-                      "flex flex-col gap-1.5 rounded-xl border p-2 text-left transition-colors",
+                      "flex flex-col gap-1.5 rounded-surface-sm border p-2 text-left transition-colors motion-reduce:transition-none",
                       selected ? "border-primary bg-accent" : "hover:bg-muted/40"
                     )}
                   >

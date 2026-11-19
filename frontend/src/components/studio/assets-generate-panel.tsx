@@ -324,7 +324,7 @@ function QuickGenerateForm({
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border bg-card p-4">
+    <div className="space-y-4 rounded-surface-md border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2Icon className="size-4 text-primary" />
@@ -877,7 +877,7 @@ export function AssetsGeneratePanel() {
       />
 
       {/* Assets Library & RustFS Upload */}
-      <div className="space-y-3 rounded-2xl border bg-card p-4">
+      <div className="space-y-3 rounded-surface-md border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold">会话素材库</h3>

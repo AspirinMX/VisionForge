@@ -420,14 +420,14 @@ function UsersAdminContent() {
           <ApiErrorAlert error={error} title="用户列表加载失败" />
 
           {loading && !result ? (
-            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-72 w-full rounded-surface-md" />
           ) : !result || result.items.length === 0 ? (
-            <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+            <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
               暂无符合条件的用户记录。
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border bg-card">
+              <div className="rounded-surface-md border bg-card">
                 <Table>
                   <TableHeader>
                     <TableRow>

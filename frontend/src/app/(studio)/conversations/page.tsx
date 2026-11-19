@@ -9,6 +9,8 @@ import {
 import { useRouter } from "next/navigation";
 import { Fade } from "@animate-ui/react/primitives/effects/fade";
 import { Slide } from "@animate-ui/react/primitives/effects/slide";
+
+import { CONTROL } from "@/lib/motion";
 import {
   ArrowUpIcon,
   ClapperboardIcon,
@@ -232,8 +234,8 @@ export default function ConversationsHomePage() {
       />
 
       <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
-        <Fade transition={{ duration: 0.18 }} className="w-full max-w-3xl">
-          <Slide direction="up" offset={8} transition={{ duration: 0.2 }} className="space-y-6">
+        <Fade transition={CONTROL.enter} className="w-full max-w-3xl">
+          <Slide direction="up" offset={8} transition={CONTROL.enter} className="space-y-6">
             <div className="space-y-1.5 text-center">
               <h2 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
                 你好，{user?.displayName ?? "创作者"}
@@ -243,7 +245,7 @@ export default function ConversationsHomePage() {
               </p>
             </div>
 
-            <div className="rounded-3xl border border-border/80 bg-card/95 p-3 shadow-md transition-shadow motion-reduce:transition-none focus-within:ring-2 focus-within:ring-ring/20">
+            <div className="rounded-pill border border-border/80 bg-card/95 p-3 shadow-md transition-shadow motion-reduce:transition-none focus-within:ring-2 focus-within:ring-ring/20">
             {queuedFiles.length > 0 ? (
               <div className="mb-2 flex flex-wrap gap-2 px-1 pt-1">
                 {queuedFiles.map((item) => (

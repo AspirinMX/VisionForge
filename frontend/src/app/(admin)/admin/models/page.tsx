@@ -189,9 +189,9 @@ function ModelsAdminContent() {
           <ApiErrorAlert error={error} title="模型目录加载失败" />
 
           {loading && !data ? (
-            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-72 w-full rounded-surface-md" />
           ) : filteredModels.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed p-10 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-surface-md border border-dashed p-10 text-center">
               <p className="text-sm text-muted-foreground">
                 当前分类下暂无已配置的模型路由。
               </p>
@@ -201,7 +201,7 @@ function ModelsAdminContent() {
               </Button>
             </div>
           ) : (
-            <div className="rounded-2xl border bg-card">
+            <div className="rounded-surface-md border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>

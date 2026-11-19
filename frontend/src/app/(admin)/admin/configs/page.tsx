@@ -195,10 +195,10 @@ export default function AdminConfigsPage() {
           <ApiErrorAlert error={error} title="读取配置中心失败" />
 
           {loading && !data ? (
-            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-72 w-full rounded-surface-md" />
           ) : data ? (
             <>
-              <Card className="rounded-2xl">
+              <Card className="rounded-surface-md">
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 py-4">
                   <div className="space-y-1">
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -243,7 +243,7 @@ export default function AdminConfigsPage() {
                         type="button"
                         onClick={() => setSelectedDataId(entry.dataId)}
                         className={cn(
-                          "w-full rounded-2xl border p-3.5 text-left transition-colors",
+                          "w-full rounded-surface-md border p-3.5 text-left transition-colors motion-reduce:transition-none",
                           selected
                             ? "border-primary bg-accent/60"
                             : "bg-card hover:bg-muted/40"
@@ -273,7 +273,7 @@ export default function AdminConfigsPage() {
 
                 {/* Editor */}
                 {activeEntry ? (
-                  <Card className="rounded-2xl">
+                  <Card className="rounded-surface-md">
                     <CardHeader className="border-b pb-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">

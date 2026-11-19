@@ -44,7 +44,7 @@ export function StudioAuthGuard({ children }: { children: ReactNode }) {
           </div>
           <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-4 p-6">
             <Skeleton className="h-8 w-64" />
-            <Skeleton className="h-28 w-full rounded-2xl" />
+            <Skeleton className="h-28 w-full rounded-surface-md" />
           </div>
         </div>
       </div>
@@ -61,7 +61,7 @@ export function AdminRoleGuard({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-svh w-full space-y-4 p-6">
         <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-surface-md" />
       </div>
     );
   }

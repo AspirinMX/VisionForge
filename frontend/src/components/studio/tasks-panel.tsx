@@ -221,7 +221,7 @@ export function TasksPanel() {
               return (
                 <div
                   key={comp.taskId}
-                  className="space-y-2.5 rounded-2xl border bg-card p-3.5"
+                  className="space-y-2.5 rounded-surface-md border bg-card p-3.5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -291,7 +291,7 @@ export function TasksPanel() {
 
         {/* Generation Tasks */}
         {filteredTasks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed p-8 text-center text-xs text-muted-foreground">
+          <div className="rounded-surface-md border border-dashed p-8 text-center text-xs text-muted-foreground">
             暂无符合条件的媒体生成任务。
           </div>
         ) : (
@@ -306,7 +306,7 @@ export function TasksPanel() {
               return (
                 <div
                   key={task.taskId}
-                  className="space-y-3 rounded-2xl border bg-card p-3.5"
+                  className="space-y-3 rounded-surface-md border bg-card p-3.5"
                 >
                   {/* Top row */}
                   <div className="flex flex-wrap items-center justify-between gap-2">

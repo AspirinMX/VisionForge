@@ -373,9 +373,9 @@ export default function AdminBillingPage() {
               />
 
               {loadingRedemptions && !redemptionsPage ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : !redemptionsPage || redemptionsPage.items.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed p-10 text-center">
+                <div className="flex flex-col items-center justify-center gap-3 rounded-surface-md border border-dashed p-10 text-center">
                   <TicketIcon className="size-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
                     暂无符合条件的兑换码记录。
@@ -383,7 +383,7 @@ export default function AdminBillingPage() {
                 </div>
               ) : (
                 <>
-                  <div className="rounded-2xl border bg-card">
+                  <div className="rounded-surface-md border bg-card">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -558,14 +558,14 @@ export default function AdminBillingPage() {
               />
 
               {loadingLedger && !ledgerPageData ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : !ledgerPageData || ledgerPageData.items.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
                   暂无符合条件的额度流水。
                 </div>
               ) : (
                 <>
-                  <div className="rounded-2xl border bg-card">
+                  <div className="rounded-surface-md border bg-card">
                     <Table>
                       <TableHeader>
                         <TableRow>

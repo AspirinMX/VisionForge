@@ -734,7 +734,7 @@ export function FilesPanel() {
                     {activeVersion?.content ?? ""}
                   </pre>
                 ) : (
-                  <div className="rounded-2xl border bg-card p-4">
+                  <div className="rounded-surface-md border bg-card p-4">
                     <MarkdownView content={activeVersion?.content ?? ""} />
                   </div>
                 )

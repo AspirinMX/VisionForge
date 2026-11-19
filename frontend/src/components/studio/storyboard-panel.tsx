@@ -613,7 +613,7 @@ export function StoryboardPanel() {
   if (storyboardFiles.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-        <div className="flex size-12 items-center justify-center rounded-2xl border bg-muted/40">
+        <div className="flex size-12 items-center justify-center rounded-surface-md border bg-muted/40">
           <FilmIcon className="size-5 text-muted-foreground" />
         </div>
         <div className="max-w-sm space-y-1.5">
@@ -856,7 +856,7 @@ export function StoryboardPanel() {
         ) : doc ? (
           <div className="space-y-4">
             {/* Project metadata header */}
-            <div className="grid gap-3 rounded-2xl border bg-card p-3.5 sm:grid-cols-4">
+            <div className="grid gap-3 rounded-surface-md border bg-card p-3.5 sm:grid-cols-4">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs text-muted-foreground">分镜标题</Label>
                 <Input
@@ -900,7 +900,7 @@ export function StoryboardPanel() {
                 return (
                   <div
                     key={shot.id}
-                    className="space-y-3 rounded-2xl border bg-card p-4"
+                    className="space-y-3 rounded-surface-md border bg-card p-4"
                   >
                     {/* Shot header */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1822,7 +1822,7 @@ export function StoryboardPanel() {
                 return (
                   <div
                     key={comp.taskId}
-                    className="space-y-3 rounded-2xl border bg-card p-3.5"
+                    className="space-y-3 rounded-surface-md border bg-card p-3.5"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">

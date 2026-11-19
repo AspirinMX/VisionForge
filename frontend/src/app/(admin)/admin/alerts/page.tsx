@@ -399,9 +399,9 @@ export default function AdminAlertsPage() {
               <ApiErrorAlert error={channelsError} title="读取告警渠道失败" />
 
               {loadingChannels && !channels ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : !channels || channels.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed p-10 text-center">
+                <div className="flex flex-col items-center justify-center gap-3 rounded-surface-md border border-dashed p-10 text-center">
                   <BellRingIcon className="size-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
                     尚未配置 Email 或 Webhook 告警接收渠道。
@@ -412,7 +412,7 @@ export default function AdminAlertsPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="rounded-2xl border bg-card">
+                <div className="rounded-surface-md border bg-card">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -582,14 +582,14 @@ export default function AdminAlertsPage() {
               />
 
               {loadingDeliveries && !deliveriesPage ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : !deliveriesPage || deliveriesPage.items.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
                   暂无符合条件的告警投递记录。
                 </div>
               ) : (
                 <>
-                  <div className="rounded-2xl border bg-card">
+                  <div className="rounded-surface-md border bg-card">
                     <Table>
                       <TableHeader>
                         <TableRow>

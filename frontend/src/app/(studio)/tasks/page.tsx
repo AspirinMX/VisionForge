@@ -465,14 +465,14 @@ function GlobalTasksContent() {
               </div>
 
               {loadingGeneration && !generationData ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : filteredTasks.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
                   暂无符合条件的生成任务。
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-2xl border bg-card">
+                  <div className="rounded-surface-md border bg-card">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -604,14 +604,14 @@ function GlobalTasksContent() {
               </div>
 
               {loadingComposition && !compositionData ? (
-                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-64 w-full rounded-surface-md" />
               ) : filteredCompositions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+                <div className="rounded-surface-md border border-dashed p-10 text-center text-sm text-muted-foreground">
                   暂无符合条件的视频合成任务。
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-2xl border bg-card">
+                  <div className="rounded-surface-md border bg-card">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1019,7 +1019,7 @@ export default function GlobalTasksPage() {
       fallback={
         <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
           <Skeleton className="h-12 w-full rounded-xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-surface-md" />
         </div>
       }
     >

@@ -62,10 +62,11 @@ function DialogPopupSurface({
     >
       <BaseDialog.Popup
         data-slot="dialog-content"
+        data-squircle="true"
         hidden={!isPresent ? false : undefined}
         render={<motion.div {...MODAL_POPUP_MOTION} />}
         className={cn(
-          "relative my-auto grid w-full gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none sm:max-w-md dark:ring-foreground/10",
+          "relative my-auto grid w-full gap-6 rounded-surface-lg bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none sm:max-w-md dark:ring-foreground/10",
           className
         )}
         {...props}

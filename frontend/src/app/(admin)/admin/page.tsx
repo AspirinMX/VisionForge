@@ -175,7 +175,7 @@ export default function AdminOverviewPage() {
           {loading && !data ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, idx) => (
-                <Skeleton key={idx} className="h-28 rounded-2xl" />
+                <Skeleton key={idx} className="h-28 rounded-surface-md" />
               ))}
             </div>
           ) : data ? (
@@ -187,7 +187,7 @@ export default function AdminOverviewPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {summaryCards.map((item) => (
-                    <Card key={item.label} className="rounded-2xl">
+                    <Card key={item.label} className="rounded-surface-md">
                       <CardHeader className="pb-2">
                         <CardDescription>{item.label}</CardDescription>
                         <CardTitle className="text-2xl tabular-nums">
@@ -223,8 +223,8 @@ export default function AdminOverviewPage() {
                         key={item.label}
                         className={
                           flagged
-                            ? "rounded-2xl border-destructive/40 bg-destructive/5"
-                            : "rounded-2xl"
+                            ? "rounded-surface-md border-destructive/40 bg-destructive/5"
+                            : "rounded-surface-md"
                         }
                       >
                         <CardHeader className="pb-2">
@@ -259,14 +259,14 @@ export default function AdminOverviewPage() {
                   <Link
                     key={entry.href}
                     href={entry.href}
-                    className="group rounded-2xl border bg-card p-4 transition-colors hover:border-foreground/20 hover:bg-muted/30"
+                    className="group rounded-surface-md border bg-card p-4 transition-colors motion-reduce:transition-none hover:border-foreground/20 hover:bg-muted/30"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 font-medium">
                         <Icon className="size-4 text-muted-foreground" />
                         <span className="text-sm">{entry.title}</span>
                       </div>
-                      <ArrowRightIcon className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      <ArrowRightIcon className="size-4 text-muted-foreground transition-transform motion-reduce:transition-none group-hover:translate-x-0.5" />
                     </div>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                       {entry.desc}

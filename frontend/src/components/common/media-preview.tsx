@@ -119,14 +119,14 @@ export function AssetMediaPreview({
   };
 
   if (loading && !url) {
-    return <Skeleton className={cn("h-36 w-full rounded-xl", className)} />;
+    return <Skeleton className={cn("h-36 w-full rounded-surface-sm", className)} />;
   }
 
   if (error || !url || activeRetry.exhausted) {
     return (
       <div
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/30 p-3 text-center text-xs text-muted-foreground",
+          "flex flex-col items-center justify-center gap-2 rounded-surface-sm border border-dashed bg-muted/30 p-3 text-center text-xs text-muted-foreground",
           className
         )}
       >
@@ -148,7 +148,7 @@ export function AssetMediaPreview({
       <>
         <div
           className={cn(
-            "group relative overflow-hidden rounded-xl border bg-muted/30",
+            "group relative overflow-hidden rounded-surface-sm border bg-muted/30",
             className
           )}
         >
@@ -190,7 +190,7 @@ export function AssetMediaPreview({
               <DialogHeader>
                 <DialogTitle className="truncate pr-6">{alt}</DialogTitle>
               </DialogHeader>
-              <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-xl bg-muted/40">
+              <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-surface-sm bg-muted/40">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={url}
@@ -234,7 +234,7 @@ export function AssetMediaPreview({
     return (
       <div
         className={cn(
-          "group relative overflow-hidden rounded-xl border bg-black",
+          "group relative overflow-hidden rounded-surface-sm border bg-black",
           className
         )}
       >
@@ -264,7 +264,7 @@ export function AssetMediaPreview({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2 text-xs",
+        "flex items-center justify-between gap-2 rounded-surface-sm border bg-muted/30 px-3 py-2 text-xs",
         className
       )}
     >
