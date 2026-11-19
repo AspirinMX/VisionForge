@@ -67,7 +67,7 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         try {
             ResponseCreateParams params = requestParams(request);
             ResponseAccumulator accumulator = ResponseAccumulator.create();
-            SummaryStreamTracker summaryTracker = new SummaryStreamTracker(listener);
+            ReasoningStreamTracker reasoningTracker = new ReasoningStreamTracker(listener);
             try (StreamResponse<ResponseStreamEvent> stream =
                          client(request).responses().createStreaming(params)) {
                 stream.stream().forEach(event -> {
@@ -76,10 +76,10 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                             delta -> listener.onTextDelta(delta.delta()));
                     event.reasoningTextDelta().ifPresent(
                             delta -> listener.onReasoningDelta(delta.delta()));
-                    summaryTracker.accept(event);
+                    reasoningTracker.accept(event);
                 });
             }
-            return toModelResponse(accumulator.response(), summaryTracker, startedAt);
+            return toModelResponse(accumulator.response(), reasoningTracker, startedAt);
         } catch (ModelProviderException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -305,7 +305,7 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
     }
 
     private ModelResponse toModelResponse(
-            Response response, SummaryStreamTracker summaryTracker, long startedAt) {
+            Response response, ReasoningStreamTracker reasoningTracker, long startedAt) {
         String text = response.output().stream()
                 .flatMap(item -> item.message().stream())
                 .flatMap(message -> message.content().stream())
@@ -317,20 +317,26 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                 .filter(ResponseOutputItem::isReasoning)
                 .map(ResponseOutputItem::asReasoning)
                 .map(item -> {
+                    String itemId = item._id().asString().orElse(null);
                     List<String> summary = item.summary().stream()
                             .map(ResponseReasoningItem.Summary::text)
                             .toList();
                     if (summary.isEmpty()) {
-                        summary = summaryTracker.summariesFor(
-                                item._id().asString().orElse(null));
+                        summary = reasoningTracker.summariesFor(itemId);
+                    }
+                    String content = item.content()
+                            .map(parts -> parts.stream()
+                                    .map(ResponseReasoningItem.Content::text)
+                                    .collect(Collectors.joining("\n")))
+                            .orElse("");
+                    // The official accumulator ignores reasoning_text deltas, so plaintext
+                    // providers such as DeepSeek only surface here via the stream tracker.
+                    if (content.isBlank()) {
+                        content = reasoningTracker.textFor(itemId);
                     }
                     return new ModelReasoning(
                             item.encryptedContent().orElse(null),
-                            item.content()
-                                    .map(parts -> parts.stream()
-                                            .map(ResponseReasoningItem.Content::text)
-                                            .collect(Collectors.joining("\n")))
-                                    .orElse(""),
+                            content == null ? "" : content,
                             summary);
                 })
                 .toList();
@@ -377,22 +383,28 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
     }
 
     /**
-     * Forwards streamed reasoning summary increments while preserving part boundaries and falling
-     * back to completion events when a gateway skips incremental summary deltas.
+     * Tracks streamed reasoning summary and plaintext increments. The summary side also forwards
+     * display updates; the plaintext side only buffers text because the official accumulator
+     * ignores {@code response.reasoning_text.*} events.
      */
-    private static final class SummaryStreamTracker {
+    private static final class ReasoningStreamTracker {
 
         private final ModelStreamListener listener;
         private final Set<String> streamedKeys = new HashSet<>();
         private final Map<String, Map<Long, StringBuilder>> partsByItem = new LinkedHashMap<>();
+        private final Map<String, StringBuilder> textByItem = new LinkedHashMap<>();
         private boolean emittedAny;
         private boolean endsWithNewline;
 
-        private SummaryStreamTracker(ModelStreamListener listener) {
+        private ReasoningStreamTracker(ModelStreamListener listener) {
             this.listener = listener == null ? ModelStreamListener.NOOP : listener;
         }
 
         private void accept(ResponseStreamEvent event) {
+            event.reasoningTextDelta().ifPresent(delta ->
+                    appendText(delta.itemId(), delta.delta()));
+            event.reasoningTextDone().ifPresent(done ->
+                    completeText(done.itemId(), done.text()));
             event.reasoningSummaryPartAdded().ifPresent(ignored -> {
                 if (emittedAny && !endsWithNewline) {
                     listener.onReasoningSummaryDelta("\n");
@@ -409,6 +421,28 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
             event.reasoningSummaryPartDone().ifPresent(done ->
                     done.part()._text().asString().ifPresent(partText ->
                             emitFallback(done.itemId(), done.summaryIndex(), partText)));
+        }
+
+        private void appendText(String itemId, String chunk) {
+            if (itemId == null || chunk == null || chunk.isEmpty()) {
+                return;
+            }
+            textByItem.computeIfAbsent(itemId, ignored -> new StringBuilder()).append(chunk);
+        }
+
+        private void completeText(String itemId, String text) {
+            if (itemId == null || text == null || text.isBlank()) {
+                return;
+            }
+            textByItem.putIfAbsent(itemId, new StringBuilder(text));
+        }
+
+        private String textFor(String itemId) {
+            if (itemId == null) {
+                return null;
+            }
+            StringBuilder text = textByItem.get(itemId);
+            return text == null || text.isEmpty() ? null : text.toString();
         }
 
         private void appendPart(String itemId, long summaryIndex, String chunk) {
