@@ -111,6 +111,31 @@ class ConversationFileServiceTest {
         verify(versionMapper, never()).insert(any(ConversationFileVersion.class));
     }
 
+    @Test
+    void rejectsMissingOrCrossConversationFileVersion() {
+        UUID versionId = UUID.randomUUID();
+        when(versionMapper.selectById(versionId)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.requireVersionInConversation(
+                USER_ID, CONVERSATION_ID, versionId, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(AssetErrorCode.FILE_VERSION_NOT_FOUND));
+
+        ConversationFileVersion version = new ConversationFileVersion();
+        version.setId(versionId);
+        version.setFileId(FILE_ID);
+        version.setAssetId(UUID.randomUUID());
+        when(versionMapper.selectById(versionId)).thenReturn(version);
+        when(fileMapper.selectById(FILE_ID)).thenReturn(file(OTHER_CONVERSATION_ID, 1));
+
+        assertThatThrownBy(() -> service.requireVersionInConversation(
+                USER_ID, CONVERSATION_ID, versionId, version.getAssetId()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(AssetErrorCode.FILE_NOT_FOUND));
+    }
+
     private ConversationFile file(UUID conversationId, int currentVersion) {
         ConversationFile file = new ConversationFile();
         file.setId(FILE_ID);

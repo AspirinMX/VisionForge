@@ -83,7 +83,7 @@ public class GenerationTools {
                       "inputs":{"type":"array","maxItems":8,"items":{
                         "type":"object","properties":{
                           "assetId":{"type":"string","format":"uuid"},
-                          "fileVersionId":{"type":"string","format":"uuid"},
+                          "fileVersionId":{"type":"string","format":"uuid","description":"可选；仅当明确获得已发布的 conversation_file_version ID 时填写；仅通过 assetId 引用图片时请省略此字段，切勿填入 assetId 或 fileId"},
                           "role":{"type":"string","enum":["REFERENCE","INIT_IMAGE","MASK"]}
                         },"required":["assetId"],"additionalProperties":false}},
                       "shotId":{"type":"string","maxLength":64},
@@ -116,7 +116,7 @@ public class GenerationTools {
                       "inputs":{"type":"array","maxItems":8,"items":{
                         "type":"object","properties":{
                           "assetId":{"type":"string","format":"uuid"},
-                          "fileVersionId":{"type":"string","format":"uuid"},
+                          "fileVersionId":{"type":"string","format":"uuid","description":"可选；仅当明确获得已发布的 conversation_file_version ID 时填写；仅通过 assetId 引用图片时请省略此字段，切勿填入 assetId 或 fileId"},
                           "role":{"type":"string","enum":["FIRST_FRAME","LAST_FRAME","REFERENCE"]}
                         },"required":["assetId"],"additionalProperties":false}},
                       "shotId":{"type":"string","maxLength":64},

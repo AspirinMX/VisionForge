@@ -74,7 +74,7 @@ Spring Boot Temporal Worker (module: worker) ◄──────────�
 | **Workflow Engine** | Temporal Java SDK `1.41.1`, Temporal Server (`temporalio/auto-setup:1.29.5`) |
 | **Persistence & Migration** | PostgreSQL `18`, Flyway `12.4.0`, MyBatis-Plus `3.5.18.1`, `hutool-core:5.8.48` |
 | **Messaging & Media** | Redis `7`, RustFS / AWS SDK S3 `2.59.2`, FFmpeg / `ffprobe` |
-| **Model & Media SDKs** | OpenAI Java SDK `4.99.0`, Volcengine Ark Runtime `0.17.0`, DashScope HTTP adapters |
+| **Model & Media SDKs** | OpenAI Java SDK `4.99.0`, Volcengine Ark & DashScope HTTP adapters |
 | **Frontend** | Next.js `16.4.6` (Turbopack, `cacheComponents`), React `19.3.0`, TypeScript `5`, Tailwind CSS `4.3.3`, Animate UI (`@animate-ui/react:2.4.6`), `motion:14.14.0`, `@base-ui/react` |
 
 ---

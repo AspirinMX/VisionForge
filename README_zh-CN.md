@@ -74,7 +74,7 @@ Spring Boot Temporal Worker（worker 模块）◄──────────�
 | **工作流引擎** | Temporal Java SDK `1.41.1`、Temporal Server（`temporalio/auto-setup:1.29.5`） |
 | **数据与迁移** | PostgreSQL `18`、Flyway `12.4.0`、MyBatis-Plus `3.5.18.1`、`hutool-core:5.8.48` |
 | **消息与媒体基础设施** | Redis `7`、RustFS / AWS SDK S3 `2.59.2`、FFmpeg / `ffprobe` |
-| **模型与媒体 SDK** | OpenAI Java SDK `4.99.0`、火山方舟 `ark-runtime:0.17.0`、阿里百炼 HTTP 适配器 |
+| **模型与媒体 SDK** | OpenAI Java SDK `4.99.0`、火山方舟与阿里百炼 HTTP 适配器 |
 | **前端** | Next.js `16.4.6`（Turbopack、`cacheComponents`）、React `19.3.0`、TypeScript `5`、Tailwind CSS `4.3.3`、Animate UI（`@animate-ui/react:2.4.6`）、`motion:14.14.0`、`@base-ui/react` |
 
 ---

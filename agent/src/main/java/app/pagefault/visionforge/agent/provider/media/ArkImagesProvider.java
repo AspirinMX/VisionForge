@@ -1,19 +1,10 @@
 package app.pagefault.visionforge.agent.provider.media;
 
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-
-import com.volcengine.ark.runtime.models.images.CreateImageGenerationRequest;
-import com.volcengine.ark.runtime.models.images.CreateImageGenerationRequestImage;
-import com.volcengine.ark.runtime.models.images.ImageDataItem;
-import com.volcengine.ark.runtime.models.images.ImageError;
-import com.volcengine.ark.runtime.models.images.ImageGenerationResponse;
-import com.volcengine.ark.runtime.models.images.OutputFormat;
-import com.volcengine.ark.runtime.models.images.ResponseFormat;
-import com.volcengine.ark.runtime.service.ArkService;
 
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.generation.GenerationInputRole;
@@ -23,13 +14,16 @@ import app.pagefault.visionforge.common.error.BusinessException;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Ark Seedream image adapter. Reference images are submitted as URLs in the {@code image} field,
- * which is the native Ark Images contract rather than the OpenAI edits endpoint.
+ * Ark Seedream image adapter speaking the documented {@code /api/v3/images/generations} JSON
+ * contract. Reference images are submitted as URLs in the {@code image} field.
  */
 public class ArkImagesProvider implements MediaProvider {
 
+    private static final String GENERATE_PATH = "/api/v3/images/generations";
     private static final long MAX_RESULT_BYTES = 64L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
@@ -42,9 +36,16 @@ public class ArkImagesProvider implements MediaProvider {
 
     public ArkImagesProvider(
             ObjectMapper objectMapper, ArkClientFactory clients, String userAgent) {
+        this(objectMapper, clients, new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent));
+    }
+
+    ArkImagesProvider(
+            ObjectMapper objectMapper,
+            ArkClientFactory clients,
+            HttpMediaDownloader downloader) {
         this.objectMapper = objectMapper;
         this.clients = clients;
-        this.downloader = new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent);
+        this.downloader = downloader;
     }
 
     @Override
@@ -58,33 +59,34 @@ public class ArkImagesProvider implements MediaProvider {
             throw unsupported("Ark 图片适配器只接受图片任务");
         }
         try {
-            CreateImageGenerationRequest imageRequest = createRequest(request);
-            ArkService service = clients.get(request);
-            ImageGenerationResponse response =
-                    service.generateImages(imageRequest, clients.customHeaders());
-            if (response == null) {
-                throw failure("Ark 图片接口没有返回响应");
+            ObjectNode payload = createRequest(request);
+            JsonNode response = clients.post(request, GENERATE_PATH, payload, objectMapper);
+            JsonNode topError = response.path("error");
+            if (!topError.isMissingNode() && !topError.isNull()) {
+                throw failure(errorMessage(topError));
             }
-            if (response.getError() != null) {
-                throw failure(errorMessage(response.getError()));
-            }
-            List<ImageDataItem> data = response.getData();
-            if (data == null || data.isEmpty()) {
+            JsonNode data = response.path("data");
+            if (!data.isArray() || data.isEmpty()) {
                 throw failure("Ark 图片接口没有返回产物");
             }
-            ImageDataItem item = data.get(0);
-            if (item.getError() != null) {
-                throw failure(errorMessage(item.getError()));
+            JsonNode item = data.get(0);
+            JsonNode itemError = item.path("error");
+            if (!itemError.isMissingNode() && !itemError.isNull()) {
+                throw failure(errorMessage(itemError));
             }
+            String b64 = item.path("b64_json").asText("");
+            String url = item.path("url").asText("");
             byte[] bytes;
-            if (item.getB64Json() != null && !item.getB64Json().isBlank()) {
-                bytes = Base64.getDecoder().decode(item.getB64Json());
-            } else if (item.getUrl() != null && !item.getUrl().isBlank()) {
-                bytes = downloader.download(item.getUrl());
+            if (!b64.isBlank()) {
+                bytes = Base64.getDecoder().decode(b64);
+            } else if (!url.isBlank()) {
+                bytes = downloader.download(url);
             } else {
                 throw failure("Ark 图片产物既没有 b64_json 也没有 URL");
             }
-            String mimeType = mimeType(imageRequest.getOutputFormat(), item.getOutputFormat());
+            String requestedFormat = payload.path("output_format").asText("");
+            String returnedFormat = item.path("output_format").asText("");
+            String mimeType = mimeType(requestedFormat, returnedFormat);
             return new MediaProviderOutcome.Completed(
                     receipt(request, response), List.of(new MediaArtifact(0, mimeType, bytes)));
         } catch (BusinessException exception) {
@@ -94,87 +96,94 @@ public class ArkImagesProvider implements MediaProvider {
         }
     }
 
-    CreateImageGenerationRequest createRequest(MediaProviderRequest request) {
+    ObjectNode createRequest(MediaProviderRequest request) {
         JsonNode parameters = readParameters(request);
-        CreateImageGenerationRequest.Builder builder = CreateImageGenerationRequest.builder()
-                .model(request.modelId())
-                .prompt(request.prompt())
-                .responseFormat(ResponseFormat.B64_JSON);
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", request.modelId());
+        root.put("prompt", request.prompt());
+        root.put("response_format", "b64_json");
 
         String size = text(parameters, "size");
         if (size != null) {
-            builder.size(size);
+            root.put("size", size);
         }
         String outputFormat = text(parameters, "outputFormat", "output_format");
         if (outputFormat != null) {
-            builder.outputFormat(outputFormat(outputFormat));
+            root.put("output_format", validateOutputFormat(outputFormat));
         }
         Boolean watermark = booleanValue(parameters, "watermark");
         if (watermark != null) {
-            builder.watermark(watermark);
+            root.put("watermark", watermark);
         }
         Long seed = longValue(parameters, "seed");
         if (seed != null) {
-            builder.seed(seed);
+            root.put("seed", seed);
         }
         Double guidanceScale = doubleValue(parameters, "guidanceScale", "guidance_scale");
         if (guidanceScale != null) {
-            builder.guidanceScale(guidanceScale);
+            root.put("guidance_scale", guidanceScale);
         }
         Double imageGuidanceScale =
                 doubleValue(parameters, "imageGuidanceScale", "image_guidance_scale");
         if (imageGuidanceScale != null) {
-            builder.imageGuidanceScale(imageGuidanceScale);
+            root.put("image_guidance_scale", imageGuidanceScale);
         }
 
-        List<String> imageUrls = new ArrayList<>();
-        for (MediaProviderInput input : request.inputs()) {
-            if (input.role() == GenerationInputRole.MASK) {
-                throw unsupported("Ark 图片暂不支持 mask 输入");
+        if (!request.inputs().isEmpty()) {
+            ArrayNode imageArray = root.putArray("image");
+            for (MediaProviderInput input : request.inputs()) {
+                if (input.role() == GenerationInputRole.MASK) {
+                    throw unsupported("Ark 图片暂不支持 mask 输入");
+                }
+                if (input.url() == null || input.url().isBlank()) {
+                    throw unsupported("Ark 图片参考素材缺少可访问 URL");
+                }
+                imageArray.add(input.url());
             }
-            if (input.url() == null || input.url().isBlank()) {
-                throw unsupported("Ark 图片参考素材缺少可访问 URL");
-            }
-            imageUrls.add(input.url());
         }
-        if (!imageUrls.isEmpty()) {
-            builder.image(CreateImageGenerationRequestImage.ofList(imageUrls));
-        }
-        return builder.build();
+        return root;
     }
 
-    private MediaProviderReceipt receipt(
-            MediaProviderRequest request, ImageGenerationResponse response) {
-        Map<String, Object> usage = new LinkedHashMap<>();
-        if (response.getUsage() != null) {
-            usage.put("inputImages", response.getUsage().getInputImages());
-            usage.put("generatedImages", response.getUsage().getGeneratedImages());
-            usage.put("outputTokens", response.getUsage().getOutputTokens());
-            usage.put("totalTokens", response.getUsage().getTotalTokens());
+    private MediaProviderReceipt receipt(MediaProviderRequest request, JsonNode response) {
+        Map<String, Object> usageMap = new LinkedHashMap<>();
+        JsonNode usage = response.path("usage");
+        if (!usage.isMissingNode() && !usage.isNull() && usage.isObject()) {
+            if (!usage.path("input_images").isMissingNode() && !usage.path("input_images").isNull()) {
+                usageMap.put("inputImages", usage.path("input_images").asLong());
+            }
+            if (!usage.path("generated_images").isMissingNode() && !usage.path("generated_images").isNull()) {
+                usageMap.put("generatedImages", usage.path("generated_images").asLong());
+            }
+            if (!usage.path("output_tokens").isMissingNode() && !usage.path("output_tokens").isNull()) {
+                usageMap.put("outputTokens", usage.path("output_tokens").asLong());
+            }
+            if (!usage.path("total_tokens").isMissingNode() && !usage.path("total_tokens").isNull()) {
+                usageMap.put("totalTokens", usage.path("total_tokens").asLong());
+            }
         }
         return new MediaProviderReceipt(
-                request.taskId().toString(), null, "succeeded", write(usage));
+                request.taskId().toString(), null, "succeeded", write(usageMap));
     }
 
-    private OutputFormat outputFormat(String value) {
-        try {
-            return OutputFormat.fromValue(value);
-        } catch (IllegalArgumentException exception) {
+    private String validateOutputFormat(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!"png".equals(normalized) && !"jpeg".equals(normalized)) {
             throw unsupported("Ark 图片不支持的输出格式：" + value);
         }
+        return normalized;
     }
 
-    private String mimeType(OutputFormat requested, OutputFormat returned) {
-        OutputFormat format = returned == null ? requested : returned;
-        if (format == OutputFormat.JPEG) {
+    private String mimeType(String requested, String returned) {
+        String effective = (returned == null || returned.isBlank()) ? requested : returned;
+        if ("jpeg".equalsIgnoreCase(effective) || "jpg".equalsIgnoreCase(effective)) {
             return "image/jpeg";
         }
         return "image/png";
     }
 
-    private String errorMessage(ImageError error) {
-        String code = error.getCode() == null ? "error" : error.getCode();
-        String message = error.getMessage() == null ? "上游返回错误" : error.getMessage();
+    private String errorMessage(JsonNode error) {
+        String code = error.path("code").asText("error");
+        String message = error.path("message").asText("上游返回错误");
         return "Ark 图片生成失败：" + code + ": " + message;
     }
 

@@ -147,6 +147,22 @@ public class ConversationFileService {
         return requireFile(userId, conversationId, fileId);
     }
 
+    public void requireVersionInConversation(
+            UUID userId, UUID conversationId, UUID versionId, UUID expectedAssetId) {
+        requireConversation(userId, conversationId);
+        ConversationFileVersion version = versionId == null ? null : versionMapper.selectById(versionId);
+        if (version == null) {
+            throw new BusinessException(AssetErrorCode.FILE_VERSION_NOT_FOUND);
+        }
+        requireFile(userId, conversationId, version.getFileId());
+        if (expectedAssetId != null
+                && version.getAssetId() != null
+                && !expectedAssetId.equals(version.getAssetId())) {
+            throw new BusinessException(
+                    AssetErrorCode.FILE_VERSION_NOT_FOUND, "文件版本与目标资产不匹配");
+        }
+    }
+
     public List<ConversationFile> list(
             UUID userId, UUID conversationId, ConversationFileKind kind, int limit) {
         requireConversation(userId, conversationId);

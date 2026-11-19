@@ -1,16 +1,7 @@
 package app.pagefault.visionforge.agent.provider.media;
 
-import java.util.ArrayList;
 import java.util.List;
-
-import com.volcengine.ark.runtime.models.content_generation.ContentGenerationTask;
-import com.volcengine.ark.runtime.models.content_generation.ContentItem;
-import com.volcengine.ark.runtime.models.content_generation.ContentType;
-import com.volcengine.ark.runtime.models.content_generation.CreateContentGenerationTaskRequest;
-import com.volcengine.ark.runtime.models.content_generation.CreateContentGenerationTaskResponse;
-import com.volcengine.ark.runtime.models.content_generation.ImageURL;
-import com.volcengine.ark.runtime.models.content_generation.TaskStatus;
-import com.volcengine.ark.runtime.service.ArkService;
+import java.util.Locale;
 
 import app.pagefault.visionforge.agent.error.AgentErrorCode;
 import app.pagefault.visionforge.agent.generation.GenerationInputRole;
@@ -20,13 +11,16 @@ import app.pagefault.visionforge.common.error.BusinessException;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Ark video task adapter (Seedance). The SDK owns the HTTP protocol; this class only maps the
- * domain request, persists the remote task id and maps status. Auto-retry is disabled.
+ * Ark video task adapter (Seedance) speaking the documented {@code /api/v3/contents/generations/tasks}
+ * JSON contract directly over HTTP. Auto-retry is handled at the Temporal workflow layer.
  */
 public class ArkVideoProvider implements RemoteMediaProvider {
 
+    private static final String TASKS_PATH = "/api/v3/contents/generations/tasks";
     private static final long MAX_RESULT_BYTES = 1024L * 1024 * 1024;
 
     private final ObjectMapper objectMapper;
@@ -39,9 +33,16 @@ public class ArkVideoProvider implements RemoteMediaProvider {
 
     public ArkVideoProvider(
             ObjectMapper objectMapper, ArkClientFactory clients, String userAgent) {
+        this(objectMapper, clients, new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent));
+    }
+
+    ArkVideoProvider(
+            ObjectMapper objectMapper,
+            ArkClientFactory clients,
+            HttpMediaDownloader downloader) {
         this.objectMapper = objectMapper;
         this.clients = clients;
-        this.downloader = new HttpMediaDownloader(MAX_RESULT_BYTES, userAgent);
+        this.downloader = downloader;
     }
 
     @Override
@@ -55,65 +56,19 @@ public class ArkVideoProvider implements RemoteMediaProvider {
             throw unsupported("Ark 视频适配器只接受视频任务");
         }
         try {
-            List<ContentItem> content = new ArrayList<>();
-            content.add(ContentItem.builder()
-                    .type(ContentType.TEXT)
-                    .text(request.prompt())
-                    .build());
-            for (MediaProviderInput input : request.inputs()) {
-                if (input.url() == null || input.url().isBlank()) {
-                    throw unsupported("视频输入素材缺少可访问 URL");
-                }
-                content.add(ContentItem.builder()
-                        .type(ContentType.IMAGE_URL)
-                        .imageUrl(ImageURL.builder().url(input.url()).build())
-                        .role(role(input.role()))
-                        .build());
-            }
-
-            JsonNode parameters = objectMapper.readTree(
-                    request.parameters() == null ? "{}" : request.parameters());
-            CreateContentGenerationTaskRequest.Builder builder =
-                    CreateContentGenerationTaskRequest.builder()
-                            .model(request.modelId())
-                            .content(content);
-            String resolution = text(parameters, "resolution");
-            if (resolution != null) {
-                builder.resolution(resolution);
-            }
-            String ratio = text(parameters, "ratio");
-            if (ratio != null) {
-                builder.ratio(ratio);
-            }
-            Long duration = longValue(parameters, "durationSeconds");
-            if (duration != null) {
-                builder.duration(duration);
-            }
-            Boolean generateAudio = booleanValue(parameters, "generateAudio");
-            if (generateAudio != null) {
-                builder.generateAudio(generateAudio);
-            }
-            Boolean watermark = booleanValue(parameters, "watermark");
-            if (watermark != null) {
-                builder.watermark(watermark);
-            }
-            Long seed = longValue(parameters, "seed");
-            if (seed != null) {
-                builder.seed(seed);
-            }
-
-            CreateContentGenerationTaskResponse response = client(request)
-                    .createContentGenerationTask(builder.build(), clients.customHeaders());
-            if (response == null || response.getId() == null || response.getId().isBlank()) {
+            ObjectNode payload = createRequest(request);
+            JsonNode response = clients.post(request, TASKS_PATH, payload, objectMapper);
+            String remoteTaskId = response.path("id").asText("");
+            if (remoteTaskId.isBlank()) {
                 throw failure("Ark 视频任务没有返回远端任务 ID");
             }
             return new MediaProviderOutcome.Pending(
                     new MediaProviderReceipt(
                             request.taskId().toString(),
-                            response.getId(),
+                            remoteTaskId,
                             "queued",
                             "{}"),
-                    response.getId());
+                    remoteTaskId);
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -124,39 +79,37 @@ public class ArkVideoProvider implements RemoteMediaProvider {
     @Override
     public MediaProviderOutcome query(MediaProviderRequest request, String remoteTaskId) {
         try {
-            ContentGenerationTask task = client(request)
-                    .getContentGenerationTask(remoteTaskId, clients.customHeaders());
-            if (task == null || task.getStatus() == null) {
+            JsonNode task = clients.get(request, TASKS_PATH + "/" + remoteTaskId, objectMapper);
+            String status = task.path("status").asText("").toLowerCase(Locale.ROOT);
+            if (status.isBlank() || "queued".equals(status) || "running".equals(status)) {
                 return new MediaProviderOutcome.Pending(
-                        receipt(request, remoteTaskId, "unknown"), remoteTaskId);
+                        receipt(request, remoteTaskId, status.isBlank() ? "unknown" : status),
+                        remoteTaskId);
             }
-            TaskStatus status = task.getStatus();
-            if (status == TaskStatus.QUEUED || status == TaskStatus.RUNNING) {
-                return new MediaProviderOutcome.Pending(
-                        receipt(request, remoteTaskId, status.getValue()), remoteTaskId);
-            }
-            if (status == TaskStatus.CANCELLED) {
+            if ("cancelled".equals(status) || "canceled".equals(status)) {
                 return new MediaProviderOutcome.Cancelled("Ark 视频任务已取消");
             }
-            if (status == TaskStatus.FAILED) {
-                String detail = task.getError() == null
+            if ("failed".equals(status)) {
+                JsonNode error = task.path("error");
+                String detail = error.isMissingNode() || error.isNull()
                         ? "上游任务失败"
-                        : task.getError().getCode() + ": " + task.getError().getMessage();
+                        : error.path("code").asText("error")
+                                + ": "
+                                + error.path("message").asText("上游任务失败");
                 return new MediaProviderOutcome.Failed("failed", detail);
             }
-            if (status == TaskStatus.SUCCEEDED) {
-                if (task.getContent() == null
-                        || task.getContent().getVideoUrl() == null
-                        || task.getContent().getVideoUrl().isBlank()) {
+            if ("succeeded".equals(status)) {
+                String videoUrl = task.path("content").path("video_url").asText("");
+                if (videoUrl.isBlank()) {
                     throw failure("Ark 视频任务成功但没有返回 video_url");
                 }
-                byte[] bytes = downloader.download(task.getContent().getVideoUrl());
+                byte[] bytes = downloader.download(videoUrl);
                 return new MediaProviderOutcome.Completed(
                         receipt(request, remoteTaskId, "succeeded"),
                         List.of(new MediaArtifact(0, "video/mp4", bytes)));
             }
             return new MediaProviderOutcome.Pending(
-                    receipt(request, remoteTaskId, status.getValue()), remoteTaskId);
+                    receipt(request, remoteTaskId, status), remoteTaskId);
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -164,8 +117,51 @@ public class ArkVideoProvider implements RemoteMediaProvider {
         }
     }
 
-    private ArkService client(MediaProviderRequest request) {
-        return clients.get(request);
+    ObjectNode createRequest(MediaProviderRequest request) {
+        JsonNode parameters = readParameters(request);
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("model", request.modelId());
+        ArrayNode content = root.putArray("content");
+
+        ObjectNode textItem = content.addObject();
+        textItem.put("type", "text");
+        textItem.put("text", request.prompt());
+
+        for (MediaProviderInput input : request.inputs()) {
+            if (input.url() == null || input.url().isBlank()) {
+                throw unsupported("视频输入素材缺少可访问 URL");
+            }
+            ObjectNode imageItem = content.addObject();
+            imageItem.put("type", "image_url");
+            imageItem.putObject("image_url").put("url", input.url());
+            imageItem.put("role", role(input.role()));
+        }
+
+        String resolution = text(parameters, "resolution");
+        if (resolution != null) {
+            root.put("resolution", resolution);
+        }
+        String ratio = text(parameters, "ratio");
+        if (ratio != null) {
+            root.put("ratio", ratio);
+        }
+        Long duration = longValue(parameters, "durationSeconds", "duration");
+        if (duration != null) {
+            root.put("duration", duration);
+        }
+        Boolean generateAudio = booleanValue(parameters, "generateAudio", "generate_audio");
+        if (generateAudio != null) {
+            root.put("generate_audio", generateAudio);
+        }
+        Boolean watermark = booleanValue(parameters, "watermark");
+        if (watermark != null) {
+            root.put("watermark", watermark);
+        }
+        Long seed = longValue(parameters, "seed");
+        if (seed != null) {
+            root.put("seed", seed);
+        }
+        return root;
     }
 
     private MediaProviderReceipt receipt(
@@ -182,19 +178,43 @@ public class ArkVideoProvider implements RemoteMediaProvider {
         };
     }
 
-    private String text(JsonNode parameters, String field) {
-        JsonNode value = parameters.path(field);
-        return value.isMissingNode() || value.isNull() ? null : value.asText();
+    private JsonNode readParameters(MediaProviderRequest request) {
+        try {
+            return objectMapper.readTree(
+                    request.parameters() == null ? "{}" : request.parameters());
+        } catch (RuntimeException exception) {
+            throw unsupported("Ark 视频参数不是合法 JSON");
+        }
     }
 
-    private Long longValue(JsonNode parameters, String field) {
-        JsonNode value = parameters.path(field);
-        return value.isMissingNode() || value.isNull() ? null : value.asLong();
+    private String text(JsonNode parameters, String... fields) {
+        for (String field : fields) {
+            JsonNode value = parameters.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                return value.asText();
+            }
+        }
+        return null;
     }
 
-    private Boolean booleanValue(JsonNode parameters, String field) {
-        JsonNode value = parameters.path(field);
-        return value.isMissingNode() || value.isNull() ? null : value.asBoolean();
+    private Long longValue(JsonNode parameters, String... fields) {
+        for (String field : fields) {
+            JsonNode value = parameters.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                return value.asLong();
+            }
+        }
+        return null;
+    }
+
+    private Boolean booleanValue(JsonNode parameters, String... fields) {
+        for (String field : fields) {
+            JsonNode value = parameters.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
+                return value.asBoolean();
+            }
+        }
+        return null;
     }
 
     private BusinessException unsupported(String message) {

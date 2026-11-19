@@ -881,6 +881,17 @@ public class GenerationTaskService {
                 throw new BusinessException(
                         AgentErrorCode.GENERATION_INPUT_INVALID, "当前只支持图片作为生成输入");
             }
+            if (input.fileVersionId() != null) {
+                try {
+                    conversationFileService.requireVersionInConversation(
+                            userId, conversationId, input.fileVersionId(), input.assetId());
+                } catch (BusinessException exception) {
+                    throw new BusinessException(
+                            AgentErrorCode.GENERATION_INPUT_INVALID,
+                            "输入的 fileVersionId 无效或不属于当前会话（仅通过 assetId 引用图片时请省略 fileVersionId）",
+                            exception);
+                }
+            }
             GenerationInputRole role = input.role() == null
                     ? (type == GenerationType.IMAGE
                             ? GenerationInputRole.REFERENCE

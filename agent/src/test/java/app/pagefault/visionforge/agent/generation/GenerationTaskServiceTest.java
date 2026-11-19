@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,8 +38,11 @@ import app.pagefault.visionforge.agent.storyboard.StoryboardService;
 import app.pagefault.visionforge.agent.storyboard.StoryboardShot;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartRequestMapper;
 import app.pagefault.visionforge.agent.runtime.WorkflowStartType;
+import app.pagefault.visionforge.asset.error.AssetErrorCode;
 import app.pagefault.visionforge.asset.library.ConversationFileService;
 import app.pagefault.visionforge.asset.library.ConversationReferenceChecker;
+import app.pagefault.visionforge.asset.media.Asset;
+import app.pagefault.visionforge.asset.media.AssetKind;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.billing.credit.CreditService;
 import app.pagefault.visionforge.common.error.BusinessException;
@@ -55,9 +60,12 @@ class GenerationTaskServiceTest {
     private static final Instant NOW = Instant.parse("2026-11-18T12:00:00Z");
 
     private GenerationTaskMapper taskMapper;
+    private GenerationInputMapper inputMapper;
     private GenerationOutputMapper outputMapper;
     private WorkflowStartRequestMapper startRequestMapper;
     private ModelDefinitionService modelDefinitionService;
+    private AssetService assetService;
+    private ConversationFileService fileService;
     private CreditService creditService;
     private MediaProviderRegistry providerRegistry;
     private GenerationTaskService service;
@@ -69,13 +77,13 @@ class GenerationTaskServiceTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), GenerationTask.class);
         taskMapper = mock(GenerationTaskMapper.class);
         GenerationAttemptMapper attemptMapper = mock(GenerationAttemptMapper.class);
-        GenerationInputMapper inputMapper = mock(GenerationInputMapper.class);
+        inputMapper = mock(GenerationInputMapper.class);
         outputMapper = mock(GenerationOutputMapper.class);
         startRequestMapper = mock(WorkflowStartRequestMapper.class);
         modelDefinitionService = mock(ModelDefinitionService.class);
         ConversationReferenceChecker checker = mock(ConversationReferenceChecker.class);
-        AssetService assetService = mock(AssetService.class);
-        ConversationFileService fileService = mock(ConversationFileService.class);
+        assetService = mock(AssetService.class);
+        fileService = mock(ConversationFileService.class);
         storyboardService = mock(StoryboardService.class);
         creditService = mock(CreditService.class);
         providerRegistry = mock(MediaProviderRegistry.class);
@@ -171,6 +179,56 @@ class GenerationTaskServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.getErrorCode())
                                 .isEqualTo(AgentErrorCode.GENERATION_IDEMPOTENCY_CONFLICT));
+    }
+
+    @Test
+    void rejectsNonExistentFileVersionIdBeforeInsert() {
+        when(modelDefinitionService.requireEnabled(MODEL_ID, ModelCapabilityType.VIDEO))
+                .thenReturn(videoModel());
+        UUID assetId = UUID.randomUUID();
+        UUID bogusVersionId = UUID.randomUUID();
+        Asset asset = new Asset();
+        asset.setId(assetId);
+        asset.setKind(AssetKind.IMAGE);
+        when(assetService.getForConversation(USER_ID, CONVERSATION_ID, assetId)).thenReturn(asset);
+        doThrow(new BusinessException(AssetErrorCode.FILE_VERSION_NOT_FOUND))
+                .when(fileService)
+                .requireVersionInConversation(USER_ID, CONVERSATION_ID, bogusVersionId, assetId);
+
+        SubmitGenerationCommand cmd = new SubmitGenerationCommand(
+                CONVERSATION_ID,
+                null,
+                null,
+                GenerationType.VIDEO,
+                MODEL_ID,
+                "animate scene",
+                "{}",
+                List.of(new SubmitInput(assetId, bogusVersionId, GenerationInputRole.FIRST_FRAME)),
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        assertThatThrownBy(() -> service.submit(USER_ID, cmd))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.getErrorCode())
+                                .isEqualTo(AgentErrorCode.GENERATION_INPUT_INVALID));
+
+        verify(inputMapper, never()).insert(any(GenerationInput.class));
+        verify(taskMapper, never()).insert(any(GenerationTask.class));
+    }
+
+    private ModelDefinition videoModel() {
+        ModelDefinition model = new ModelDefinition();
+        model.setId(MODEL_ID);
+        model.setModelId("mock-video");
+        model.setCapabilityType(ModelCapabilityType.VIDEO);
+        model.setProtocol(MediaProtocol.ARK_VIDEO_TASKS);
+        model.setExecutionMode(ExecutionMode.REMOTE_TASK);
+        model.setPriceUnits(20L);
+        model.setEnabled(true);
+        return model;
     }
 
     private SubmitGenerationCommand command(String idempotencyKey) {

@@ -35,7 +35,6 @@
         <mybatis-plus.version>3.5.18.1</mybatis-plus.version>
         <openai-java.version>4.99.0</openai-java.version>
         <aws-sdk.version>2.59.2</aws-sdk.version>
-        <ark-runtime.version>0.17.0</ark-runtime.version>
         <nacos.version>2.5.5</nacos.version>
 
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
@@ -84,11 +83,6 @@
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>s3</artifactId>
                 <version>${aws-sdk.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.volcengine</groupId>
-                <artifactId>ark-runtime</artifactId>
-                <version>${ark-runtime.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.alibaba.nacos</groupId>
