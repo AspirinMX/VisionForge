@@ -346,14 +346,23 @@ class AgentRunServiceTest {
     }
 
     @Test
-    void failMarksRunAsFailedWithoutAssistantMessage() {
+    void failPersistsFailedAssistantMessage() {
         AgentRun run = run(AgentRunStatus.RUNNING);
         when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
 
         service.fail(RUN_ID, "provider down");
 
         assertThat(run.getStatus()).isEqualTo(AgentRunStatus.FAILED);
         assertThat(run.getErrorMessage()).isEqualTo("provider down");
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(messageMapper).insert(captor.capture());
+        Message failed = captor.getValue();
+        assertThat(failed.getRole()).isEqualTo(MessageRole.ASSISTANT);
+        assertThat(failed.getStatus()).isEqualTo(MessageStatus.FAILED);
+        assertThat(failed.getContent()).isEqualTo("provider down");
+        assertThat(run.getAssistantMessageId()).isEqualTo(failed.getId());
         verify(agentRunMapper).updateById(run);
     }
 
@@ -414,6 +423,7 @@ class AgentRunServiceTest {
         WorkflowStartRequest pendingStart = startRequest(0);
         when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
         when(workflowStartRequestMapper.selectOne(any())).thenReturn(pendingStart);
+        when(conversationMapper.selectById(CONVERSATION_ID)).thenReturn(conversation());
 
         AgentRun cancelled = service.cancel(WORKSPACE_ID, RUN_ID);
 
@@ -421,6 +431,15 @@ class AgentRunServiceTest {
         assertThat(cancelled.getCompletedAt()).isEqualTo(NOW);
         assertThat(pendingStart.getStatus()).isEqualTo(WorkflowStartStatus.FAILED);
         verify(workflowStartRequestMapper).updateById(pendingStart);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(messageMapper).insert(captor.capture());
+        Message cancelledMessage = captor.getValue();
+        assertThat(cancelledMessage.getRole()).isEqualTo(MessageRole.ASSISTANT);
+        assertThat(cancelledMessage.getStatus()).isEqualTo(MessageStatus.FAILED);
+        assertThat(cancelledMessage.getContent()).isEqualTo("用户已取消本次回复。");
+        assertThat(cancelled.getAssistantMessageId())
+                .isEqualTo(cancelledMessage.getId());
 
         // Late failure callback must not overwrite CANCELLED.
         assertThat(service.fail(RUN_ID, "late error")).isFalse();

@@ -507,16 +507,31 @@ public class AgentRunService {
                 || (run.getStatus() == AgentRunStatus.FAILED && run.getErrorMessage() != null)) {
             return false;
         }
-        run.setStatus(AgentRunStatus.FAILED);
-        run.setErrorMessage(truncate(errorMessage));
-        run.setCompletedAt(clock.instant());
-        agentRunMapper.updateById(run);
+        // Same lock as startTurn/complete: the failed reply still consumes a message sequence.
+        conversationMapper.selectForUpdate(run.getConversationId());
+        AgentRun current = agentRunMapper.selectById(runId);
+        if (current == null
+                || current.getStatus() == AgentRunStatus.COMPLETED
+                || current.getStatus() == AgentRunStatus.CANCELLED
+                || (current.getStatus() == AgentRunStatus.FAILED
+                        && current.getErrorMessage() != null)) {
+            return false;
+        }
+        Instant now = clock.instant();
+        String safeError = truncate(errorMessage);
+        current.setStatus(AgentRunStatus.FAILED);
+        current.setErrorMessage(safeError);
+        current.setCompletedAt(now);
+        persistTerminalMessage(current, now, safeError == null || safeError.isBlank()
+                ? "本次回复生成失败，请稍后重试。"
+                : safeError);
+        agentRunMapper.updateById(current);
         alertPublisher.publish(AlertEvent.of(
                 AlertEvent.EVENT_MODEL_PROVIDER_ERROR,
                 AlertSeverity.WARNING,
                 "agent-run",
                 "AgentRun 执行失败",
-                errorMessage == null ? "未知执行异常" : truncate(errorMessage),
+                errorMessage == null ? "未知执行异常" : safeError,
                 runId.toString()));
         return true;
     }
@@ -527,20 +542,55 @@ public class AgentRunService {
         if (run.getStatus().terminal()) {
             return run;
         }
+        conversationMapper.selectForUpdate(run.getConversationId());
+        AgentRun current = agentRunMapper.selectById(runId);
+        if (current == null || current.getStatus().terminal()) {
+            return current == null ? run : current;
+        }
         Instant now = clock.instant();
-        run.setStatus(AgentRunStatus.CANCELLED);
-        run.setErrorMessage("用户已取消生成");
-        run.setCompletedAt(now);
-        agentRunMapper.updateById(run);
+        current.setStatus(AgentRunStatus.CANCELLED);
+        current.setErrorMessage("用户已取消生成");
+        current.setCompletedAt(now);
+        persistTerminalMessage(current, now, "用户已取消本次回复。");
+        agentRunMapper.updateById(current);
 
-        WorkflowStartRequest startRequest = findStartRequest(run.getWorkflowId());
+        WorkflowStartRequest startRequest = findStartRequest(current.getWorkflowId());
         if (startRequest != null && startRequest.getStatus() == WorkflowStartStatus.PENDING) {
             startRequest.setStatus(WorkflowStartStatus.FAILED);
             startRequest.setLastError("用户已取消生成");
             startRequest.setUpdatedAt(now);
             workflowStartRequestMapper.updateById(startRequest);
         }
-        return run;
+        return current;
+    }
+
+    /**
+     * Persists an assistant bubble for a run that ended without a reply, so failures and
+     * cancellations stay visible after a refresh instead of leaving only the user message.
+     */
+    private void persistTerminalMessage(AgentRun run, Instant now, String content) {
+        if (run.getAssistantMessageId() != null) {
+            return;
+        }
+        Conversation conversation = conversationMapper.selectById(run.getConversationId());
+        if (conversation == null) {
+            return;
+        }
+        Message message = new Message();
+        message.setId(idGenerator.nextId());
+        message.setConversationId(run.getConversationId());
+        message.setSenderUserId(run.getUserId());
+        message.setRole(MessageRole.ASSISTANT);
+        message.setContent(content);
+        message.setSequenceNo(nextSequence(run.getConversationId()));
+        message.setStatus(MessageStatus.FAILED);
+        message.setCreatedAt(now);
+        messageMapper.insert(message);
+
+        run.setAssistantMessageId(message.getId());
+        conversation.setLastMessageAt(now);
+        conversation.setUpdatedAt(now);
+        conversationMapper.updateById(conversation);
     }
 
     public List<WorkflowStartRequest> pendingStartRequests(int limit) {
