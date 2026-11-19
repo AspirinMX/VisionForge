@@ -60,8 +60,8 @@ class ArkImagesProviderTest {
                                 UUID.randomUUID(),
                                 GenerationInputRole.INIT_IMAGE,
                                 "image/png",
-                                "https://media.example.com/ref-2.png",
-                                null)));
+                                "http://localhost:9000/ref-2.png",
+                                new byte[]{1, 2, 3})));
 
         JsonNode built = provider.createRequest(request);
 
@@ -76,7 +76,7 @@ class ArkImagesProviderTest {
         assertThat(built.path("image").get(0).asText())
                 .isEqualTo("https://media.example.com/ref-1.png");
         assertThat(built.path("image").get(1).asText())
-                .isEqualTo("https://media.example.com/ref-2.png");
+                .isEqualTo("data:image/png;base64,AQID");
     }
 
     @Test

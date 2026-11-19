@@ -354,8 +354,7 @@ public class GenerationTaskService {
             String url = assetService.createDownloadUrl(task.getUserId(), input.getAssetId())
                     .downloadUrl()
                     .toString();
-            byte[] content = task.getType() == GenerationType.IMAGE
-                            && asset.getKind() == AssetKind.IMAGE
+            byte[] content = asset.getKind() == AssetKind.IMAGE
                             && asset.getSizeBytes() <= 20L * 1024 * 1024
                     ? assetService.readBytes(task.getUserId(), input.getAssetId(), 20L * 1024 * 1024)
                     : null;

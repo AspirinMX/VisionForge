@@ -1,6 +1,5 @@
 package app.pagefault.visionforge.agent.provider.media;
 
-import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
@@ -95,22 +94,12 @@ public class DashScopeImageMessagesProvider implements MediaProvider {
         return root;
     }
 
-    /**
-     * Prefers the archived bytes so the upstream never has to reach a private object store;
-     * presigned URLs only work when the storage endpoint is publicly reachable.
-     */
     private String imagePayload(MediaProviderInput item) {
-        if (item.content() != null && item.content().length > 0) {
-            String mimeType = item.mimeType() == null || item.mimeType().isBlank()
-                    ? "image/png"
-                    : item.mimeType();
-            return "data:" + mimeType + ";base64,"
-                    + Base64.getEncoder().encodeToString(item.content());
-        }
-        if (item.url() == null || item.url().isBlank()) {
+        String payload = MediaProviderInputs.inlineOrUrl(item);
+        if (payload == null || payload.isBlank()) {
             throw unsupported("百炼图片参考素材缺少可访问 URL");
         }
-        return item.url();
+        return payload;
     }
 
     String extractImageUrl(JsonNode body) {

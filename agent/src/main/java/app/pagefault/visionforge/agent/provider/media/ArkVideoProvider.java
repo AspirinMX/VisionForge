@@ -128,12 +128,13 @@ public class ArkVideoProvider implements RemoteMediaProvider {
         textItem.put("text", request.prompt());
 
         for (MediaProviderInput input : request.inputs()) {
-            if (input.url() == null || input.url().isBlank()) {
+            String payload = MediaProviderInputs.inlineOrUrl(input);
+            if (payload == null || payload.isBlank()) {
                 throw unsupported("视频输入素材缺少可访问 URL");
             }
             ObjectNode imageItem = content.addObject();
             imageItem.put("type", "image_url");
-            imageItem.putObject("image_url").put("url", input.url());
+            imageItem.putObject("image_url").put("url", payload);
             imageItem.put("role", role(input.role()));
         }
 

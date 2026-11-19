@@ -90,12 +90,13 @@ public class DashScopeVideoProvider implements RemoteMediaProvider {
         copy(parameters, input, "negative_prompt", "negativePrompt");
         ArrayNode media = input.putArray("media");
         for (MediaProviderInput item : request.inputs()) {
-            if (item.url() == null || item.url().isBlank()) {
+            String payload = MediaProviderInputs.inlineOrUrl(item);
+            if (payload == null || payload.isBlank()) {
                 throw unsupported("百炼视频输入素材缺少可访问 URL");
             }
             ObjectNode entry = media.addObject();
             entry.put("type", mediaType(item.role()));
-            entry.put("url", item.url());
+            entry.put("url", payload);
         }
         ObjectNode output = root.putObject("parameters");
         JsonNode resolution = parameters.path("resolution");

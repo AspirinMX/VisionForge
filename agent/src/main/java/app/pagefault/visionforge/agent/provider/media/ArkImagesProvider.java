@@ -135,10 +135,11 @@ public class ArkImagesProvider implements MediaProvider {
                 if (input.role() == GenerationInputRole.MASK) {
                     throw unsupported("Ark 图片暂不支持 mask 输入");
                 }
-                if (input.url() == null || input.url().isBlank()) {
+                String payload = MediaProviderInputs.inlineOrUrl(input);
+                if (payload == null || payload.isBlank()) {
                     throw unsupported("Ark 图片参考素材缺少可访问 URL");
                 }
-                imageArray.add(input.url());
+                imageArray.add(payload);
             }
         }
         return root;

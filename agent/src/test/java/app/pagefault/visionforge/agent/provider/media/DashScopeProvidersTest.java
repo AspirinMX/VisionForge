@@ -115,12 +115,19 @@ class DashScopeProvidersTest {
                     GenerationType.VIDEO,
                     baseUrl(server),
                     "{\"resolution\":\"720p\",\"aspectRatio\":\"9:16\",\"durationSeconds\":5,\"generateAudio\":true}",
-                    List.of(new MediaProviderInput(
-                            UUID.randomUUID(),
-                            GenerationInputRole.FIRST_FRAME,
-                            "image/png",
-                            "https://media.example.com/first.png",
-                            null)));
+                    List.of(
+                            new MediaProviderInput(
+                                    UUID.randomUUID(),
+                                    GenerationInputRole.FIRST_FRAME,
+                                    "image/png",
+                                    "https://media.example.com/first.png",
+                                    null),
+                            new MediaProviderInput(
+                                    UUID.randomUUID(),
+                                    GenerationInputRole.REFERENCE,
+                                    "image/png",
+                                    "http://localhost:9000/reference.png",
+                                    new byte[]{1, 2, 3})));
 
             provider.start(request);
             JsonNode submitted = objectMapper.readTree(submitBody.get());
@@ -128,6 +135,8 @@ class DashScopeProvidersTest {
                     .isEqualTo("first_frame");
             assertThat(submitted.path("input").path("media").get(0).path("url").asText())
                     .isEqualTo("https://media.example.com/first.png");
+            assertThat(submitted.path("input").path("media").get(1).path("url").asText())
+                    .isEqualTo("data:image/png;base64,AQID");
             assertThat(submitted.path("parameters").path("resolution").asText())
                     .isEqualTo("720P");
             assertThat(submitted.path("parameters").path("ratio").asText())

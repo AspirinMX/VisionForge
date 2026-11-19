@@ -46,7 +46,13 @@ class ArkVideoProviderTest {
                                 GenerationInputRole.FIRST_FRAME,
                                 "image/png",
                                 "https://media.example.com/first.png",
-                                null)));
+                                null),
+                        new MediaProviderInput(
+                                UUID.randomUUID(),
+                                GenerationInputRole.REFERENCE,
+                                "image/png",
+                                "http://localhost:9000/reference.png",
+                                new byte[]{1, 2, 3})));
 
         JsonNode built = provider.createRequest(req);
 
@@ -57,12 +63,16 @@ class ArkVideoProviderTest {
         assertThat(built.path("generate_audio").asBoolean()).isTrue();
         assertThat(built.path("watermark").asBoolean()).isFalse();
         assertThat(built.path("seed").asLong()).isEqualTo(42L);
-        assertThat(built.path("content").size()).isEqualTo(2);
+        assertThat(built.path("content").size()).isEqualTo(3);
         assertThat(built.path("content").get(0).path("type").asText()).isEqualTo("text");
         assertThat(built.path("content").get(1).path("type").asText()).isEqualTo("image_url");
         assertThat(built.path("content").get(1).path("image_url").path("url").asText())
                 .isEqualTo("https://media.example.com/first.png");
         assertThat(built.path("content").get(1).path("role").asText()).isEqualTo("first_frame");
+        assertThat(built.path("content").get(2).path("image_url").path("url").asText())
+                .isEqualTo("data:image/png;base64,AQID");
+        assertThat(built.path("content").get(2).path("role").asText())
+                .isEqualTo("reference_image");
     }
 
     @Test
