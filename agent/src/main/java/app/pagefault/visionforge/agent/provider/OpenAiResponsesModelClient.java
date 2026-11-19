@@ -224,15 +224,18 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                 .map(text -> ResponseReasoningItem.Summary.builder().text(text).build())
                 .toList();
         ResponseReasoningItem.Builder builder = ResponseReasoningItem.builder()
-                .id(JsonMissing.of())
-                .summary(summaries)
-                .encryptedContent(reasoning.encryptedContent());
+                .id(JsonMissing.of());
         if (reasoning.text() != null) {
             // Plaintext providers (DeepSeek and compatible gateways) require the chain of thought
-            // back as reasoning_text content; summary and encrypted_content are not supported.
-            builder.content(List.of(ResponseReasoningItem.Content.builder()
-                    .text(reasoning.text())
-                    .build()));
+            // back as reasoning_text content. They reject or ignore encrypted_content, so an item
+            // carrying text must not also carry the opaque carrier.
+            builder.summary(List.of())
+                    .content(List.of(ResponseReasoningItem.Content.builder()
+                            .text(reasoning.text())
+                            .build()));
+        } else {
+            builder.summary(summaries)
+                    .encryptedContent(reasoning.encryptedContent());
         }
         return builder.build();
     }

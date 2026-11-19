@@ -274,7 +274,8 @@ class OpenAiResponsesModelClientTest {
                     ReasoningEffort.HIGH,
                     128,
                     null,
-                    List.of(new ModelInputItem.Reasoning(null, "step one step two", List.of())),
+                    List.of(new ModelInputItem.Reasoning(
+                            "unusable-encrypted-carrier", "step one step two", List.of("plan"))),
                     List.of(),
                     null);
 
@@ -289,6 +290,7 @@ class OpenAiResponsesModelClientTest {
             assertThat(reasoning.path("content").get(0).path("text").asText())
                     .isEqualTo("step one step two");
             assertThat(reasoning.path("summary")).isEmpty();
+            assertThat(reasoning.has("encrypted_content")).isFalse();
         } finally {
             server.stop(0);
         }
