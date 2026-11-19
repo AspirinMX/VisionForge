@@ -61,6 +61,7 @@ import {
 import type {
   ConversationFileKind,
   ConversationFileResponse,
+  ConversationFileSource,
   ConversationFileVersionResponse,
   UUID,
 } from "@/lib/api/types";
@@ -70,6 +71,13 @@ import {
   DEFAULT_SCRIPT_TEMPLATE,
 } from "@/lib/studio/storyboard";
 import { cn } from "@/lib/utils";
+
+const FILE_SOURCE_LABEL: Record<ConversationFileSource, string> = {
+  USER_UPLOAD: "手动保存",
+  AGENT: "助手修改",
+  TOOL: "工具写入",
+  GENERATED: "自动生成",
+};
 
 const TEXT_FILE_KINDS: ConversationFileKind[] = [
   "SCRIPT",
@@ -554,10 +562,6 @@ export function FilesPanel() {
                       </div>
                       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                         <span>{FILE_KIND_LABEL[file.kind]}</span>
-                        <span>·</span>
-                        <span className="font-mono tabular-nums">
-                          v{file.currentVersion}
-                        </span>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -588,9 +592,6 @@ export function FilesPanel() {
                     </h3>
                     <Badge variant="outline">
                       {FILE_KIND_LABEL[activeFile.kind]}
-                    </Badge>
-                    <Badge variant="secondary" className="font-mono tabular-nums">
-                      v{activeFile.currentVersion}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
@@ -900,7 +901,7 @@ export function FilesPanel() {
           <SheetHeader>
             <SheetTitle>版本历史 · {activeFile?.title}</SheetTitle>
             <SheetDescription>
-              每次 Agent 修改、人工保存或任务回写都会生成不可变历史版本，可查看或恢复为最新版本。
+              每次助手修改、人工保存或任务回写都会生成不可变历史版本，可查看或恢复为最新版本。
             </SheetDescription>
           </SheetHeader>
 
@@ -919,10 +920,12 @@ export function FilesPanel() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono tabular-nums">
+                        <Badge variant="outline" className="tabular-nums">
                           v{ver.version}
                         </Badge>
-                        <Badge variant="secondary">{ver.source}</Badge>
+                        <Badge variant="secondary">
+                          {FILE_SOURCE_LABEL[ver.source]}
+                        </Badge>
                         {ver.version === activeFile?.currentVersion ? (
                           <Badge>当前版本</Badge>
                         ) : null}
@@ -988,14 +991,14 @@ export function FilesPanel() {
           <DialogHeader>
             <DialogTitle>文件内容已更新</DialogTitle>
             <DialogDescription>
-              云端已更新至 v{conflict?.file.currentVersion}，请选择加载最新版本或基于最新版本重新保存。
+              云端内容已被他人或助手更新，请选择加载最新版本或基于最新版本重新保存。
             </DialogDescription>
           </DialogHeader>
           {conflict ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">
-                  最新版本 v{conflict.file.currentVersion}
+                  云端最新内容
                 </Label>
                 <Textarea
                   readOnly
@@ -1047,7 +1050,7 @@ export function FilesPanel() {
                   );
                 }}
               >
-                基于 v{conflict?.file.currentVersion} 覆盖提交
+                基于最新版本覆盖提交
               </Button>
             </DialogFooter>
           </DialogContent>

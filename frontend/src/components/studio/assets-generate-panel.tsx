@@ -11,6 +11,7 @@ import {
   FolderPlusIcon,
   ImagePlusIcon,
   MessageSquarePlusIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   SparklesIcon,
   Trash2Icon,
@@ -29,6 +30,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -417,12 +424,6 @@ function QuickGenerateForm({
               ))}
             </SelectContent>
           </Select>
-          <Input
-            value={modelDefinitionId}
-            onChange={(e) => setModelDefinitionId(e.target.value)}
-            placeholder="或指定模型编号"
-            className="h-8 text-xs"
-          />
         </div>
         <div className="flex items-end text-[11px] text-muted-foreground">
           {resolvedModel
@@ -433,7 +434,7 @@ function QuickGenerateForm({
 
       <div className="space-y-1.5">
         <Label htmlFor="quick-gen-prompt" className="text-xs font-medium">
-          生成提示词 (prompt)
+          生成提示词
         </Label>
         <Textarea
           id="quick-gen-prompt"
@@ -517,8 +518,8 @@ function QuickGenerateForm({
             <AlertTitle>MASK 角色协议提示</AlertTitle>
             <AlertDescription className="text-xs">
               {maskBlockedByOpenAi
-                ? "当前选定模型采用 OpenAI Images 协议，服务端暂不支持 MASK 局部重绘角色，请改用 REFERENCE/INIT_IMAGE 或切换协议。"
-                : "部分协议（如 OpenAI Images）暂不支持 MASK 局部重绘角色；请确认目标模型支持后再提交。"}
+                ? "当前模型暂不支持蒙版局部重绘，请改用参考图或初始图方式，或更换支持该能力的模型。"
+                : "部分模型暂不支持蒙版局部重绘；请确认目标模型支持后再提交。"}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -537,8 +538,9 @@ function QuickGenerateForm({
                     allowLightbox={false}
                     className="size-10 shrink-0 rounded-lg"
                   />
-                  <span className="truncate font-mono text-[11px]">
-                    {inp.assetId}
+                  <span className="truncate text-[11px]">
+                    {localAssets.find((asset) => asset.assetId === inp.assetId)
+                      ?.label ?? "参考素材"}
                   </span>
                 </div>
 
@@ -592,29 +594,48 @@ function QuickGenerateForm({
       <div className="space-y-2.5 rounded-surface-sm bg-muted/20 p-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium">生成参数</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => {
-              if (!rawParamsMode) {
-                const currentObj =
-                  genType === "IMAGE"
-                    ? { size: imgSize, quality: imgQuality, outputFormat: imgFormat }
-                    : {
-                        resolution: vidResolution,
-                        ratio: vidRatio,
-                        durationSeconds: Number(vidDuration) || 5,
-                        generateAudio: vidAudio,
-                        watermark: vidWatermark,
-                      };
-                setRawParamsText(JSON.stringify(currentObj, null, 2));
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="高级调试"
+                />
               }
-              setRawParamsMode((v) => !v);
-            }}
-          >
-            {rawParamsMode ? "返回结构化表单" : "编辑原始 JSON"}
-          </Button>
+            >
+              <MoreHorizontalIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  if (!rawParamsMode) {
+                    const currentObj =
+                      genType === "IMAGE"
+                        ? {
+                            size: imgSize,
+                            quality: imgQuality,
+                            outputFormat: imgFormat,
+                          }
+                        : {
+                            resolution: vidResolution,
+                            ratio: vidRatio,
+                            durationSeconds: Number(vidDuration) || 5,
+                            generateAudio: vidAudio,
+                            watermark: vidWatermark,
+                          };
+                    setRawParamsText(JSON.stringify(currentObj, null, 2));
+                  }
+                  setRawParamsMode((v) => !v);
+                }}
+              >
+                <span>
+                  {rawParamsMode ? "返回结构化表单" : "编辑原始参数"}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {rawParamsMode ? (
@@ -636,10 +657,10 @@ function QuickGenerateForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1024x1024">1024x1024</SelectItem>
-                  <SelectItem value="1536x1024">1536x1024</SelectItem>
-                  <SelectItem value="1024x1536">1024x1536</SelectItem>
-                  <SelectItem value="auto">auto</SelectItem>
+                  <SelectItem value="1024x1024">正方形 1024×1024</SelectItem>
+                  <SelectItem value="1536x1024">横版 1536×1024</SelectItem>
+                  <SelectItem value="1024x1536">竖版 1024×1536</SelectItem>
+                  <SelectItem value="auto">自动</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -653,10 +674,10 @@ function QuickGenerateForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="high">high</SelectItem>
-                  <SelectItem value="medium">medium</SelectItem>
-                  <SelectItem value="low">low</SelectItem>
-                  <SelectItem value="auto">auto</SelectItem>
+                  <SelectItem value="high">高质量</SelectItem>
+                  <SelectItem value="medium">标准</SelectItem>
+                  <SelectItem value="low">快速</SelectItem>
+                  <SelectItem value="auto">自动</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -670,9 +691,9 @@ function QuickGenerateForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="png">png</SelectItem>
-                  <SelectItem value="jpeg">jpeg</SelectItem>
-                  <SelectItem value="webp">webp</SelectItem>
+                  <SelectItem value="png">PNG</SelectItem>
+                  <SelectItem value="jpeg">JPEG</SelectItem>
+                  <SelectItem value="webp">WebP</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -711,7 +732,7 @@ function QuickGenerateForm({
                     <SelectItem value="16:9">16:9</SelectItem>
                     <SelectItem value="9:16">9:16</SelectItem>
                     <SelectItem value="1:1">1:1</SelectItem>
-                    <SelectItem value="adaptive">adaptive</SelectItem>
+                    <SelectItem value="adaptive">自适应</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -735,7 +756,7 @@ function QuickGenerateForm({
                   checked={vidAudio}
                   onCheckedChange={(checked) => setVidAudio(Boolean(checked))}
                 />
-                <span>生成音频 (generateAudio)</span>
+                <span>同步生成音效</span>
               </label>
               <label className="flex cursor-pointer items-center gap-1.5">
                 <Checkbox
@@ -744,7 +765,7 @@ function QuickGenerateForm({
                     setVidWatermark(Boolean(checked))
                   }
                 />
-                <span>保留水印 (watermark)</span>
+                <span>添加平台水印</span>
               </label>
               <div className="flex items-center gap-1.5">
                 <Label

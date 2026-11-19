@@ -225,7 +225,7 @@ export function AgentProcessTimeline({
                         {tool.action}
                       </span>
                       {tool.target ? (
-                        <span className="truncate font-mono text-[12px] text-muted-foreground">
+                        <span className="truncate text-[12px] text-muted-foreground">
                           {tool.target}
                         </span>
                       ) : null}

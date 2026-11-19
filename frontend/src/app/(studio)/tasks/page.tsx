@@ -53,6 +53,7 @@ import type {
   CompositionSpec,
   CompositionStatus,
   CompositionTaskResponse,
+  GenerationInputRole,
   GenerationStatus,
   GenerationType,
   UUID,
@@ -62,6 +63,14 @@ import {
   formatDateTime,
   GENERATION_STATUS_LABEL,
 } from "@/lib/format";
+
+const GENERATION_INPUT_ROLE_LABEL: Record<GenerationInputRole, string> = {
+  REFERENCE: "参考图",
+  INIT_IMAGE: "初始图",
+  MASK: "蒙版",
+  FIRST_FRAME: "首帧",
+  LAST_FRAME: "尾帧",
+};
 
 type StatusBucket =
   | "ALL"
@@ -422,8 +431,8 @@ function GlobalTasksContent() {
                     [
                       { id: "ALL", label: "全部" },
                       { id: "ACTIVE", label: "进行中" },
-                      { id: "ARCHIVE_FAILED", label: "待归档修复" },
-                      { id: "UNKNOWN", label: "待核账" },
+                      { id: "ARCHIVE_FAILED", label: "保存异常" },
+                      { id: "UNKNOWN", label: "状态确认中" },
                       { id: "SUCCEEDED", label: "已交付" },
                       { id: "FAILED_OR_CANCELLED", label: "已结束" },
                     ] as const
@@ -615,7 +624,7 @@ function GlobalTasksContent() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>分镜版本</TableHead>
+                          <TableHead>来源</TableHead>
                           <TableHead>输出规格</TableHead>
                           <TableHead>片段数</TableHead>
                           <TableHead>状态</TableHead>
@@ -632,12 +641,14 @@ function GlobalTasksContent() {
                               onClick={() => setSelectedCompositionId(comp.taskId)}
                               className="cursor-pointer"
                             >
-                              <TableCell className="font-mono text-xs tabular-nums">
-                                v{comp.storyboardVersion}
+                              <TableCell className="text-xs text-muted-foreground">
+                                分镜合成
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground tabular-nums">
-                                {spec?.width && spec?.height
-                                  ? `${spec.width}×${spec.height} · ${spec.fps ?? 24}fps`
+                                {spec?.height
+                                  ? spec.height >= 1080
+                                    ? "1080p"
+                                    : "720p"
                                   : "默认规格"}
                               </TableCell>
                               <TableCell className="tabular-nums">
@@ -787,7 +798,7 @@ function GlobalTasksContent() {
                           className="space-y-1 rounded-surface-sm bg-muted/20 p-2"
                         >
                           <Badge variant="outline" className="text-[10px]">
-                            {inp.role}
+                            {GENERATION_INPUT_ROLE_LABEL[inp.role ?? "REFERENCE"]}
                           </Badge>
                           <AssetMediaPreview
                             assetId={inp.assetId}

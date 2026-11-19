@@ -158,8 +158,8 @@ export const GENERATION_STATUS_LABEL: Record<GenerationStatus, string> = {
   PARTIAL_SUCCEEDED: "部分交付",
   FAILED: "已失败",
   CANCELLED: "已取消",
-  UNKNOWN: "结果待核对",
-  ARCHIVE_FAILED: "归档失败",
+  UNKNOWN: "状态确认中",
+  ARCHIVE_FAILED: "保存异常",
   DELIVERY_FAILED: "交付失败",
 };
 

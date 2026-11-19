@@ -164,8 +164,8 @@ export function TasksPanel() {
             [
               { id: "ALL", label: `全部 (${generationTasks.length})` },
               { id: "ACTIVE", label: "进行中" },
-              { id: "ARCHIVE_FAILED", label: "待归档修复" },
-              { id: "UNKNOWN", label: "待核账" },
+              { id: "ARCHIVE_FAILED", label: "保存异常" },
+              { id: "UNKNOWN", label: "状态确认中" },
               { id: "SUCCEEDED", label: "已交付" },
               { id: "FAILED_OR_CANCELLED", label: "失败/已取消" },
             ] as const
@@ -201,7 +201,7 @@ export function TasksPanel() {
         {compositionTasks.length > 0 ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-              <span>FFmpeg 合成任务 ({compositionTasks.length})</span>
+              <span>视频合成任务 ({compositionTasks.length})</span>
               <Button
                 type="button"
                 variant="link"
@@ -237,7 +237,7 @@ export function TasksPanel() {
                         {COMPOSITION_STATUS_LABEL[comp.status]}
                       </Badge>
                       <Badge variant="outline" className="text-[11px]">
-                        分镜 v{comp.storyboardVersion}
+                        分镜合成
                       </Badge>
                     </div>
                     <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -249,7 +249,7 @@ export function TasksPanel() {
                     <AssetMediaPreview
                       assetId={comp.outputAssetId}
                       kind="VIDEO"
-                      alt={`合成成片 ${comp.taskId}`}
+                      alt="合成成片"
                       className="aspect-video w-full"
                     />
                   ) : null}

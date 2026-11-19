@@ -11,9 +11,9 @@ import {
   Code2Icon,
   FilmIcon,
   ImageIcon,
-  LayoutGridIcon,
   LockIcon,
   MessageSquarePlusIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
@@ -31,6 +31,12 @@ import { SPATIAL } from "@/lib/motion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Collapsible,
   CollapsibleContent,
@@ -556,7 +562,7 @@ export function StoryboardPanel() {
     }
     if (missingVideoShots.length > 0) {
       notifyError(
-        `尚有 ${missingVideoShots.length} 个镜头未选定成片视频 (selectedVideo)`
+        `尚有 ${missingVideoShots.length} 个镜头未选定成片片段`
       );
       return;
     }
@@ -570,7 +576,7 @@ export function StoryboardPanel() {
         outputSpec: compSpec,
       });
       await refreshSilent();
-      notifySuccess("已提交 FFmpeg 成片合成任务");
+      notifySuccess("已提交成片合成任务");
     } catch (err) {
       notifyApiError(err, "提交成片合成失败");
     } finally {
@@ -714,7 +720,7 @@ export function StoryboardPanel() {
               <SelectContent>
                 {storyboardFiles.map((file) => (
                   <SelectItem key={file.id} value={file.id}>
-                    {file.title} (v{file.currentVersion})
+                    {file.title}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -725,11 +731,6 @@ export function StoryboardPanel() {
             </span>
           )}
 
-          {activeFile ? (
-            <Badge variant="outline" className="font-mono text-[11px] tabular-nums">
-              v{activeFile.currentVersion}
-            </Badge>
-          ) : null}
 
           {isDirty ? (
             <Badge variant="secondary">未保存修改</Badge>
@@ -747,17 +748,32 @@ export function StoryboardPanel() {
             <span>新建</span>
           </Button>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() =>
-              setViewMode((mode) => (mode === "cards" ? "json" : "cards"))
-            }
-          >
-            {viewMode === "cards" ? <Code2Icon /> : <LayoutGridIcon />}
-            <span>{viewMode === "cards" ? "JSON" : "卡片"}</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="更多操作"
+                />
+              }
+            >
+              <MoreHorizontalIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  setViewMode((mode) => (mode === "cards" ? "json" : "cards"))
+                }
+              >
+                <Code2Icon />
+                <span>
+                  {viewMode === "cards" ? "切换原始数据视图" : "返回卡片视图"}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             type="button"
@@ -788,7 +804,7 @@ export function StoryboardPanel() {
         {versionDrifted && activeFile ? (
           <Alert>
             <AlertTriangleIcon />
-            <AlertTitle>分镜已有更新 (v{activeFile.currentVersion})</AlertTitle>
+            <AlertTitle>分镜已有更新</AlertTitle>
             <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 后台生成或助手刚刚更新了分镜内容，与当前草稿存在差异。
@@ -914,14 +930,6 @@ export function StoryboardPanel() {
                         <Badge variant="outline" className="tabular-nums">
                           #{shot.order}
                         </Badge>
-                        <span className="font-mono text-xs font-medium">
-                          {shot.id}
-                        </span>
-                        {shot.sceneId ? (
-                          <Badge variant="secondary" className="text-[11px]">
-                            {shot.sceneId}
-                          </Badge>
-                        ) : null}
                         <Badge
                           variant={
                             shot.status === "FAILED"
@@ -1078,13 +1086,13 @@ export function StoryboardPanel() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <span className="text-[11px] font-medium text-muted-foreground">
-                          首帧图片 (firstFrame)
+                          首帧画面
                         </span>
                         {shot.firstFrame?.assetId ? (
                           <AssetMediaPreview
                             assetId={shot.firstFrame.assetId}
                             kind="IMAGE"
-                            alt={`${shot.id} 首帧`}
+                            alt={`第 ${shot.order} 镜首帧`}
                             className="aspect-video w-full"
                           />
                         ) : (
@@ -1096,7 +1104,7 @@ export function StoryboardPanel() {
 
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
-                          <span>已选成片片段 (selectedVideo)</span>
+                          <span>已选成片片段</span>
                           {shot.usedRange ? (
                             <span className="font-mono tabular-nums">
                               {shot.usedRange.startSeconds}s–
@@ -1108,7 +1116,7 @@ export function StoryboardPanel() {
                           <AssetMediaPreview
                             assetId={shot.selectedVideo.assetId}
                             kind="VIDEO"
-                            alt={`${shot.id} 已选视频`}
+                            alt={`第 ${shot.order} 镜已选视频`}
                             className="aspect-video w-full"
                           />
                         ) : (
@@ -1542,9 +1550,9 @@ export function StoryboardPanel() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>检测到分镜版本冲突 (409)</DialogTitle>
+            <DialogTitle>分镜内容已被他人或助手更新</DialogTitle>
             <DialogDescription>
-              服务端版本已推进至 v{conflictState?.serverFile.currentVersion}，与当前编辑基准不一致。你可以对比后选择覆盖保存或采用服务端版本。
+              云端内容与当前编辑基准不一致，你可以对比后选择覆盖保存或采用云端版本。
             </DialogDescription>
           </DialogHeader>
 
@@ -1552,7 +1560,7 @@ export function StoryboardPanel() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs">
-                  服务端最新版本 (v{conflictState.serverFile.currentVersion})
+                  云端最新内容
                 </Label>
                 <Textarea
                   readOnly
@@ -1604,7 +1612,7 @@ export function StoryboardPanel() {
                 );
               }}
             >
-              基于 v{conflictState?.serverFile.currentVersion} 重新提交
+              基于最新版本重新提交
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1616,7 +1624,7 @@ export function StoryboardPanel() {
           <DialogHeader>
             <DialogTitle>新建分镜方案</DialogTitle>
             <DialogDescription>
-              创建新的 STORYBOARD JSON 文件（可与历史版本并存比较）。
+              新建一份分镜草案，可在画布中编辑镜头并生成画面。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
@@ -1646,16 +1654,16 @@ export function StoryboardPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* FFmpeg Composition Drawer */}
+      {/* Composition Drawer */}
       <Sheet open={compSheetOpen} onOpenChange={setCompSheetOpen}>
         <SheetContent className="flex w-full flex-col sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <ClapperboardIcon className="size-4" />
-              <span>FFmpeg 成片合成与溯源</span>
+              <span>成片合成与溯源</span>
             </SheetTitle>
             <SheetDescription>
-              基于当前分镜版本（{activeFile?.title} · v{activeFile?.currentVersion}）将每个镜头的已选视频拼接转码为最终成片。
+              基于当前分镜（{activeFile?.title}）将每个镜头的已选片段合成为最终成片。
             </SheetDescription>
           </SheetHeader>
 
@@ -1675,7 +1683,7 @@ export function StoryboardPanel() {
                 <AlertTitle>尚有 {missingVideoShots.length} 个镜头未选定成片片段</AlertTitle>
                 <AlertDescription>
                   请先为以下镜头生成视频候选并完成选片：
-                  {missingVideoShots.map((s) => s.id).join("、")}
+                  {missingVideoShots.map((s) => `第 ${s.order} 镜`).join("、")}
                 </AlertDescription>
               </Alert>
             ) : (
@@ -1683,96 +1691,67 @@ export function StoryboardPanel() {
                 <CheckCircle2Icon />
                 <AlertTitle>全部 {sortedShots.length} 个镜头均已满足合成条件</AlertTitle>
                 <AlertDescription>
-                  将严格按照分镜 order 顺序与 usedRange 进行服务端 FFmpeg 合成并归档为 VIDEO 文件。
+                  将严格按照镜头顺序与截取时段在服务端合成为最终成片。
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* OutputSpec Form */}
+            {/* Export Preset Form */}
             <div className="space-y-3 rounded-surface-sm bg-muted/20 p-3.5">
-              <p className="text-xs font-medium">输出规格 (CompositionSpec)</p>
-              <div className="grid grid-cols-3 gap-2.5">
+              <p className="text-xs font-medium">输出规格</p>
+              <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">宽度</Label>
-                  <Input
-                    type="number"
-                    value={compSpec.width}
-                    onChange={(e) =>
+                  <Label className="text-[11px] text-muted-foreground">分辨率</Label>
+                  <Select
+                    value={compSpec.height >= 1080 ? "1080p" : "720p"}
+                    onValueChange={(value) => {
+                      if (!value) {
+                        return;
+                      }
                       setCompSpec((s) => ({
                         ...s,
-                        width: Number(e.target.value) || 1280,
-                      }))
-                    }
-                    className="h-8 text-xs tabular-nums"
-                  />
+                        width: value === "1080p" ? 1920 : 1280,
+                        height: value === "1080p" ? 1080 : 720,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="720p">720p 标准</SelectItem>
+                      <SelectItem value="1080p">1080p 高清</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">高度</Label>
-                  <Input
-                    type="number"
-                    value={compSpec.height}
-                    onChange={(e) =>
+                  <Label className="text-[11px] text-muted-foreground">画质档位</Label>
+                  <Select
+                    value={compSpec.crf <= 20 ? "high" : "standard"}
+                    onValueChange={(value) => {
+                      if (!value) {
+                        return;
+                      }
                       setCompSpec((s) => ({
                         ...s,
-                        height: Number(e.target.value) || 720,
-                      }))
-                    }
-                    className="h-8 text-xs tabular-nums"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">FPS</Label>
-                  <Input
-                    type="number"
-                    value={compSpec.fps}
-                    onChange={(e) =>
-                      setCompSpec((s) => ({
-                        ...s,
-                        fps: Number(e.target.value) || 30,
-                      }))
-                    }
-                    className="h-8 text-xs tabular-nums"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">
-                    编码器
-                  </Label>
-                  <Input
-                    value={compSpec.videoCodec}
-                    onChange={(e) =>
-                      setCompSpec((s) => ({ ...s, videoCodec: e.target.value }))
-                    }
-                    className="h-8 text-xs font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">Preset</Label>
-                  <Input
-                    value={compSpec.preset}
-                    onChange={(e) =>
-                      setCompSpec((s) => ({ ...s, preset: e.target.value }))
-                    }
-                    className="h-8 text-xs font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] text-muted-foreground">CRF</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={51}
-                    value={compSpec.crf}
-                    onChange={(e) =>
-                      setCompSpec((s) => ({
-                        ...s,
-                        crf: Number(e.target.value) || 23,
-                      }))
-                    }
-                    className="h-8 text-xs tabular-nums"
-                  />
+                        crf: value === "high" ? 18 : 23,
+                        preset: value === "high" ? "medium" : "veryfast",
+                      }));
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">标准画质</SelectItem>
+                      <SelectItem value="high">高清画质</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                导出编码参数由系统托管，无需手动配置。
+              </p>
               <Button
                 type="button"
                 disabled={
@@ -1845,7 +1824,7 @@ export function StoryboardPanel() {
                           {COMPOSITION_STATUS_LABEL[comp.status]}
                         </Badge>
                         <Badge variant="outline" className="text-[11px]">
-                          分镜 v{comp.storyboardVersion}
+                          分镜合成
                         </Badge>
                       </div>
                       <span className="text-[11px] text-muted-foreground tabular-nums">

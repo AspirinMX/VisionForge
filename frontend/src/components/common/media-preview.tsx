@@ -204,10 +204,7 @@ export function AssetMediaPreview({
                   className="max-h-[68vh] w-auto object-contain"
                 />
               </div>
-              <DialogFooter className="gap-2 sm:justify-between">
-                <span className="truncate font-mono text-[11px] text-muted-foreground">
-                  资产 ID：{assetId}
-                </span>
+              <DialogFooter className="gap-2 sm:justify-end">
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"

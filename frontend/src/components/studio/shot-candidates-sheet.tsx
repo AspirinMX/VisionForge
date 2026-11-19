@@ -67,7 +67,7 @@ export function ShotCandidatesSheet({
     if (selectedTaskId) {
       const picked = candidates.find((c) => c.taskId === selectedTaskId);
       if (!picked || !picked.assetId) {
-        notifyError("所选候选视频尚未生成完毕或缺少资产 ID");
+        notifyError("所选候选视频尚未生成完毕或缺少生成文件");
         return;
       }
       nextSelectedVideo = {
@@ -106,13 +106,13 @@ export function ShotCandidatesSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <FilmIcon className="size-4" />
-            <span>镜头 {shot.id} · 多候选视频对比</span>
+            <span>第 {shot.order} 镜 · 多候选视频对比</span>
             <Badge variant="outline" className="tabular-nums">
               #{shot.order} · {shot.durationSeconds}s
             </Badge>
           </SheetTitle>
           <SheetDescription>
-            并排预览该镜头的历史候选视频，指定最终入轨版本（selectedVideo）与可选时间裁剪区间（usedRange）。
+            并排预览该镜头的历史候选视频，选定最终入镜片段，并可截取需要的时间区间。
           </SheetDescription>
         </SheetHeader>
 
@@ -145,7 +145,11 @@ export function ShotCandidatesSheet({
                             : "outline"
                         }
                       >
-                        {candidate.status === "SUCCEEDED" ? "已完成" : candidate.status}
+                        {candidate.status === "SUCCEEDED"
+                          ? "已完成"
+                          : candidate.status === "FAILED"
+                            ? "生成失败"
+                            : "生成中"}
                       </Badge>
                     </div>
 
@@ -164,9 +168,7 @@ export function ShotCandidatesSheet({
 
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="truncate text-muted-foreground">
-                        {candidate.assetId
-                          ? `分镜版本 v${candidate.version ?? 1}`
-                          : "未归档"}
+                        {candidate.assetId ? "已生成" : "未归档"}
                       </span>
                       <Button
                         type="button"
@@ -200,7 +202,7 @@ export function ShotCandidatesSheet({
                 onCheckedChange={(checked) => setEnableTrim(Boolean(checked))}
               />
               <ScissorsIcon className="size-3.5 text-muted-foreground" />
-              <span>启用时间裁剪区间 (usedRange)</span>
+              <span>启用时间裁剪区间</span>
             </label>
 
             {enableTrim ? (

@@ -50,7 +50,6 @@ import {
 } from "@/lib/api/feedback";
 import type { CreditLedgerEntryResponse } from "@/lib/api/types";
 import {
-  CREDIT_ENTRY_HINT,
   CREDIT_ENTRY_LABEL,
   formatDateTime,
   GENERATION_BILLING_LABEL,
@@ -516,11 +515,8 @@ export default function AccountPage() {
                             >
                               {CREDIT_ENTRY_LABEL[entry.entryType]}
                             </Badge>
-                            <span className="font-mono font-medium tabular-nums">
+                            <span className="font-medium tabular-nums">
                               {entry.amountUnits}
-                            </span>
-                            <span className="text-muted-foreground">
-                              {CREDIT_ENTRY_HINT[entry.entryType]}
                             </span>
                             {entry.remark ? (
                               <span className="text-foreground/80">
@@ -578,7 +574,7 @@ export default function AccountPage() {
 
               <div className="space-y-2.5">
                 <h3 className="text-sm font-medium">
-                  最近任务 priceUnits 汇总
+                  近期任务额度消耗
                 </h3>
                 <ApiErrorAlert error={usageError} title="读取近期任务汇总失败" />
                 {loadingUsage && !usage ? (
