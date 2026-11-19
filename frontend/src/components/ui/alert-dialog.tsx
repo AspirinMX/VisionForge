@@ -2,9 +2,15 @@
 
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@animate-ui/react/primitives/base-ui/alert-dialog"
+import { AlertDialog as BaseAlertDialog } from "@base-ui/react/alert-dialog"
 import { cn } from "cn"
+import { motion, useIsPresent } from "motion/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  MODAL_POPUP_MOTION,
+  MODAL_VIEWPORT_CLASS,
+} from "@/components/ui/modal-surface"
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
@@ -38,25 +44,44 @@ function AlertDialogOverlay({
   )
 }
 
-function AlertDialogContent({
+function AlertDialogPopupSurface({
   className,
   size = "default",
   ...props
-}: AlertDialogPrimitive.Popup.Props & {
+}: BaseAlertDialog.Popup.Props & {
+  size?: "default" | "sm"
+}) {
+  const isPresent = useIsPresent()
+
+  return (
+    <AlertDialogPrimitive.Viewport
+      hidden={!isPresent ? false : undefined}
+      className={MODAL_VIEWPORT_CLASS}
+    >
+      <BaseAlertDialog.Popup
+        data-slot="alert-dialog-content"
+        data-size={size}
+        hidden={!isPresent ? false : undefined}
+        render={<motion.div {...MODAL_POPUP_MOTION} />}
+        className={cn(
+          "group/alert-dialog-content relative my-auto grid w-full gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-md dark:ring-foreground/10",
+          className
+        )}
+        {...props}
+      />
+    </AlertDialogPrimitive.Viewport>
+  )
+}
+
+function AlertDialogContent({
+  ...props
+}: BaseAlertDialog.Popup.Props & {
   size?: "default" | "sm"
 }) {
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
-      <AlertDialogPrimitive.Popup
-        data-slot="alert-dialog-content"
-        data-size={size}
-        className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-md dark:ring-foreground/10",
-          className
-        )}
-        {...props}
-      />
+      <AlertDialogPopupSurface {...props} />
     </AlertDialogPortal>
   )
 }

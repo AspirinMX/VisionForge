@@ -2,9 +2,15 @@
 
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@animate-ui/react/primitives/base-ui/dialog"
+import { Dialog as BaseDialog } from "@base-ui/react/dialog"
 import { cn } from "cn"
+import { motion, useIsPresent } from "motion/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  MODAL_POPUP_MOTION,
+  MODAL_VIEWPORT_CLASS,
+} from "@/components/ui/modal-surface"
 import { XIcon } from "lucide-react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -39,21 +45,27 @@ function DialogOverlay({
   )
 }
 
-function DialogContent({
+function DialogPopupSurface({
   className,
   children,
   showCloseButton = true,
   ...props
-}: DialogPrimitive.Popup.Props & {
+}: BaseDialog.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const isPresent = useIsPresent()
+
   return (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Popup
+    <DialogPrimitive.Viewport
+      hidden={!isPresent ? false : undefined}
+      className={MODAL_VIEWPORT_CLASS}
+    >
+      <BaseDialog.Popup
         data-slot="dialog-content"
+        hidden={!isPresent ? false : undefined}
+        render={<motion.div {...MODAL_POPUP_MOTION} />}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none sm:max-w-md dark:ring-foreground/10",
+          "relative my-auto grid w-full gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 outline-none sm:max-w-md dark:ring-foreground/10",
           className
         )}
         {...props}
@@ -75,7 +87,20 @@ function DialogContent({
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
-      </DialogPrimitive.Popup>
+      </BaseDialog.Popup>
+    </DialogPrimitive.Viewport>
+  )
+}
+
+function DialogContent({
+  ...props
+}: BaseDialog.Popup.Props & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPopupSurface {...props} />
     </DialogPortal>
   )
 }
