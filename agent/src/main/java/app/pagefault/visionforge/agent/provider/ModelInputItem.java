@@ -14,8 +14,9 @@ public sealed interface ModelInputItem {
     }
 
     /**
-     * A user message with optional image attachments. Image URLs are short-lived and resolved by
-     * the provider immediately before the call; they are never persisted in message history.
+     * A user message with optional image attachments. Images are passed inline as base64 data
+     * URLs so the provider never needs network access to the object store; the bytes are resolved
+     * right before the call and are never persisted in message history.
      */
     record UserMessage(String text, List<ImageInput> images) implements ModelInputItem {
 

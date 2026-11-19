@@ -1,13 +1,13 @@
 package app.pagefault.visionforge.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -38,8 +38,10 @@ import app.pagefault.visionforge.agent.temporal.agentrun.AgentPrompt;
 import app.pagefault.visionforge.agent.tool.ToolInvocation;
 import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
 import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
-import app.pagefault.visionforge.asset.media.AssetDownloadTicket;
+import app.pagefault.visionforge.asset.media.Asset;
+import app.pagefault.visionforge.asset.media.AssetKind;
 import app.pagefault.visionforge.asset.media.AssetService;
+import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 import tools.jackson.databind.ObjectMapper;
@@ -177,16 +179,57 @@ class AgentRunServiceTest {
         when(messageMapper.selectById(USER_MESSAGE_ID)).thenReturn(user);
         when(messageMapper.selectList(any())).thenReturn(List.of(user));
         when(messagePartMapper.selectList(any())).thenReturn(List.of(part));
-        when(assetService.createDownloadUrl(WORKSPACE_ID, assetId)).thenReturn(
-                new AssetDownloadTicket(
-                        assetId, URI.create("https://media.example.com/ref.png"), NOW));
+        when(assetService.get(WORKSPACE_ID, assetId)).thenReturn(
+                asset(assetId, AssetKind.IMAGE, "image/png", 3));
+        when(assetService.readBytes(WORKSPACE_ID, assetId, 10L * 1024 * 1024))
+                .thenReturn(new byte[] {1, 2, 3});
 
         AgentModelInput input = service.buildInput(RUN_ID);
 
         assertThat(input.input()).contains(new ModelInputItem.UserMessage(
                 "Hello",
                 List.of(new ModelInputItem.ImageInput(
-                        "https://media.example.com/ref.png", "auto"))));
+                        "data:image/png;base64,AQID", "auto"))));
+    }
+
+    @Test
+    void skipsNonImageAttachmentsAndRejectsOversizedImages() {
+        AgentRun run = run(AgentRunStatus.RUNNING);
+        run.setModelDefinitionId(MODEL_ID);
+        Message user = message(MessageRole.USER, "Hello", 1);
+        user.setId(USER_MESSAGE_ID);
+        run.setUserMessageId(USER_MESSAGE_ID);
+        UUID videoId = UUID.randomUUID();
+        MessagePart part = new MessagePart();
+        part.setId(UUID.randomUUID());
+        part.setMessageId(USER_MESSAGE_ID);
+        part.setPartType(MessagePartType.ASSET_REFERENCE);
+        part.setAssetId(videoId);
+        part.setOrdinal(0);
+
+        ModelDefinition model = model();
+        model.setMaxInputTokens(100_000);
+        when(agentRunMapper.selectById(RUN_ID)).thenReturn(run);
+        when(modelDefinitionService.get(MODEL_ID)).thenReturn(model);
+        when(messageMapper.selectById(USER_MESSAGE_ID)).thenReturn(user);
+        when(messageMapper.selectList(any())).thenReturn(List.of(user));
+        when(messagePartMapper.selectList(any())).thenReturn(List.of(part));
+        when(assetService.get(WORKSPACE_ID, videoId)).thenReturn(
+                asset(videoId, AssetKind.VIDEO, "video/mp4", 1024));
+
+        AgentModelInput input = service.buildInput(RUN_ID);
+
+        assertThat(input.input()).contains(new ModelInputItem.UserMessage(
+                "Hello", List.of()));
+
+        UUID hugeImageId = UUID.randomUUID();
+        part.setAssetId(hugeImageId);
+        when(assetService.get(WORKSPACE_ID, hugeImageId)).thenReturn(
+                asset(hugeImageId, AssetKind.IMAGE, "image/png", 11L * 1024 * 1024));
+
+        assertThatThrownBy(() -> service.buildInput(RUN_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("单张图片不能超过 10 MB");
     }
 
     @Test
@@ -348,6 +391,15 @@ class AgentRunServiceTest {
         run.setWorkflowId("agent-run-" + RUN_ID);
         run.setCreatedAt(NOW);
         return run;
+    }
+
+    private Asset asset(UUID id, AssetKind kind, String mimeType, long sizeBytes) {
+        Asset asset = new Asset();
+        asset.setId(id);
+        asset.setKind(kind);
+        asset.setMimeType(mimeType);
+        asset.setSizeBytes(sizeBytes);
+        return asset;
     }
 
     private Conversation conversation() {

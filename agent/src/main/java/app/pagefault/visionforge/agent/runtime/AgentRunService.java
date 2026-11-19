@@ -3,6 +3,7 @@ package app.pagefault.visionforge.agent.runtime;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
@@ -40,7 +41,9 @@ import app.pagefault.visionforge.agent.tool.ToolInvocation;
 import app.pagefault.visionforge.agent.tool.ToolInvocationMapper;
 import app.pagefault.visionforge.agent.tool.ToolInvocationStatus;
 import app.pagefault.visionforge.agent.tool.ToolResult;
-import app.pagefault.visionforge.asset.media.AssetDownloadTicket;
+import app.pagefault.visionforge.asset.error.AssetErrorCode;
+import app.pagefault.visionforge.asset.media.Asset;
+import app.pagefault.visionforge.asset.media.AssetKind;
 import app.pagefault.visionforge.asset.media.AssetService;
 import app.pagefault.visionforge.common.alert.AlertEvent;
 import app.pagefault.visionforge.common.alert.AlertPublisher;
@@ -67,6 +70,13 @@ public class AgentRunService {
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
     private static final int IMAGE_CONTEXT_COST = 4_000;
+
+    /**
+     * Images are sent inline as base64 data URLs, so the request body grows by roughly a third.
+     * These caps keep one model call well below the common gateway body limits.
+     */
+    private static final long MAX_INLINE_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_INLINE_IMAGE_TOTAL_BYTES = 30L * 1024 * 1024;
 
     private final AgentRunMapper agentRunMapper;
     private final ModelInvocationRecorder invocationRecorder;
@@ -269,16 +279,38 @@ public class AgentRunService {
             return new ModelInputItem.Message(role(message.getRole()), message.getContent());
         }
         List<ModelInputItem.ImageInput> images = new ArrayList<>(parts.size());
+        long totalBytes = 0;
         for (MessagePart part : parts) {
             if (part.getAssetId() == null) {
                 continue;
             }
-            AssetDownloadTicket ticket =
-                    assetService.createDownloadUrl(run.getUserId(), part.getAssetId());
+            Asset asset = assetService.get(run.getUserId(), part.getAssetId());
+            if (asset.getKind() != AssetKind.IMAGE) {
+                // input_image only accepts images; other attachments stay metadata-only.
+                continue;
+            }
+            if (asset.getSizeBytes() > MAX_INLINE_IMAGE_BYTES) {
+                throw new BusinessException(
+                        AssetErrorCode.ASSET_SIZE_TOO_LARGE,
+                        "单张图片不能超过 10 MB，请压缩后重试");
+            }
+            if (totalBytes + asset.getSizeBytes() > MAX_INLINE_IMAGE_TOTAL_BYTES) {
+                throw new BusinessException(
+                        AssetErrorCode.ASSET_SIZE_TOO_LARGE,
+                        "单条消息附带的图片总大小不能超过 30 MB，请减少图片数量或压缩后重试");
+            }
+            byte[] content = assetService.readBytes(
+                    run.getUserId(), part.getAssetId(), MAX_INLINE_IMAGE_BYTES);
+            totalBytes += content.length;
             images.add(new ModelInputItem.ImageInput(
-                    ticket.downloadUrl().toString(), "auto"));
+                    dataUrl(asset, content), "auto"));
         }
         return new ModelInputItem.UserMessage(message.getContent(), images);
+    }
+
+    private String dataUrl(Asset asset, byte[] content) {
+        return "data:" + AssetKind.normalizeMimeType(asset.getMimeType())
+                + ";base64," + Base64.getEncoder().encodeToString(content);
     }
 
     private int itemCost(ModelInputItem item) {
