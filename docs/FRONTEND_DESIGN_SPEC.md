@@ -79,7 +79,12 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 ### 3.2 扁平分层与阴影节制
 
 - 界面层次优先通过**中性底色阶梯**（`--background` / `--sidebar` / `--card` / `bg-muted/30`）与**`1px` 低对比描边**（`border-border` / `ring-1 ring-foreground/6`）建立。
-- 禁止在普通列表卡片上叠加重阴影，也禁止“卡片内再套带阴影的卡片”；`shadow-lg` / `shadow-xl` 仅限脱离文档流的浮层（`Dialog`、`DropdownMenu`、悬浮胶囊输入框）。
+- **【禁止】多层卡片嵌套**：同一视觉层级内只允许存在一层卡片/面板容器。禁止在 `Card`、分组面板或表格外框中再叠加第二层同时具备「背景 + 圆角 + 描边（或阴影）」的容器——**无论是否带阴影**。
+  - 判断标准：内层容器若为了“把一组内容框起来”而重新声明 `rounded-*` 与 `border` / `bg-card` / `shadow-*` 的组合，即视为嵌套卡片。
+  - 内部分层必须改用分组标题、间距、`Separator` / `divide-y` 与背景明度阶梯（`bg-muted/20`、`bg-muted/30`）表达，不得再画一张卡片。
+  - 唯一例外：`Card` 内表示不同语义的**功能性内容容器**（代码块、表格外框、媒体预览）可使用 `--radius-surface-sm` 级别的浅底与描边，但不得再叠阴影或再套一层卡片；`Dialog` / `DropdownMenu` / `Sheet` 等脱离文档流的浮层本身不计入卡片层级，但其内容区同样不得用分组卡片分区。
+  - 存量待整改位置：`(studio)/account/page.tsx` 额度卡片内的统计块、兑换码面板与流水容器；`components/admin/model-form-sheet.tsx` 的「主对话模型上下文与推理策略」「能力开关组」分组卡片及其内层「支持的推理档位」网格。
+- 禁止在普通列表卡片上叠加重阴影；`shadow-lg` / `shadow-xl` 仅限脱离文档流的浮层（`Dialog`、`DropdownMenu`、悬浮胶囊输入框）。
 
 ### 3.3 排版密度与等宽字体边界
 
@@ -223,7 +228,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 后续实际改造代码时，建议按以下四个原子阶段推进，每阶段提交前须完成对应自检：
 
-1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`。
+1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`，并拆除存量多层卡片嵌套（[`(studio)/account/page.tsx`](../frontend/src/app/(studio)/account/page.tsx) 额度面板、[`components/admin/model-form-sheet.tsx`](../frontend/src/components/admin/model-form-sheet.tsx) 编辑抽屉）。
 2. **阶段 2（工作台与后端表述去开发化）**：改造分镜、素材、任务、文件面板、灯箱及 [`ToolDisplayFormatter.java`](../agent/src/main/java/app/pagefault/visionforge/agent/runtime/ToolDisplayFormatter.java)，消灭 `vN`、`shot_01`、UUID、FFmpeg 与 JSON 源码直出，统一精简个人中心与后台文案。
 3. **阶段 3（空间连续性动效落地）**：打通工作台分栏开合/全屏过渡、分镜卡片重排 `layout` 动画、骨架屏交叉淡入与灯箱预览流畅转场。
 4. **阶段 4（系统参数配置中心重塑）**：废除后台「Nacos 配置中心」，交付结构化「系统参数配置」页面及单位自动换算/高危开关确认（并同步更新 [`DESIGN_DETAILS.md`](DESIGN_DETAILS.md) 与 [`API_REFERENCE.md`](API_REFERENCE.md)）。

@@ -11,7 +11,7 @@
 | 3 | [API_REFERENCE.md](API_REFERENCE.md) | 前端研发、联调测试 | `/api/v1/**` 全部 HTTP/SSE 接口契约、统一包络、错误码矩阵与代理转发约定 |
 | 4 | [BACKEND_DEV_STANDARDS.md](BACKEND_DEV_STANDARDS.md) | 后端研发、评审人员 | 本项目后端 Java / Spring Boot / MyBatis-Plus / Temporal 开发规范（【强制 / 推荐 / 禁止】） |
 | 5 | [FRONTEND_DEV_STANDARDS.md](FRONTEND_DEV_STANDARDS.md) | 前端研发、评审人员 | 本项目前端 Next.js / React / Animate UI 工程规范（【强制 / 推荐 / 禁止】） |
-| 6 | [FRONTEND_DESIGN_SPEC.md](FRONTEND_DESIGN_SPEC.md) | 前端研发、设计评审 | 前端视觉几何（苹果式圆角）、全局动效、去开发化文案与后台配置中心重塑规范 |
+| 6 | [FRONTEND_DESIGN_SPEC.md](FRONTEND_DESIGN_SPEC.md) | 前端研发、设计评审 | 前端视觉几何（苹果式圆角与卡片分层）、全局动效、去开发化文案与后台配置中心重塑规范 |
 | 7 | [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) | 全体贡献者、运维 | 本地基础设施搭建、数据库迁移、环境变量清单、Mock 网关与常见问题排查 |
 
 ## 仓库规则

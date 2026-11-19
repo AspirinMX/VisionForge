@@ -11,10 +11,11 @@
 1. **【强制】复用 Animate UI / Base UI 底层组件体系**：全部交互原语（`Sidebar`、`Tabs`、`Dialog`、`Sheet`、`AlertDialog`、`DropdownMenu`、`Select`、`Tooltip`、`Collapsible`、`Switch`、`Checkbox`、`Progress` 等）位于 [`frontend/src/components/ui/`](../frontend/src/components/ui)，基于 `@animate-ui/react` 与 `@base-ui/react` 构建；业务页面优先组合已有 UI 组件。
 2. **【禁止】手写重复基础组件库**：禁止在业务组件目录内另起一套 Modal、Dropdown、Tabs 或 Tooltip 实现。
 3. **【强制】遵循苹果式比例与同心圆角体系**：按 [`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md#二苹果式圆角与几何系统) 根据控件高度与容器层级选用对应圆角 Token，严禁无视控件尺寸全局硬编码 `rounded-2xl`；嵌套容器必须满足同心圆角减法约束，大中容器（`>= 12px`）优先启用 `corner-shape: squircle` 渐进增强。
-4. **【强制】建立统一全局 Motion Token 与空间连续性**：不得仅依靠局部 `@animate-ui/react` 包装，不得在业务组件散写孤立 `duration`；动效须服务于状态因果与空间连续性（分栏开合、列表重排、骨架淡入），并保留 `Dialog`/`AlertDialog` 的纯 2D Flex 居中防模糊约束（禁止在静止态保留 `perspective` 或 `filter: blur(0px)`），消除 `tw-animate-css` 冗余与 `animate-none` 等局部冲突覆盖。
-5. **【强制】尊重系统 `reduced-motion` 设置**：[`AppProviders`](../frontend/src/components/providers/app-providers.tsx) 已在根部启用 `<MotionConfig reducedMotion="user">` 与 `<AnimateUIProvider reducedMotion="user">`。任何新增的 CSS 过渡/关键帧动画（如 `animate-spin`、`animate-pulse`、`transition-*`）旁必须补充 `motion-reduce:animate-none` 或 `motion-reduce:transition-none`，并在降级模式下保留必要状态确认。
-6. **【禁止】使用 `transition-all`**：CSS 过渡须明确指定属性（如 `transition-colors`、`transition-opacity`、`transition-[color,box-shadow]`），避免触发高开销的全局重排重绘，且不与 `motion` 驱动属性冲突。
-7. **【推荐】保持克制极简的视觉调性**：
+4. **【禁止】多层卡片嵌套**：同一视觉层级只允许存在一层卡片/面板。禁止在 `Card`、分组面板或表格外框中再叠加一层同时具备背景、圆角与描边（或阴影）的容器，不论是否带阴影；内部分层改用分组标题、间距与 `divide-y` / `Separator`，代码块、表格外框、媒体预览等功能性内容容器只能使用浅底与描边。详见 [`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md#32-扁平分层与阴影节制)。
+5. **【强制】建立统一全局 Motion Token 与空间连续性**：不得仅依靠局部 `@animate-ui/react` 包装，不得在业务组件散写孤立 `duration`；动效须服务于状态因果与空间连续性（分栏开合、列表重排、骨架淡入），并保留 `Dialog`/`AlertDialog` 的纯 2D Flex 居中防模糊约束（禁止在静止态保留 `perspective` 或 `filter: blur(0px)`），消除 `tw-animate-css` 冗余与 `animate-none` 等局部冲突覆盖。
+6. **【强制】尊重系统 `reduced-motion` 设置**：[`AppProviders`](../frontend/src/components/providers/app-providers.tsx) 已在根部启用 `<MotionConfig reducedMotion="user">` 与 `<AnimateUIProvider reducedMotion="user">`。任何新增的 CSS 过渡/关键帧动画（如 `animate-spin`、`animate-pulse`、`transition-*`）旁必须补充 `motion-reduce:animate-none` 或 `motion-reduce:transition-none`，并在降级模式下保留必要状态确认。
+7. **【禁止】使用 `transition-all`**：CSS 过渡须明确指定属性（如 `transition-colors`、`transition-opacity`、`transition-[color,box-shadow]`），避免触发高开销的全局重排重绘，且不与 `motion` 驱动属性冲突。
+8. **【推荐】保持克制极简的视觉调性**：
    - 使用中性语义化 OKLCH 变量（[`globals.css`](../frontend/src/app/globals.css)），避免刺眼装饰色或营销型视觉噪声；
    - 动效仅服务于清晰的状态反馈，严禁在 Markdown 流式输出正文中加入逐字抖动动画；所有时间、额度、计数、序号统一使用 `tabular-nums`。
 
