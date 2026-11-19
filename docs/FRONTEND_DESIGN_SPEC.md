@@ -2,7 +2,7 @@
 
 本文档与 [`FRONTEND_DEV_STANDARDS.md`](FRONTEND_DEV_STANDARDS.md) 共同构成 VisionForge 前端（`(auth)`、`(studio)`、`(admin)`）的**视觉几何、动效体系、产品文案与管理端信息架构规范**，作为后续全站重构与新增页面评审的统一设计规范。
 
-> **基线状态说明**：本规范于 2026-11-20 针对现有前端的视觉圆角、开发者术语泄露、动效割裂及后台 Nacos 配置错位问题制定。发布本规范时，`frontend/src` 尚处于既有实现状态，规范中标记为 **【目标规范】** 的设计 Token、文案改造与后台重构将在后续独立改造提交中逐批落地。
+> **基线状态说明**：本规范于 2026-11-20 针对现有前端的视觉圆角、开发者术语泄露、动效割裂及后台 Nacos 配置错位问题制定。同日落地的改造提交已完成圆角与 Motion Token 体系、基础原语映射、多层卡片拆除、创作端与管理端文案去开发者化、画布/镜头列表/媒体加载连续性动效，以及结构化「系统参数配置」页面；Tabs 内容交叉淡入、告警与审计高级筛选收纳等细项继续按 §7 推进。
 
 ---
 
@@ -226,7 +226,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 ## 七、后续改造分批路线与验收清单
 
-后续实际改造代码时，建议按以下四个原子阶段推进，每阶段提交前须完成对应自检：
+后续实际改造代码时，建议按以下四个原子阶段推进，每阶段提交前须完成对应自检。截至 2026-11-20，阶段 1、阶段 2 与阶段 4 已主要落地，阶段 3 已覆盖画布开合、镜头重排与媒体淡入：
 
 1. **阶段 1（设计底座重塑）**：重写 [`globals.css`](../frontend/src/app/globals.css) 圆角阶梯与 Squircle 支持，修正 [`components/ui/*`](../frontend/src/components/ui) 固定 `rounded-2xl` 与同心半径，建立 `src/lib/motion.ts` 4 级动效体系并修复 `Dialog` / `Select` / `Tabs` 冲突，清理 `tw-animate-css`，并拆除存量多层卡片嵌套（[`(studio)/account/page.tsx`](../frontend/src/app/(studio)/account/page.tsx) 额度面板、[`components/admin/model-form-sheet.tsx`](../frontend/src/components/admin/model-form-sheet.tsx) 编辑抽屉）。
 2. **阶段 2（工作台与后端表述去开发化）**：改造分镜、素材、任务、文件面板、灯箱及 [`ToolDisplayFormatter.java`](../agent/src/main/java/app/pagefault/visionforge/agent/runtime/ToolDisplayFormatter.java)，消灭 `vN`、`shot_01`、UUID、FFmpeg 与 JSON 源码直出，统一精简个人中心与后台文案。
