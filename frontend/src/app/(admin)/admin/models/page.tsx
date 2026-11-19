@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { ModelFormSheet } from "@/components/admin/model-form-sheet";
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
+import { TablePagination } from "@/components/common/table-pagination";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,8 @@ import {
 
 type CapabilityFilter = "ALL" | ModelCapabilityType;
 
+const MODEL_VIEW_SIZE = 10;
+
 function ModelsAdminContent() {
   const { data, loading, error, reload } = useAsyncData(
     () => adminModelsApi.list(),
@@ -56,6 +59,7 @@ function ModelsAdminContent() {
   );
 
   const [filter, setFilter] = useState<CapabilityFilter>("ALL");
+  const [modelPage, setModelPage] = useState(1);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelResponse | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,6 +76,16 @@ function ModelsAdminContent() {
     }
     return models.filter((item) => item.capabilityType === filter);
   }, [models, filter]);
+
+  const modelTotalPages = Math.max(
+    1,
+    Math.ceil(filteredModels.length / MODEL_VIEW_SIZE)
+  );
+  const safeModelPage = Math.min(modelPage, modelTotalPages);
+  const visibleModels = filteredModels.slice(
+    (safeModelPage - 1) * MODEL_VIEW_SIZE,
+    safeModelPage * MODEL_VIEW_SIZE
+  );
 
   const handleCreateClick = () => {
     setEditingModel(null);
@@ -175,7 +189,10 @@ function ModelsAdminContent() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Tabs
               value={filter}
-              onValueChange={(value) => setFilter(value as CapabilityFilter)}
+              onValueChange={(value) => {
+                setFilter(value as CapabilityFilter);
+                setModelPage(1);
+              }}
             >
               <TabsList>
                 <TabsTrigger value="ALL">全部</TabsTrigger>
@@ -201,6 +218,7 @@ function ModelsAdminContent() {
               </Button>
             </div>
           ) : (
+            <div className="space-y-3">
             <div className="rounded-surface-md border bg-card">
               <Table>
                 <TableHeader>
@@ -215,7 +233,7 @@ function ModelsAdminContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredModels.map((model) => (
+                  {visibleModels.map((model) => (
                     <TableRow key={model.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -345,6 +363,15 @@ function ModelsAdminContent() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+
+            <TablePagination
+              page={safeModelPage}
+              pageSize={MODEL_VIEW_SIZE}
+              total={filteredModels.length}
+              onPageChange={setModelPage}
+              itemLabel="个模型"
+            />
             </div>
           )}
         </div>

@@ -15,6 +15,7 @@ import {
 
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { AssetMediaPreview } from "@/components/common/media-preview";
+import { TablePagination } from "@/components/common/table-pagination";
 import { PageHeader } from "@/components/layout/page-header";
 import { useCredit } from "@/components/providers/credit-provider";
 import { isGenerationStatusActive } from "@/components/studio/studio-context";
@@ -84,6 +85,7 @@ type CompositionBucket = "ALL" | "ACTIVE" | "SUCCEEDED" | "FAILED_OR_CANCELLED";
 
 const PAGE_STEP = 50;
 const MAX_TASK_LIMIT = 200;
+const TASK_VIEW_SIZE = 10;
 
 const ACTIVE_COMPOSITION_STATUSES = new Set<CompositionStatus>([
   "PENDING",
@@ -92,6 +94,11 @@ const ACTIVE_COMPOSITION_STATUSES = new Set<CompositionStatus>([
   "UPLOADING",
   "PUBLISHING",
 ]);
+
+function shotOrdinalLabel(shotId: string): string {
+  const match = /(\d+)$/.exec(shotId);
+  return match ? `第 ${Number(match[1])} 镜` : "分镜片段";
+}
 
 function isCompositionActive(status: CompositionStatus): boolean {
   return ACTIVE_COMPOSITION_STATUSES.has(status);
@@ -144,6 +151,8 @@ function GlobalTasksContent() {
   );
   const [generationLimit, setGenerationLimit] = useState(PAGE_STEP);
   const [compositionLimit, setCompositionLimit] = useState(PAGE_STEP);
+  const [generationPage, setGenerationPage] = useState(1);
+  const [compositionPage, setCompositionPage] = useState(1);
 
   const {
     data: generationData,
@@ -294,6 +303,29 @@ function GlobalTasksContent() {
     });
   }, [compositionFilter, compositions]);
 
+  const generationTotalPages = Math.max(
+    1,
+    Math.ceil(filteredTasks.length / TASK_VIEW_SIZE)
+  );
+  const safeGenerationPage = Math.min(generationPage, generationTotalPages);
+  const visibleTasks = filteredTasks.slice(
+    (safeGenerationPage - 1) * TASK_VIEW_SIZE,
+    safeGenerationPage * TASK_VIEW_SIZE
+  );
+
+  const compositionTotalPages = Math.max(
+    1,
+    Math.ceil(filteredCompositions.length / TASK_VIEW_SIZE)
+  );
+  const safeCompositionPage = Math.min(
+    compositionPage,
+    compositionTotalPages
+  );
+  const visibleCompositions = filteredCompositions.slice(
+    (safeCompositionPage - 1) * TASK_VIEW_SIZE,
+    safeCompositionPage * TASK_VIEW_SIZE
+  );
+
   const listedSelectedTask = useMemo(
     () =>
       selectedTaskId
@@ -442,7 +474,10 @@ function GlobalTasksContent() {
                       type="button"
                       size="xs"
                       variant={statusFilter === item.id ? "secondary" : "outline"}
-                      onClick={() => setStatusFilter(item.id)}
+                      onClick={() => {
+                        setStatusFilter(item.id);
+                        setGenerationPage(1);
+                      }}
                     >
                       {item.label}
                     </Button>
@@ -459,6 +494,7 @@ function GlobalTasksContent() {
                   onValueChange={(v) => {
                     if (v) {
                       setTypeFilter(v as GenerationType | "ALL");
+                      setGenerationPage(1);
                     }
                   }}
                 >
@@ -494,7 +530,7 @@ function GlobalTasksContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredTasks.map((task) => (
+                        {visibleTasks.map((task) => (
                           <TableRow
                             key={task.taskId}
                             onClick={() => selectTask(task.taskId)}
@@ -510,7 +546,7 @@ function GlobalTasksContent() {
                                     variant="secondary"
                                     className="text-[11px]"
                                   >
-                                    {task.shotId}
+                                    {shotOrdinalLabel(task.shotId)}
                                   </Badge>
                                 ) : null}
                               </div>
@@ -562,6 +598,14 @@ function GlobalTasksContent() {
                     </Table>
                   </div>
 
+                  <TablePagination
+                    page={safeGenerationPage}
+                    pageSize={TASK_VIEW_SIZE}
+                    total={filteredTasks.length}
+                    onPageChange={setGenerationPage}
+                    itemLabel="条任务"
+                  />
+
                   {tasks.length >= generationLimit &&
                   generationLimit < MAX_TASK_LIMIT ? (
                     <div className="flex justify-center">
@@ -605,7 +649,10 @@ function GlobalTasksContent() {
                     variant={
                       compositionFilter === item.id ? "secondary" : "outline"
                     }
-                    onClick={() => setCompositionFilter(item.id)}
+                    onClick={() => {
+                      setCompositionFilter(item.id);
+                      setCompositionPage(1);
+                    }}
                   >
                     {item.label}
                   </Button>
@@ -633,7 +680,7 @@ function GlobalTasksContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredCompositions.map((comp) => {
+                        {visibleCompositions.map((comp) => {
                           const spec = parseCompositionSpec(comp.outputSpec);
                           return (
                             <TableRow
@@ -697,6 +744,14 @@ function GlobalTasksContent() {
                       </TableBody>
                     </Table>
                   </div>
+
+                  <TablePagination
+                    page={safeCompositionPage}
+                    pageSize={TASK_VIEW_SIZE}
+                    total={filteredCompositions.length}
+                    onPageChange={setCompositionPage}
+                    itemLabel="条合成任务"
+                  />
 
                   {compositions.length >= compositionLimit &&
                   compositionLimit < MAX_TASK_LIMIT ? (

@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
+import { TablePagination } from "@/components/common/table-pagination";
 import { PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useCredit } from "@/components/providers/credit-provider";
@@ -59,6 +60,7 @@ import {
 } from "@/lib/format";
 
 const LEDGER_PAGE_SIZE = 50;
+const LEDGER_VIEW_SIZE = 10;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -89,6 +91,7 @@ export default function AccountPage() {
     hasMore: boolean;
   } | null>(null);
   const [loadingMoreLedger, setLoadingMoreLedger] = useState(false);
+  const [ledgerPage, setLedgerPage] = useState(1);
 
   const ledgerBaseKey = user
     ? `account-ledger:${user.id}:${ledgerGeneration}`
@@ -130,6 +133,16 @@ export default function AccountPage() {
     }
     return first;
   }, [extraLedger, ledger, ledgerBaseKey]);
+
+  const ledgerTotalPages = Math.max(
+    1,
+    Math.ceil(allLedgerEntries.length / LEDGER_VIEW_SIZE)
+  );
+  const safeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+  const visibleLedgerEntries = allLedgerEntries.slice(
+    (safeLedgerPage - 1) * LEDGER_VIEW_SIZE,
+    safeLedgerPage * LEDGER_VIEW_SIZE
+  );
 
   const hasMoreLedger =
     extraLedger?.baseKey === ledgerBaseKey
@@ -498,7 +511,7 @@ export default function AccountPage() {
                 ) : (
                   <div className="space-y-2">
                     <div className="divide-y rounded-surface-sm border">
-                      {allLedgerEntries.map((entry) => (
+                      {visibleLedgerEntries.map((entry) => (
                         <div
                           key={entry.id}
                           className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs"
@@ -554,6 +567,13 @@ export default function AccountPage() {
                         </div>
                       ))}
                     </div>
+                    <TablePagination
+                      page={safeLedgerPage}
+                      pageSize={LEDGER_VIEW_SIZE}
+                      total={allLedgerEntries.length}
+                      onPageChange={setLedgerPage}
+                      itemLabel="条流水"
+                    />
                     {hasMoreLedger ? (
                       <Button
                         type="button"
