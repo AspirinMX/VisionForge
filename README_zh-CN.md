@@ -6,18 +6,6 @@
 
 ---
 
-## 项目简介
-
-VisionForge 将多轮工具调用 AI Agent 与交互式分镜成片工作区、独立运维管理后台结合为一体，核心工程特性包括：
-
-- **Temporal 持久化编排**：通过 `AgentRunWorkflow`、`MediaGenerationWorkflow` 与 `VideoCompositionWorkflow` 将付费模型调用、异步轮询、产物归档、FFmpeg 成片与额度结算彻底脱离 HTTP 请求生命周期。
-- **以会话为隔离边界的创作工作区**：每个会话独占脚本、分镜、提示词、参考图与生成/合成资产，不存在跨用户或工作空间越权风险（访问他人资源统一返回 `404`）。
-- **实时 SSE 推流与可恢复思考过程**：基于 Redis Pub/Sub 桥接实时推送推理过程、工具执行状态与正文增量，同时全量持久化以支持刷新恢复。
-- **结构化分镜到成片流水线**：支持结构化 JSON 分镜校验、镜头首帧与候选视频回写、`ffprobe` 源片区间校验、FFmpeg 剪辑拼接与 S3 分片上传发布。
-- **Animate UI 工作台与独立管理后台**：前端基于 Next.js 16 App Router 与 **Animate UI**（`@animate-ui/react` + Base UI + `motion`），将创作者工作区 `(studio)` 与模型/用户管理后台 `(admin)` 彻底分离。
-
----
-
 ## 演示
 
 ![VisionForge 工作台：Agent 以参考人像生成 3 秒 480P 视频并交付到任务中心](assets/demo_1.png)
@@ -27,6 +15,18 @@ Agent 读取参考人像，生成 3 秒 480P 视频，并在会话的任务中�
 <video src="https://cdn.jsdelivr.net/gh/AspirinMX/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
 
 如果内联播放器不可用，可[直接打开生成的视频](assets/demo.mp4)。
+
+---
+
+## 项目简介
+
+VisionForge 将多轮工具调用 AI Agent 与交互式分镜成片工作区、独立运维管理后台结合为一体，核心工程特性包括：
+
+- **Temporal 持久化编排**：通过 `AgentRunWorkflow`、`MediaGenerationWorkflow` 与 `VideoCompositionWorkflow` 将付费模型调用、异步轮询、产物归档、FFmpeg 成片与额度结算彻底脱离 HTTP 请求生命周期。
+- **以会话为隔离边界的创作工作区**：每个会话独占脚本、分镜、提示词、参考图与生成/合成资产，不存在跨用户或工作空间越权风险（访问他人资源统一返回 `404`）。
+- **实时 SSE 推流与可恢复思考过程**：基于 Redis Pub/Sub 桥接实时推送推理过程、工具执行状态与正文增量，同时全量持久化以支持刷新恢复。
+- **结构化分镜到成片流水线**：支持结构化 JSON 分镜校验、镜头首帧与候选视频回写、`ffprobe` 源片区间校验、FFmpeg 剪辑拼接与 S3 分片上传发布。
+- **Animate UI 工作台与独立管理后台**：前端基于 Next.js 16 App Router 与 **Animate UI**（`@animate-ui/react` + Base UI + `motion`），将创作者工作区 `(studio)` 与模型/用户管理后台 `(admin)` 彻底分离。
 
 ---
 

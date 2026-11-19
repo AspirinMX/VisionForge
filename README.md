@@ -6,18 +6,6 @@
 
 ---
 
-## Overview
-
-VisionForge is a full-stack multimodal creative workbench combining a multi-turn tool-using AI agent runtime with an interactive studio workspace and an isolated administrative console:
-
-- **Durable AI Agent & Media Orchestration**: Powered by **Temporal workflows** (`AgentRunWorkflow`, `MediaGenerationWorkflow`, `VideoCompositionWorkflow`) that separate paid upstream calls, async polling, media archiving, FFmpeg composition, and credit settlement from HTTP request lifecycles.
-- **Conversation-Scoped Work Areas**: Each conversation owns its own isolated scripts, storyboards, prompts, uploaded references, generated candidates, and composed outputs, with strict user-level ownership (`404` on unauthorized access).
-- **Real-Time Streaming & Persisted Timelines**: Live **SSE** (over Redis Pub/Sub and `fetch` readers) streams reasoning, tool progress, and token deltas while PostgreSQL persists full execution records for seamless page-reload recovery.
-- **Storyboard-to-Video Pipeline**: Validated structured JSON storyboards, shot-level first-frame/video candidate tracking, `ffprobe` range verification, FFmpeg rendering, and S3 multipart output publishing.
-- **Animate UI Studio & Isolated `/admin` Console**: Next.js 16 App Router interface built with **Animate UI** (`@animate-ui/react`, Base UI primitives, and `motion`), separating creator workspaces under `(studio)` from system administration under `(admin)`.
-
----
-
 ## Demo
 
 ![VisionForge studio: the agent turns a reference portrait into a 3-second 480P clip and delivers it to the task center](assets/demo_1.png)
@@ -27,6 +15,18 @@ The agent reads the reference portrait, generates a 3-second 480P clip, and retu
 <video src="https://cdn.jsdelivr.net/gh/AspirinMX/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
 
 If the inline player is unavailable, [open the generated video](assets/demo.mp4).
+
+---
+
+## Overview
+
+VisionForge is a full-stack multimodal creative workbench combining a multi-turn tool-using AI agent runtime with an interactive studio workspace and an isolated administrative console:
+
+- **Durable AI Agent & Media Orchestration**: Powered by **Temporal workflows** (`AgentRunWorkflow`, `MediaGenerationWorkflow`, `VideoCompositionWorkflow`) that separate paid upstream calls, async polling, media archiving, FFmpeg composition, and credit settlement from HTTP request lifecycles.
+- **Conversation-Scoped Work Areas**: Each conversation owns its own isolated scripts, storyboards, prompts, uploaded references, generated candidates, and composed outputs, with strict user-level ownership (`404` on unauthorized access).
+- **Real-Time Streaming & Persisted Timelines**: Live **SSE** (over Redis Pub/Sub and `fetch` readers) streams reasoning, tool progress, and token deltas while PostgreSQL persists full execution records for seamless page-reload recovery.
+- **Storyboard-to-Video Pipeline**: Validated structured JSON storyboards, shot-level first-frame/video candidate tracking, `ffprobe` range verification, FFmpeg rendering, and S3 multipart output publishing.
+- **Animate UI Studio & Isolated `/admin` Console**: Next.js 16 App Router interface built with **Animate UI** (`@animate-ui/react`, Base UI primitives, and `motion`), separating creator workspaces under `(studio)` from system administration under `(admin)`.
 
 ---
 
