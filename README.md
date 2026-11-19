@@ -4,30 +4,16 @@
 
 [简体中文](README_zh-CN.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
-![Status](https://img.shields.io/badge/status-actively_shipping-2EA043?style=flat-square)
-![License](https://img.shields.io/badge/license-Apache_2.0-blue?style=flat-square&logo=apache&logoColor=white)
-![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1-6DB33F?style=flat-square&logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)
-![Temporal](https://img.shields.io/badge/Temporal-durable_workflows-000000?style=flat-square&logo=temporal&logoColor=white)
-
+![Temporal](https://img.shields.io/badge/Temporal-000000?style=flat-square&logo=temporal&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
-![Base UI](https://img.shields.io/badge/Base_UI-primitives-000000?style=flat-square&logo=baseui&logoColor=white)
-![Node.js](https://img.shields.io/badge/Node.js-20+-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-12.21-F69220?style=flat-square&logo=pnpm&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)
-
-![OpenAI](https://img.shields.io/badge/OpenAI-Responses-412991?style=flat-square&logo=openai&logoColor=white)
-![Alibaba Cloud](https://img.shields.io/badge/Alibaba_Cloud-Bailian-FF6A00?style=flat-square&logo=alibabacloud&logoColor=white)
-![Volcengine](https://img.shields.io/badge/Volcengine-Ark-1664FF?style=flat-square&logo=bytedance&logoColor=white)
-![Qwen](https://img.shields.io/badge/Qwen-models-615CED?style=flat-square&logo=qwen&logoColor=white)
-![DeepSeek](https://img.shields.io/badge/DeepSeek-compatible-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)
-![FFmpeg](https://img.shields.io/badge/FFmpeg-rendering-007808?style=flat-square&logo=ffmpeg&logoColor=white)
-![RustFS](https://img.shields.io/badge/RustFS-S3_storage-6E4AFF?style=flat-square&logo=rustfs&logoColor=white)
+![Alibaba Bailian](https://img.shields.io/badge/Alibaba_Bailian-FF6A00?style=flat-square&logo=alibabacloud&logoColor=white)
+![Ark](https://img.shields.io/badge/Ark-1664FF?style=flat-square&logo=bytedance&logoColor=white)
+![DeepSeek](https://img.shields.io/badge/DeepSeek-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)
 
 ---
 
