@@ -108,6 +108,29 @@ class ConversationServiceTest {
     }
 
     @Test
+    void reusesBlankConversationWhenWorkspaceIsEmpty() {
+        Conversation blank = conversation();
+        when(conversationMapper.findReusableBlank(USER_ID)).thenReturn(blank);
+
+        Conversation result = service.createOrReuseBlank(USER_ID);
+
+        assertThat(result).isSameAs(blank);
+        verify(conversationMapper).lockUser(USER_ID);
+        verify(conversationMapper, never()).insert(any(Conversation.class));
+    }
+
+    @Test
+    void createsBlankConversationWhenNoReusableWorkspaceExists() {
+        when(conversationMapper.findReusableBlank(USER_ID)).thenReturn(null);
+
+        Conversation result = service.createOrReuseBlank(USER_ID);
+
+        assertThat(result.getTitle()).isEqualTo("新对话");
+        assertThat(result.getCreatedBy()).isEqualTo(USER_ID);
+        verify(conversationMapper).insert(result);
+    }
+
+    @Test
     void messagesWithPartsGroupsAttachmentsByMessageInOneQuery() {
         UUID messageId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();

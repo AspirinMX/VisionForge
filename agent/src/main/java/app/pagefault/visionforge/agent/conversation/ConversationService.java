@@ -113,13 +113,19 @@ public class ConversationService {
         return conversation;
     }
 
+    /**
+     * Reuses the newest blank conversation when its workspace is also empty; otherwise creates a
+     * new blank conversation. The user row lock serializes concurrent tabs for the same account.
+     */
+    @Transactional
+    public Conversation createOrReuseBlank(UUID userId) {
+        conversationMapper.lockUser(userId);
+        Conversation reusable = conversationMapper.findReusableBlank(userId);
+        return reusable != null ? reusable : create(userId, null);
+    }
+
     public List<Conversation> list(UUID userId) {
-        return conversationMapper.selectList(
-                Wrappers.<Conversation>lambdaQuery()
-                        .eq(Conversation::getCreatedBy, userId)
-                        .isNull(Conversation::getDeletedAt)
-                        .orderByDesc(Conversation::getLastMessageAt)
-                        .orderByDesc(Conversation::getCreatedAt));
+        return conversationMapper.selectByCreator(userId);
     }
 
     public Conversation get(UUID userId, UUID conversationId) {

@@ -19,7 +19,7 @@ interface ConversationsContextValue {
   loading: boolean;
   error: ApiError | null;
   refresh: () => void;
-  createConversation: (title?: string) => Promise<ConversationResponse>;
+  createOrReuseBlankConversation: () => Promise<ConversationResponse>;
   renameConversation: (
     id: UUID,
     title: string
@@ -32,6 +32,31 @@ interface ConversationsContextValue {
 const ConversationsContext = createContext<ConversationsContextValue | null>(
   null
 );
+
+function conversationTime(conversation: ConversationResponse): number {
+  const parsed = Date.parse(
+    conversation.lastMessageAt ?? conversation.createdAt
+  );
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Single ordering rule for the sidebar. Matches the backend query:
+ * COALESCE(last_message_at, created_at) DESC, id DESC.
+ */
+function compareConversations(
+  left: ConversationResponse,
+  right: ConversationResponse
+): number {
+  const timeDelta = conversationTime(right) - conversationTime(left);
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+  if (left.id === right.id) {
+    return 0;
+  }
+  return left.id < right.id ? 1 : -1;
+}
 
 export function ConversationsProvider({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
@@ -46,34 +71,26 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     }
   );
 
-  const conversations = useMemo(() => data ?? [], [data]);
+  const conversations = useMemo(
+    () => [...(data ?? [])].sort(compareConversations),
+    [data]
+  );
 
   const upsertConversation = useCallback(
     (conversation: ConversationResponse) => {
-      mutate((prev) => {
-        const current = prev ?? [];
-        const next = [
-          conversation,
-          ...current.filter((item) => item.id !== conversation.id),
-        ];
-        return next.sort((a, b) => {
-          const timeA = Date.parse(a.lastMessageAt ?? a.createdAt);
-          const timeB = Date.parse(b.lastMessageAt ?? b.createdAt);
-          return timeB - timeA;
-        });
-      });
+      mutate((prev) => [
+        conversation,
+        ...(prev ?? []).filter((item) => item.id !== conversation.id),
+      ]);
     },
     [mutate]
   );
 
-  const createConversation = useCallback(
-    async (title?: string) => {
-      const created = await conversationsApi.create({ title });
-      upsertConversation(created);
-      return created;
-    },
-    [upsertConversation]
-  );
+  const createOrReuseBlankConversation = useCallback(async () => {
+    const conversation = await conversationsApi.createBlank();
+    upsertConversation(conversation);
+    return conversation;
+  }, [upsertConversation]);
 
   const renameConversation = useCallback(
     async (id: UUID, title: string) => {
@@ -103,7 +120,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       refresh: reload,
-      createConversation,
+      createOrReuseBlankConversation,
       renameConversation,
       deleteConversation,
       upsertConversation,
@@ -114,7 +131,7 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       reload,
-      createConversation,
+      createOrReuseBlankConversation,
       renameConversation,
       deleteConversation,
       upsertConversation,

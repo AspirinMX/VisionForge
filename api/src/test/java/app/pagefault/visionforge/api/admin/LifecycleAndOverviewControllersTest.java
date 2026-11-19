@@ -193,6 +193,24 @@ class LifecycleAndOverviewControllersTest {
     }
 
     @Test
+    void userCreatesOrReusesBlankConversation() throws Exception {
+        UUID conversationId = UUID.randomUUID();
+        Conversation blank = new Conversation();
+        blank.setId(conversationId);
+        blank.setTitle("新对话");
+        blank.setCreatedBy(USER_ID);
+        blank.setCreatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+        blank.setUpdatedAt(Instant.parse("2026-11-19T00:00:00Z"));
+        when(conversationService.createOrReuseBlank(USER_ID)).thenReturn(blank);
+
+        mockMvc.perform(post("/api/v1/conversations/blank")
+                        .header("Authorization", "Bearer user-jwt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(conversationId.toString()))
+                .andExpect(jsonPath("$.data.title").value("新对话"));
+    }
+
+    @Test
     void adminCanReadDashboardMetrics() throws Exception {
         when(adminDashboardService.dashboard(30)).thenReturn(new AdminDashboardResponse(
                 30,

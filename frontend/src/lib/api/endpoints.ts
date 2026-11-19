@@ -119,6 +119,9 @@ export const conversationsApi = {
   create(request: CreateConversationRequest): Promise<ConversationResponse> {
     return apiPost<ConversationResponse>("/api/v1/conversations", request);
   },
+  createBlank(): Promise<ConversationResponse> {
+    return apiPost<ConversationResponse>("/api/v1/conversations/blank");
+  },
   get(conversationId: UUID): Promise<ConversationResponse> {
     return apiGet<ConversationResponse>(`/api/v1/conversations/${conversationId}`);
   },

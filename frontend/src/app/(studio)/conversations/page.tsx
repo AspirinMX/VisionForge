@@ -86,7 +86,7 @@ interface QueuedFile {
 export default function ConversationsHomePage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { createConversation } = useConversations();
+  const { createOrReuseBlankConversation } = useConversations();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -145,7 +145,7 @@ export default function ConversationsHomePage() {
 
     setSubmitting(true);
     try {
-      const conversation = await createConversation();
+      const conversation = await createOrReuseBlankConversation();
       const uploadedAssetIds: UUID[] = [];
 
       for (const item of queuedFiles) {
@@ -188,10 +188,10 @@ export default function ConversationsHomePage() {
     }
     setSubmitting(true);
     try {
-      const conversation = await createConversation();
+      const conversation = await createOrReuseBlankConversation();
       router.push(`/conversations/${conversation.id}`);
     } catch (error) {
-      notifyApiError(error, "创建空白会话失败");
+      notifyApiError(error, "打开空白会话失败");
     } finally {
       setSubmitting(false);
     }

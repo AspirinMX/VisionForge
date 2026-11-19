@@ -62,6 +62,14 @@ public class ConversationController {
         return ApiResponse.success(ConversationResponse.from(conversation));
     }
 
+    @PostMapping("/blank")
+    public ApiResponse<ConversationResponse> createOrReuseBlank(
+            @AuthenticationPrincipal Jwt jwt) {
+        Conversation conversation = conversationService.createOrReuseBlank(
+                AuthenticatedUser.id(jwt));
+        return ApiResponse.success(ConversationResponse.from(conversation));
+    }
+
     @GetMapping("/{conversationId}")
     public ApiResponse<ConversationResponse> get(
             @PathVariable UUID conversationId,

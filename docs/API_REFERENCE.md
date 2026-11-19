@@ -116,6 +116,7 @@
 | --- | --- | --- | --- |
 | `GET /api/v1/conversations` | `200` | — | `ConversationResponse[]` |
 | `POST /api/v1/conversations` | `201` | `{ title? (<=200) }` | `ConversationResponse` |
+| `POST /api/v1/conversations/blank` | `200` | —（优先复用无消息、无文件、无资产、无生成/合成任务的最新空白会话，否则新建） | `ConversationResponse` |
 | `GET /api/v1/conversations/{conversationId}` | `200` | — | `ConversationResponse` |
 | `PATCH /api/v1/conversations/{conversationId}` | `200` | `{ title (1..200) }` | `ConversationResponse` |
 | `DELETE /api/v1/conversations/{conversationId}` | `200` | —（存在 `PENDING`/`RUNNING` 的 `AgentRun` 时返回 `409 CONVERSATION_BUSY`） | `null` |
