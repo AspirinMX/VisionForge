@@ -69,8 +69,10 @@ public class AgentRunService {
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
     private static final int IMAGE_CONTEXT_COST = 4_000;
+    // A single space keeps the reasoning part non-empty: DeepSeek treats an empty text part as
+    // missing and rejects the next tool-call message.
     private static final ModelInputItem.Reasoning EMPTY_REASONING =
-            new ModelInputItem.Reasoning(null, "", List.of());
+            new ModelInputItem.Reasoning(null, " ", List.of());
 
     /**
      * Images are sent inline as base64 data URLs, so the request body grows by roughly a third.
@@ -259,13 +261,14 @@ public class AgentRunService {
             if (hasText) {
                 items.add(new ModelInputItem.Message("assistant", turn.getAssistantText()));
             }
+            ModelReasoning repeated = reasoning.isEmpty() ? null : reasoning.get(0);
             for (int index = 0; index < calls.size(); index++) {
                 // Plaintext reasoning is merged into the adjacent assistant message, and every
-                // function call is its own assistant message. Later calls therefore need a
-                // placeholder so each tool-call message still carries a reasoning item.
+                // function call is its own assistant message. Replay the same reasoning before
+                // each call so every tool-call message carries reasoning_text.
                 if (!model.isReasoningEncrypted()
                         && (hasText || index > 0 || reasoning.isEmpty())) {
-                    items.add(EMPTY_REASONING);
+                    items.add(repeated == null ? EMPTY_REASONING : reasoningItem(repeated));
                 }
                 ModelToolCall call = calls.get(index);
                 items.add(new ModelInputItem.FunctionCall(

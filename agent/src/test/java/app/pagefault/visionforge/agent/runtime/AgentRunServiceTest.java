@@ -286,10 +286,10 @@ class AgentRunServiceTest {
                 new ModelInputItem.Message("user", "Hello"),
                 new ModelInputItem.Reasoning(null, "think", List.of()),
                 new ModelInputItem.Message("assistant", "checking"),
-                new ModelInputItem.Reasoning(null, "", List.of()),
+                new ModelInputItem.Reasoning(null, "think", List.of()),
                 new ModelInputItem.FunctionCall("call_1", "read_item", "{}"),
                 new ModelInputItem.FunctionCallOutput("call_1", "{\"ok\":true}"),
-                new ModelInputItem.Reasoning(null, "", List.of()),
+                new ModelInputItem.Reasoning(null, "think", List.of()),
                 new ModelInputItem.FunctionCall("call_2", "read_item", "{}"),
                 new ModelInputItem.FunctionCallOutput("call_2", "{\"ok\":true}"));
     }
