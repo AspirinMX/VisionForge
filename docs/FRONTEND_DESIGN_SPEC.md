@@ -1,6 +1,6 @@
 # VisionForge 前端设计、动效与交互文案规范
 
-本文档与 [`FRONTEND_DEV_STANDARDS.md`](FRONTEND_DEV_STANDARDS.md) 共同构成 VisionForge 前端（`(auth)`、`(studio)`、`(admin)`）的**视觉几何、动效体系、产品文案与管理端信息架构规范**，作为后续全站重构与新增页面评审的唯一设计真源。
+本文档与 [`FRONTEND_DEV_STANDARDS.md`](FRONTEND_DEV_STANDARDS.md) 共同构成 VisionForge 前端（`(auth)`、`(studio)`、`(admin)`）的**视觉几何、动效体系、产品文案与管理端信息架构规范**，作为后续全站重构与新增页面评审的统一设计规范。
 
 > **基线状态说明**：本规范于 2026-11-20 针对现有前端的视觉圆角、开发者术语泄露、动效割裂及后台 Nacos 配置错位问题制定。发布本规范时，`frontend/src` 尚处于既有实现状态，规范中标记为 **【目标规范】** 的设计 Token、文案改造与后台重构将在后续独立改造提交中逐批落地。
 
@@ -11,7 +11,7 @@
 VisionForge 的核心界面（对话与分镜工作台 `(studio)`、运营管理后台 `(admin)`）均属于高频任务型工具界面（**Operate Mode**）。设计目标不是炫耀装饰或暴露系统架构，而是让界面退居创作与管理任务本身之后。
 
 1. **几何即秩序（苹果式比例与同心圆角）**：圆角弧度必须与组件高度、容器层级及内外间距成比例并保持同心关系，辅以连续曲率平滑（Squircle）。
-2. **动效即因果（系统级物理规律）**：动效必须解释状态切换、空间位置与操作反馈，由统一的物理令牌驱动，禁止零散硬编码或全局失调。
+2. **动效即因果（全局物理规律）**：动效必须解释状态切换、空间位置与操作反馈，由统一的物理令牌驱动，禁止零散硬编码或全局失调。
 3. **语言即产品（彻底去开发者化）**：面向创作者与运营人员表达人类意图，严禁在界面中暴露内部 ID、数据库枚举、版本号、底层引擎名称与原始 JSON。
 4. **后台即业务控制面（聚焦业务参数）**：基础设施运维交还给专业控制台（如 Nacos 原生控制台），管理后台仅保留面向业务运营的语义化开关与参数表单。
 
@@ -89,7 +89,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 ---
 
-## 四、系统级动效架构
+## 四、全局动效架构
 
 ### 4.1 四级 Motion Token 物理体系（【目标规范】）
 
@@ -108,7 +108,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 2. **【强制】消除组件库内部割裂**：
    - 清理 [`globals.css`](../frontend/src/app/globals.css#L2) 中零使用的 `@import "tw-animate-css";`；
    - 移除 [`select.tsx`](../frontend/src/components/ui/select.tsx#L85) 上的 `data-[align-trigger=true]:animate-none`，使默认下拉弹出具备柔和入退场；
-   - 统一 [`tabs.tsx`](../frontend/src/components/ui/tabs.tsx) 中 `default` 胶囊指示器与 `line` 下划线指示器的物理速率，并在切换内容区配合轻量级交叉淡入。
+   - 统一 [`tabs.tsx`](../frontend/src/components/ui/tabs.tsx) 中 `default` 胶囊指示器与 `line` 下划线指示器的物理速率，并在切换内容区配合轻量交叉淡入。
 3. **【禁止】`transition-all` 与长阻塞入场**：禁止使用 `transition-all`；禁止为常规页面/表单添加 `> 300ms` 的首屏开场动画，禁止对 Markdown 流式正文增加逐字跳动特效。
 
 ### 4.3 必须补齐的连续性动效场景（【目标规范】）
@@ -128,7 +128,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 
 ---
 
-## 五、去开发者化 UI 与产品级文案规范
+## 五、去开发者化 UI 与界面文案规范
 
 ### 5.1 核心铁律：用户界面禁止“念代码”
 
@@ -143,7 +143,7 @@ $$R_{\text{inner}} = \max(R_{\text{outer}} - P, R_{\min})$$
 | **Schema / DTO 字段括号** | `(firstFrame)`、`(selectedVideo)`、`(usedRange)`、`(prompt)`、`(generateAudio)`、`(watermark)`、`CompositionSpec`、`priceUnits`、`extra`、`bizNo` | 直接使用自然中文标签：首帧画面、已选片段、截取时段、画面描述、同步生成音效、添加平台水印、成片规格、消耗额度 |
 | **底层引擎与调度术语** | `FFmpeg`、`h264`、`Preset: veryfast`、`CRF: 23`、`Temporal Workflow`、`Agent Run` | 改称「导出成片 / 视频合成」；导出规格收口为「分辨率（720p / 1080p）」与「画质档位（标准 / 高清）」预设，底层编码参数内置托管 |
 | **未翻译后端枚举** | `ADJUST`、`ARCHIVE_FAILED`、`PENDING_RECONCILIATION`、`UNKNOWN`、`USER_UPLOAD`、`AGENT`、`TOOL`、`GENERATED`、`FIRST_FRAME`、`REFERENCE`、`WARNING`/`CRITICAL`（未映射直出）、`WORKFLOW_START_EXHAUSTED` | 100% 映射为中文业务状态（见 5.3 对照表）；后台枚举仅允许作为内部筛选值，不得直接渲染英文常量给用户 |
-| **源码视图默认外露** | 分镜工具栏显眼的 `JSON` 切换按钮、`编辑原始 JSON`、新建分镜描述写 `STORYBOARD JSON 文件` | 常规创作界面不提供源码级 JSON 编辑器；极少数开发者调试诉求若需保留，须折叠进次级「高级调试」菜单或仅限开发者模式开启 |
+| **源码视图默认外露** | 分镜工具栏显眼的 `JSON` 切换按钮、`编辑原始 JSON`、新建分镜描述写 `STORYBOARD JSON 文件` | 常规创作界面不提供 JSON 源码编辑器；极少数开发者调试诉求若需保留，须折叠进次级「高级调试」菜单或仅限开发者模式开启 |
 | **后端解释型啰嗦文案** | `"向「Administrator」（admin@example.com）追加或扣减可用额度，流水类型记为 ADJUST。"`、`"为确保账号间数据隔离，系统对不可见资源统一返回 404。"`、逐行重复的 `CREDIT_ENTRY_HINT` | 说人话、只说一次（见 5.4 文案重构模板） |
 
 ### 5.3 前后端协同术语清洗约束

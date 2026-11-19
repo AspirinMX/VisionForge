@@ -2,7 +2,7 @@
 
 本文档针对 VisionForge 前端技术栈（Next.js `16.4.6` App Router + `cacheComponents`、React `19.3.0`、TypeScript strict、`@animate-ui/react`、`motion`、`@base-ui/react`、Tailwind CSS v4）确立工程标准与代码评审基线，分级采用 **【强制】**、**【推荐】** 与 **【禁止】**。
 
-设计几何（苹果式圆角与同心半径）、系统级动效体系、去开发者化交互文案与管理后台配置中心重塑细则详见配套规范：[`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md)。其中视觉、动效与文案重塑条款作为后续重构与新开发验收红线；当前仓库既有代码将按该规范分批改造对齐。
+设计几何（苹果式圆角与同心半径）、全局动效体系、去开发者化交互文案与管理后台配置中心重塑细则详见配套规范：[`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md)。其中视觉、动效与文案重塑条款作为后续重构与新开发验收红线；当前仓库既有代码将按该规范分批改造对齐。
 
 ---
 
@@ -11,7 +11,7 @@
 1. **【强制】复用 Animate UI / Base UI 底层组件体系**：全部交互原语（`Sidebar`、`Tabs`、`Dialog`、`Sheet`、`AlertDialog`、`DropdownMenu`、`Select`、`Tooltip`、`Collapsible`、`Switch`、`Checkbox`、`Progress` 等）位于 [`frontend/src/components/ui/`](../frontend/src/components/ui)，基于 `@animate-ui/react` 与 `@base-ui/react` 构建；业务页面优先组合已有 UI 组件。
 2. **【禁止】手写重复基础组件库**：禁止在业务组件目录内另起一套 Modal、Dropdown、Tabs 或 Tooltip 实现。
 3. **【强制】遵循苹果式比例与同心圆角体系**：按 [`FRONTEND_DESIGN_SPEC.md`](FRONTEND_DESIGN_SPEC.md#二苹果式圆角与几何系统) 根据控件高度与容器层级选用对应圆角 Token，严禁无视控件尺寸全局硬编码 `rounded-2xl`；嵌套容器必须满足同心圆角减法约束，大中容器（`>= 12px`）优先启用 `corner-shape: squircle` 渐进增强。
-4. **【强制】建立统一系统级 Motion Token 与空间连续性**：不得仅依靠局部 `@animate-ui/react` 包装，不得在业务组件散写孤立 `duration`；动效须服务于状态因果与空间连续性（分栏开合、列表重排、骨架淡入），并保留 `Dialog`/`AlertDialog` 的纯 2D Flex 居中防模糊约束（禁止在静止态保留 `perspective` 或 `filter: blur(0px)`），消除 `tw-animate-css` 冗余与 `animate-none` 等局部冲突覆盖。
+4. **【强制】建立统一全局 Motion Token 与空间连续性**：不得仅依靠局部 `@animate-ui/react` 包装，不得在业务组件散写孤立 `duration`；动效须服务于状态因果与空间连续性（分栏开合、列表重排、骨架淡入），并保留 `Dialog`/`AlertDialog` 的纯 2D Flex 居中防模糊约束（禁止在静止态保留 `perspective` 或 `filter: blur(0px)`），消除 `tw-animate-css` 冗余与 `animate-none` 等局部冲突覆盖。
 5. **【强制】尊重系统 `reduced-motion` 设置**：[`AppProviders`](../frontend/src/components/providers/app-providers.tsx) 已在根部启用 `<MotionConfig reducedMotion="user">` 与 `<AnimateUIProvider reducedMotion="user">`。任何新增的 CSS 过渡/关键帧动画（如 `animate-spin`、`animate-pulse`、`transition-*`）旁必须补充 `motion-reduce:animate-none` 或 `motion-reduce:transition-none`，并在降级模式下保留必要状态确认。
 6. **【禁止】使用 `transition-all`**：CSS 过渡须明确指定属性（如 `transition-colors`、`transition-opacity`、`transition-[color,box-shadow]`），避免触发高开销的全局重排重绘，且不与 `motion` 驱动属性冲突。
 7. **【推荐】保持克制极简的视觉调性**：
