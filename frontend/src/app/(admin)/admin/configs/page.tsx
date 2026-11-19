@@ -214,7 +214,7 @@ function validateGroup(
     }
   }
 
-  if (group === "rateLimit" && form.rateLimitEnabled) {
+  if (group === "rateLimit") {
     for (const key of GROUP_FIELDS.rateLimit.slice(1)) {
       const value = toInteger(String(form[key]));
       if (value === null || value <= 0) {
