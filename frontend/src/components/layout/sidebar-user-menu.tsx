@@ -64,8 +64,8 @@ export function SidebarUserMenu({
               />
             }
           >
-            <Avatar className="size-7 rounded-xl">
-              <AvatarFallback className="rounded-xl text-xs">
+            <Avatar className="size-7 rounded-full">
+              <AvatarFallback className="rounded-full text-xs">
                 {getInitials(user?.displayName)}
               </AvatarFallback>
             </Avatar>

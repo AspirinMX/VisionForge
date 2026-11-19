@@ -64,7 +64,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   };
 
   return (
-    <div className="my-2 overflow-hidden rounded-xl border bg-muted/40">
+    <div className="my-2 overflow-hidden rounded-surface-sm border bg-muted/40">
       <div className="flex items-center justify-between border-b px-3 py-1 text-[11px] text-muted-foreground">
         <span className="font-mono uppercase">{language || "code"}</span>
         <Button

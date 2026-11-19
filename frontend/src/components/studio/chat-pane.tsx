@@ -98,7 +98,7 @@ function MessageAttachments({ assetIds }: { assetIds: UUID[] }) {
           assetId={assetId}
           kind="IMAGE"
           alt="对话参考图"
-          className="size-20 rounded-xl"
+          className="size-20 rounded-surface-sm"
         />
       ))}
     </div>
@@ -759,7 +759,7 @@ export function ChatPane() {
                     kind="IMAGE"
                     alt="已附加图片"
                     allowLightbox={false}
-                    className="size-14 rounded-xl"
+                    className="size-14 rounded-surface-sm"
                   />
                   <Button
                     type="button"
@@ -875,7 +875,7 @@ export function ChatPane() {
           </DialogHeader>
 
           {imageAssets.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+            <div className="rounded-surface-sm border border-dashed p-6 text-center text-xs text-muted-foreground">
               当前会话暂无可复用的图片资产，请先上传或前往右侧「素材与生成」导入。
             </div>
           ) : (

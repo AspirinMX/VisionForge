@@ -410,7 +410,7 @@ export default function AdminAuditLogsPage() {
 
           {detailRow ? (
             <div className="space-y-3 text-xs">
-              <div className="grid gap-2 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
+              <div className="grid gap-2 rounded-surface-sm bg-muted/20 p-3 sm:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">操作者：</span>
                   <span>{detailRow.operatorName ?? "—"}</span>
@@ -434,7 +434,7 @@ export default function AdminAuditLogsPage() {
               {detailRow.detail ? (
                 <div className="space-y-1">
                   <p className="font-medium text-muted-foreground">操作描述</p>
-                  <div className="rounded-xl border bg-muted/30 p-3 leading-relaxed">
+                  <div className="rounded-surface-sm bg-muted/30 p-3 leading-relaxed">
                     {detailRow.detail}
                   </div>
                 </div>
@@ -443,7 +443,7 @@ export default function AdminAuditLogsPage() {
               {detailRow.errorMessage ? (
                 <div className="space-y-1">
                   <p className="font-medium text-destructive">错误信息</p>
-                  <pre className="overflow-x-auto rounded-xl border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] whitespace-pre-wrap text-destructive">
+                  <pre className="overflow-x-auto rounded-surface-sm border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] whitespace-pre-wrap text-destructive">
                     {detailRow.errorMessage}
                   </pre>
                 </div>
@@ -454,7 +454,7 @@ export default function AdminAuditLogsPage() {
                   <p className="font-medium text-muted-foreground">
                     附加上下文 (extra)
                   </p>
-                  <pre className="max-h-60 overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
+                  <pre className="max-h-60 overflow-auto rounded-surface-sm bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
                     {formatJsonMaybe(detailRow.extra)}
                   </pre>
                 </div>

@@ -352,7 +352,7 @@ function QuickGenerateForm({
 
       {/* Linkage pills when coming from Shot or Retry */}
       {shotId || sourceTaskId ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/40 px-3 py-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-surface-sm bg-muted/40 px-3 py-2 text-xs">
           {shotId ? (
             <Badge variant="secondary" className="gap-1">
               <span>关联镜头：{shotId}</span>
@@ -528,7 +528,7 @@ function QuickGenerateForm({
             {inputs.map((inp, idx) => (
               <div
                 key={`${inp.assetId}-${idx}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/20 p-2"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-surface-sm bg-muted/20 p-2"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <AssetMediaPreview
@@ -589,7 +589,7 @@ function QuickGenerateForm({
       </div>
 
       {/* Parameters */}
-      <div className="space-y-2.5 rounded-xl border bg-muted/20 p-3">
+      <div className="space-y-2.5 rounded-surface-sm bg-muted/20 p-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium">生成参数</span>
           <Button
@@ -935,7 +935,7 @@ export function AssetsGeneratePanel() {
         </div>
 
         {localAssets.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+          <div className="rounded-surface-sm border border-dashed p-6 text-center text-xs text-muted-foreground">
             暂无会话素材，点击右上角「上传本地素材」或发起首次生成任务。
           </div>
         ) : (
@@ -943,7 +943,7 @@ export function AssetsGeneratePanel() {
             {localAssets.map((item) => (
               <div
                 key={item.assetId}
-                className="flex flex-col gap-2 rounded-xl border p-2.5"
+                className="flex flex-col gap-2 rounded-surface-sm border p-2.5"
               >
                 <AssetMediaPreview
                   assetId={item.assetId}

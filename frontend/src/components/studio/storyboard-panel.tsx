@@ -1082,7 +1082,7 @@ export function StoryboardPanel() {
                             className="aspect-video w-full"
                           />
                         ) : (
-                          <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed bg-muted/20 text-xs text-muted-foreground">
+                          <div className="flex aspect-video items-center justify-center rounded-surface-sm border border-dashed bg-muted/20 text-xs text-muted-foreground">
                             尚未生成或回写首帧
                           </div>
                         )}
@@ -1106,7 +1106,7 @@ export function StoryboardPanel() {
                             className="aspect-video w-full"
                           />
                         ) : (
-                          <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed bg-muted/20 text-xs text-muted-foreground">
+                          <div className="flex aspect-video items-center justify-center rounded-surface-sm border border-dashed bg-muted/20 text-xs text-muted-foreground">
                             尚未选定入轨视频 ({candidateCount} 个候选)
                           </div>
                         )}
@@ -1180,7 +1180,7 @@ export function StoryboardPanel() {
                           [shot.id]: open,
                         }))
                       }
-                      className="rounded-xl border bg-muted/20"
+                      className="rounded-surface-sm border bg-muted/20"
                     >
                       <CollapsibleTrigger
                         render={
@@ -1682,7 +1682,7 @@ export function StoryboardPanel() {
             )}
 
             {/* OutputSpec Form */}
-            <div className="space-y-3 rounded-xl border bg-muted/20 p-3.5">
+            <div className="space-y-3 rounded-surface-sm bg-muted/20 p-3.5">
               <p className="text-xs font-medium">输出规格 (CompositionSpec)</p>
               <div className="grid grid-cols-3 gap-2.5">
                 <div className="space-y-1">
@@ -1780,7 +1780,7 @@ export function StoryboardPanel() {
             </div>
 
             {/* Recover a composition task that falls outside the server list */}
-            <div className="space-y-2 rounded-xl border border-dashed p-3">
+            <div className="space-y-2 rounded-surface-sm border border-dashed p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium">合成记录</span>
                 <span className="text-muted-foreground tabular-nums">
@@ -1882,7 +1882,7 @@ export function StoryboardPanel() {
                     ) : null}
 
                     {comp.inputs.length > 0 ? (
-                      <div className="space-y-1 rounded-xl bg-muted/30 p-2.5 text-[11px]">
+                      <div className="space-y-1 rounded-surface-sm bg-muted/30 p-2.5 text-[11px]">
                         <p className="font-medium text-muted-foreground">
                           成片片段 ({comp.inputs.length})
                         </p>

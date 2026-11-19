@@ -251,7 +251,7 @@ export default function ConversationsHomePage() {
                 {queuedFiles.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative size-16 overflow-hidden rounded-xl border bg-muted"
+                    className="group relative size-16 overflow-hidden rounded-surface-sm border bg-muted"
                   >
                     {/* Local object URL preview before upload */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}

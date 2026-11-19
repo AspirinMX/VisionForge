@@ -118,7 +118,7 @@ export function ShotCandidatesSheet({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-2">
           {candidates.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-surface-sm border border-dashed p-8 text-center text-sm text-muted-foreground">
               当前镜头尚无可选视频候选。你可以先在镜头卡片点击「生成视频候选」。
             </div>
           ) : (
@@ -130,7 +130,7 @@ export function ShotCandidatesSheet({
                   <div
                     key={candidate.taskId}
                     className={cn(
-                      "flex flex-col gap-2.5 rounded-xl border p-3 transition-colors",
+                      "flex flex-col gap-2.5 rounded-surface-sm bg-muted/20 p-3 transition-colors motion-reduce:transition-none",
                       isSelected ? "border-primary bg-accent/50" : "bg-card"
                     )}
                   >
@@ -157,7 +157,7 @@ export function ShotCandidatesSheet({
                         className="aspect-video w-full"
                       />
                     ) : (
-                      <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
+                      <div className="flex aspect-video items-center justify-center rounded-surface-sm border border-dashed text-xs text-muted-foreground">
                         等待生成文件...
                       </div>
                     )}
@@ -193,7 +193,7 @@ export function ShotCandidatesSheet({
             </div>
           )}
 
-          <div className="space-y-3 rounded-xl border bg-muted/30 p-3.5">
+          <div className="space-y-3 rounded-surface-sm bg-muted/30 p-3.5">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={enableTrim}

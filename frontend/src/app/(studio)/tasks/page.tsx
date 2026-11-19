@@ -770,7 +770,7 @@ function GlobalTasksContent() {
                   <p className="text-xs font-medium text-muted-foreground">
                     提示词
                   </p>
-                  <div className="rounded-xl border bg-muted/30 p-3 text-xs leading-relaxed whitespace-pre-wrap">
+                  <div className="rounded-surface-sm bg-muted/30 p-3 text-xs leading-relaxed whitespace-pre-wrap">
                     {selectedTask.prompt}
                   </div>
                 </div>
@@ -784,7 +784,7 @@ function GlobalTasksContent() {
                       {selectedTask.inputs.map((inp) => (
                         <div
                           key={`${inp.ordinal}-${inp.assetId}`}
-                          className="space-y-1 rounded-xl border p-2"
+                          className="space-y-1 rounded-surface-sm bg-muted/20 p-2"
                         >
                           <Badge variant="outline" className="text-[10px]">
                             {inp.role}
@@ -935,7 +935,7 @@ function GlobalTasksContent() {
                   <p className="text-xs font-medium text-muted-foreground">
                     输入分镜片段 ({selectedComposition.inputs.length})
                   </p>
-                  <div className="divide-y rounded-xl border text-xs">
+                  <div className="divide-y rounded-surface-sm border text-xs">
                     {selectedComposition.inputs.map((inp) => (
                       <div
                         key={`${inp.ordinal}-${inp.generationTaskId}`}
@@ -1018,7 +1018,7 @@ export default function GlobalTasksPage() {
     <Suspense
       fallback={
         <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-12 w-full rounded-surface-sm" />
           <Skeleton className="h-64 w-full rounded-surface-md" />
         </div>
       }

@@ -533,7 +533,7 @@ export function FilesPanel() {
                           onClick={() => handleSelectFile(file.id)}
                           title={file.title}
                           className={cn(
-                            "flex w-full flex-col gap-1 rounded-xl px-2.5 py-2 text-left transition-colors",
+                            "flex w-full flex-col gap-1 rounded-control-sm px-2.5 py-2 text-left transition-colors motion-reduce:transition-none",
                             selected
                               ? "bg-accent text-accent-foreground"
                               : "hover:bg-muted/50"
@@ -730,7 +730,7 @@ export function FilesPanel() {
                   </div>
                 ) : activeFile.kind === "STORYBOARD" ||
                   activeFile.mimeType.includes("json") ? (
-                  <pre className="overflow-x-auto rounded-xl border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
+                  <pre className="overflow-x-auto rounded-surface-sm border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
                     {activeVersion?.content ?? ""}
                   </pre>
                 ) : (
@@ -904,7 +904,7 @@ export function FilesPanel() {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
+          <div className="flex-1 divide-y overflow-y-auto px-4">
             {loadingHistory && !versionHistory ? (
               <p className="text-xs text-muted-foreground">加载版本列表...</p>
             ) : (versionHistory ?? []).length === 0 ? (
@@ -915,7 +915,7 @@ export function FilesPanel() {
                 return (
                   <div
                     key={ver.id}
-                    className="space-y-2 rounded-xl border bg-card p-3"
+                    className="space-y-2 py-3"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">

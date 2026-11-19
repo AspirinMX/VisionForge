@@ -832,7 +832,7 @@ export default function AdminAlertsPage() {
                 </Select>
               </div>
 
-              <div className="flex items-end justify-between rounded-xl border px-3 py-2">
+              <div className="flex items-end justify-between rounded-surface-sm bg-muted/20 px-3 py-2">
                 <div>
                   <p className="text-xs font-medium">启用该渠道</p>
                   <p className="text-[11px] text-muted-foreground">
@@ -848,7 +848,7 @@ export default function AdminAlertsPage() {
               </div>
             </div>
 
-            <div className="space-y-2 rounded-xl border p-3">
+            <div className="space-y-2 rounded-surface-sm bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium">订阅告警事件类型</span>
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs">
@@ -985,7 +985,7 @@ export default function AdminAlertsPage() {
               {detailDelivery.summary ? (
                 <div className="space-y-1">
                   <p className="font-medium text-muted-foreground">摘要信息</p>
-                  <p className="rounded-xl border bg-muted/30 p-3 leading-relaxed">
+                  <p className="rounded-surface-sm bg-muted/30 p-3 leading-relaxed">
                     {detailDelivery.summary}
                   </p>
                 </div>
@@ -994,7 +994,7 @@ export default function AdminAlertsPage() {
               {detailDelivery.errorMessage ? (
                 <div className="space-y-1">
                   <p className="font-medium text-destructive">失败原因</p>
-                  <pre className="overflow-x-auto rounded-xl border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] whitespace-pre-wrap text-destructive">
+                  <pre className="overflow-x-auto rounded-surface-sm border border-destructive/30 bg-destructive/5 p-3 font-mono text-[11px] whitespace-pre-wrap text-destructive">
                     {detailDelivery.errorMessage}
                   </pre>
                 </div>

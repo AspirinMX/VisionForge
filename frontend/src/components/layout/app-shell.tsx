@@ -233,7 +233,7 @@ function AppSidebarContent() {
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel>会话历史</SidebarGroupLabel>
             <SidebarGroupContent>
-              <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5 text-xs">
+              <div className="space-y-2 rounded-surface-sm border border-destructive/30 bg-destructive/5 p-2.5 text-xs">
                 <p className="text-destructive">加载会话列表失败</p>
                 <p className="text-[11px] text-muted-foreground">
                   {error.message}
