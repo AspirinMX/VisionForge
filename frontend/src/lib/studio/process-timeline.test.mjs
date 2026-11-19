@@ -2,21 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  formatWorkDurationLabel,
   hasVisibleTurnContent,
   isThinkingTurnActive,
 } from "./process-timeline.ts";
-
-describe("formatWorkDurationLabel", () => {
-  it("formats elapsed run durations as 工作了 labels", () => {
-    assert.equal(formatWorkDurationLabel(null), null);
-    assert.equal(formatWorkDurationLabel(-1), null);
-    assert.equal(formatWorkDurationLabel(400), "工作了 <1s");
-    assert.equal(formatWorkDurationLabel(18_000), "工作了 18s");
-    assert.equal(formatWorkDurationLabel(120_000), "工作了 2m");
-    assert.equal(formatWorkDurationLabel(135_000), "工作了 2m 15s");
-  });
-});
 
 describe("hasVisibleTurnContent and isThinkingTurnActive", () => {
   it("keeps tool-only turns visible without marking them as thinking", () => {

@@ -30,7 +30,6 @@ import type {
   UUID,
 } from "@/lib/api/types";
 import {
-  formatWorkDurationLabel,
   hasVisibleTurnContent,
   isThinkingTurnActive,
 } from "@/lib/studio/process-timeline";
@@ -96,25 +95,27 @@ function isInteractiveTool(tool: ToolCallProcessResponse): boolean {
 function ThinkingSection({
   reasoning,
   isStreaming,
+  defaultOpen,
 }: {
   reasoning: string;
   isStreaming: boolean;
+  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen || isStreaming);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="space-y-1.5">
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger
         render={
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors motion-reduce:transition-none hover:text-foreground"
+            className="inline-flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground transition-colors motion-reduce:transition-none hover:text-foreground"
           />
         }
       >
         <AtomIcon
           className={cn(
-            "size-3 shrink-0",
+            "size-3.5 shrink-0",
             isStreaming && "animate-pulse motion-reduce:animate-none text-foreground"
           )}
         />
@@ -130,13 +131,13 @@ function ThinkingSection({
         )}
         <ChevronDownIcon
           className={cn(
-            "size-3 transition-transform duration-150 motion-reduce:transition-none",
+            "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
             !open && "-rotate-90"
           )}
         />
       </CollapsibleTrigger>
 
-      <CollapsibleContent>
+      <CollapsibleContent className="mt-2">
         <div className="border-l-2 border-border pl-3 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/90">
           {reasoning}
         </div>
@@ -154,17 +155,11 @@ export function AgentProcessTimeline({
   onOpenStoryboard,
   onOpenTasks,
 }: AgentProcessTimelineProps) {
-  const [open, setOpen] = useState(defaultOpen || isStreaming);
-
   const visibleTurns = process.turns.filter(hasVisibleTurnContent);
 
   if (visibleTurns.length === 0) {
     return null;
   }
-
-  const workLabel = isStreaming
-    ? "工作过程"
-    : formatWorkDurationLabel(process.durationMs) ?? "工作过程";
 
   const handleToolClick = (tool: ToolCallProcessResponse) => {
     if (
@@ -186,133 +181,100 @@ export function AgentProcessTimeline({
   };
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-3">
-      <CollapsibleTrigger
-        render={
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground transition-colors motion-reduce:transition-none hover:text-foreground"
-          />
-        }
-      >
-        <ClockIcon
-          className={cn(
-            "size-3.5 shrink-0",
-            isStreaming && "animate-pulse motion-reduce:animate-none text-foreground"
-          )}
-        />
-        {isStreaming ? (
-          <ShimmeringText
-            text={workLabel}
-            color="var(--muted-foreground)"
-            shimmeringColor="var(--foreground)"
-            duration={1.4}
-          />
-        ) : (
-          <span>{workLabel}</span>
-        )}
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 transition-transform duration-150 motion-reduce:transition-none",
-            !open && "-rotate-90"
-          )}
-        />
-      </CollapsibleTrigger>
+    <div className="mb-3 space-y-3">
+      {visibleTurns.map((turn, idx) => {
+        const thinkingActive = isThinkingTurnActive({
+          turn,
+          isStreaming,
+          isLastVisibleTurn: idx === visibleTurns.length - 1,
+          hasAnswerText,
+        });
+        return (
+          <div key={turn.turnNo} className="space-y-2.5">
+            {turn.reasoning?.trim() ? (
+              <ThinkingSection
+                reasoning={turn.reasoning.trim()}
+                isStreaming={thinkingActive}
+                defaultOpen={defaultOpen}
+              />
+            ) : null}
 
-      <CollapsibleContent className="mt-2.5 space-y-3">
-        {visibleTurns.map((turn, idx) => {
-          const thinkingActive = isThinkingTurnActive({
-            turn,
-            isStreaming,
-            isLastVisibleTurn: idx === visibleTurns.length - 1,
-            hasAnswerText,
-          });
-          return (
-            <div key={turn.turnNo} className="space-y-2.5">
-              {turn.reasoning?.trim() ? (
-                <ThinkingSection
-                  reasoning={turn.reasoning.trim()}
-                  isStreaming={thinkingActive}
-                />
-              ) : null}
+            {turn.stepText?.trim() ? (
+              <p className="text-[13px] leading-relaxed text-muted-foreground">
+                {turn.stepText.trim()}
+              </p>
+            ) : null}
 
-              {turn.stepText?.trim() ? (
-                <p className="text-[13px] leading-relaxed text-muted-foreground">
-                  {turn.stepText.trim()}
-                </p>
-              ) : null}
-
-              {turn.toolCalls.length > 0 ? (
-                <div className="space-y-1.5">
-                  {turn.toolCalls.map((tool) => {
-                    const clickable = isInteractiveTool(tool);
-                    const chipBody = (
-                      <>
-                        {renderToolIcon(tool)}
-                        <span
-                          className={cn(
-                            "font-medium",
-                            tool.status === "FAILED"
-                              ? "text-destructive"
-                              : "text-foreground/90"
-                          )}
-                        >
-                          {tool.action}
+            {turn.toolCalls.length > 0 ? (
+              <div className="space-y-1.5">
+                {turn.toolCalls.map((tool) => {
+                  const clickable = isInteractiveTool(tool);
+                  const chipBody = (
+                    <>
+                      {renderToolIcon(tool)}
+                      <span
+                        className={cn(
+                          "font-medium",
+                          tool.status === "FAILED"
+                            ? "text-destructive"
+                            : "text-foreground/90"
+                        )}
+                      >
+                        {tool.action}
+                      </span>
+                      {tool.target ? (
+                        <span className="truncate font-mono text-[12px] text-muted-foreground">
+                          {tool.target}
                         </span>
-                        {tool.target ? (
-                          <span className="truncate font-mono text-[12px] text-muted-foreground">
-                            {tool.target}
-                          </span>
-                        ) : null}
-                        {tool.status === "FAILED" && tool.errorMessage ? (
-                          <span className="truncate text-[11px] text-destructive/90">
-                            · {tool.errorMessage}
-                          </span>
-                        ) : null}
-                      </>
-                    );
+                      ) : null}
+                      {tool.status === "FAILED" && tool.errorMessage ? (
+                        <span className="truncate text-[11px] text-destructive/90">
+                          · {tool.errorMessage}
+                        </span>
+                      ) : null}
+                    </>
+                  );
 
-                    if (clickable) {
-                      return (
-                        <motion.button
-                          key={tool.callId}
-                          type="button"
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.14, ease: "easeOut" }}
-                          onClick={() => handleToolClick(tool)}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-left text-xs transition-colors motion-reduce:transition-none hover:bg-muted",
-                            tool.status === "FAILED" &&
-                              "bg-destructive/8 hover:bg-destructive/12"
-                          )}
-                        >
-                          {chipBody}
-                        </motion.button>
-                      );
-                    }
-
+                  if (clickable) {
                     return (
-                      <motion.div
+                      <motion.button
                         key={tool.callId}
+                        type="button"
                         initial={{ opacity: 0, y: 4 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.14, ease: "easeOut" }}
+                        onClick={() => handleToolClick(tool)}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-xs",
-                          tool.status === "FAILED" && "bg-destructive/8"
+                          "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-left text-xs transition-colors motion-reduce:transition-none hover:bg-muted",
+                          tool.status === "FAILED" &&
+                            "bg-destructive/8 hover:bg-destructive/12"
                         )}
                       >
                         {chipBody}
-                      </motion.div>
+                      </motion.button>
                     );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </CollapsibleContent>
-    </Collapsible>
+                  }
+
+                  return (
+                    <motion.div
+                      key={tool.callId}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.14, ease: "easeOut" }}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-xs",
+                        tool.status === "FAILED" && "bg-destructive/8"
+                      )}
+                    >
+                      {chipBody}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }

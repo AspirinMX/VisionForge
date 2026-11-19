@@ -132,7 +132,7 @@ VisionForge 不依赖模型服务商的有状态 Thread/Assistant 会话，而�
 - `frontend/src/components/ui/*` 基于 **Animate UI**（`@animate-ui/react@2.4.6`、`motion@14.14.0` 与 `@base-ui/react`）构建，保留中性克制 OKLCH 色彩令牌（`globals.css`）：
   - `Sidebar` 系列采用 `@animate-ui/react/primitives/sidebar` 提供可滑动悬浮高亮与折叠动画；
   - `Tabs`（线型画布标签使用自定义 Base UI `TabsPrimitive.Indicator` 下划线，默认胶囊标签使用 Animate UI 自动滑块）、`Dialog`、`Sheet`、`AlertDialog`、`DropdownMenu`、`Select`、`Tooltip`、`Collapsible`、`Switch`、`Checkbox`、`Progress` 均使用 `@animate-ui/react/primitives/base-ui/*` 驱动过渡；
-  - 对话执行过程组件 `AgentProcessTimeline`（外层展示「工作过程 / 工作了 Xm Ys」，内部将「思考过程」思维链摘要与中间文本、工具调用芯片作为同级时间线项并排展开）与流式等待状态使用 `<ShimmeringText>`，Tool Chip 使用轻量 `motion` 位移入场，底部回到底部按钮使用 `<AnimatePresence>` 平滑显隐。
+  - 对话执行过程组件 `AgentProcessTimeline`（直接与最终回答平级按轮次展示可独立折叠的「思考过程」思维链摘要、中间文本与工具调用芯片）与流式等待状态使用 `<ShimmeringText>`，Tool Chip 使用轻量 `motion` 位移入场，底部回到底部按钮使用 `<AnimatePresence>` 平滑显隐。
 
 ### 5.3 固定视口与悬浮胶囊输入框布局约束
 
