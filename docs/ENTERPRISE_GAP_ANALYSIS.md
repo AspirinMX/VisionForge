@@ -86,3 +86,20 @@
 8. **Commit 8**：邮件与 Webhook 告警通知引擎（Flyway 迁移 + SMTP/HMAC Webhook 异步分发 + 任务/补偿/网关异常埋点 + `/api/v1/admin/alerts/**` + 单测）。
 9. **Commit 9**：前端 UX 全面修复（Chat 真取消、侧栏重命名/删除与错误重试、Files 未保存保护与实时校验、Tasks 分页与合成列表、MediaPreview 防死循环重试与触屏友好度、Account 改密/改资料/兑换/导出）。
 10. **Commit 10**：独立管理后台 `/admin` 全功能控制台补全（总览看板、用户全操作与调额、模型测试、Nacos 配置中心、告警中心、CDK 兑换码、审计日志台）及同步更新相关文档。
+
+## 实现与交付记录
+
+以下缺口已全部完成实现并在本轮拆分提交中落地验证（数据库迁移已演进至 `V18`）：
+
+| 编号 | 模块 / 能力 | 实现状态 | 说明 |
+| --- | --- | --- | --- |
+| G1 | 安全限流、CORS 显式白名单与安全响应头 | 已完成 | `SlidingWindowRateLimiter`、`RateLimitFilter`（429）、`SecurityConfiguration` CORS 与安全响应头 |
+| G2 | 用户全生命周期管理与密码/会话治理 | 已完成 | 过滤查询、管理员建号、启停用、强制重置密码、全量吊销会话、自助改名与改密 |
+| G3 | 操作审计日志查询与 CSV 防注入导出 | 已完成 | `/api/v1/admin/audit-logs`、`/export`、`CsvWriter`（UTF-8 BOM + 公式字符转义） |
+| G4 | 会话/运行取消、模型连通性探测与管理总览 | 已完成 | `V16`、`PATCH/DELETE /conversations/{id}`、`POST /agent-runs/{id}/cancel`、模型探活、`GET /admin/overview` |
+| G5 | 管理员调账、流水检索导出与 CDK 兑换系统 | 已完成 | `V17`、人工 `ADJUST` 调账、用户 CSV 导出、批次发行/作废与高并发 `FOR UPDATE` 防重兑 |
+| G6 | Nacos 动态配置中心与热更新 | 已完成 | `nacos/nacos-server:v2.5.5`、`NacosConfigGateway` + `LocalConfigGateway`、`DynamicRuntimeConfig`、`GET/PUT/POST /admin/configs/**` |
+| G7 | Email + 签名 Webhook 异步告警引擎 | 已完成 | `V18`、SSRF 防护、AES-GCM 密钥存储、HMAC-SHA256 签名、`AdminAlertController` 及关键故障/变更事件接入 |
+| UX1–UX6 | Studio 前台体验修复 | 已完成 | 对话中止联动取消服务端 Run、侧边栏重命名/删除与失败重试、任务中心分页与合成任务 Tab、未保存草稿保护与校验计数、媒体重试上限与移动端按钮、账户编辑/改密/CDK 兑换/流水导出 |
+| Admin UI | 独立 `/admin` 控制台补全 | 已完成 | `/admin` 运维总览、用户全操作、模型连通测试、`/admin/configs`、`/admin/alerts`、`/admin/billing`、`/admin/audit-logs` |
+

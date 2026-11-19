@@ -131,7 +131,7 @@ export function SidebarUserMenu({
                 </DropdownMenuItem>
                 {isAdmin ? (
                   <DropdownMenuItem
-                    render={<Link href="/admin/models" onClick={onNavigate} />}
+                    render={<Link href="/admin" onClick={onNavigate} />}
                   >
                     <ShieldCheckIcon />
                     <span>管理后台</span>

@@ -120,9 +120,9 @@ VisionForge 不依赖模型服务商的有状态 Thread/Assistant 会话，而�
 | --- | --- | --- | --- |
 | `(auth)` | `/login`、`/register` | 无（公开页面） | 仅根级 `AppProviders` |
 | `(studio)` | `/conversations`、`/conversations/[conversationId]`、`/tasks`、`/account` | `StudioAuthGuard` + `AppShell` | `ConversationsProvider` + `CreditProvider` |
-| `(admin)` | `/admin`（跳转 `/admin/models`）、`/admin/models`、`/admin/users` | `StudioAuthGuard` + `AdminRoleGuard` + `AdminShell` | **不挂载**会话与额度 Provider，彻底避免管理端界面加载创作者会话数据或混合导航 |
+| `(admin)` | `/admin`（运维总览）、`/admin/models`、`/admin/configs`、`/admin/alerts`、`/admin/users`、`/admin/billing`、`/admin/audit-logs` | `StudioAuthGuard` + `AdminRoleGuard` + `AdminShell` | **不挂载**会话与额度 Provider，彻底避免管理端界面加载创作者会话数据或混合导航 |
 
-根路径 `/` 检查认证状态后自动导向 `/conversations` 或 `/login`；个人菜单组件 `SidebarUserMenu` 被 `AppShell` 与 `AdminShell` 复用，仅当 `user.role === "ADMIN"` 时在 Studio 个人菜单提供进入 `/admin/models` 的低干扰入口。
+根路径 `/` 检查认证状态后自动导向 `/conversations` 或 `/login`；个人菜单组件 `SidebarUserMenu` 被 `AppShell` 与 `AdminShell` 复用，仅当 `user.role === "ADMIN"` 时在 Studio 个人菜单提供进入 `/admin` 的低干扰入口。
 
 ### 5.2 Animate UI 组件栈与全局动效约束
 

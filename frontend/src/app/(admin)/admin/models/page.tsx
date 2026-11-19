@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PencilIcon, PlusIcon, RefreshCwIcon, StarIcon } from "lucide-react";
+import {
+  ActivityIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  StarIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { ModelFormSheet } from "@/components/admin/model-form-sheet";
@@ -20,10 +26,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAsyncData } from "@/hooks/use-async-data";
 import { adminModelsApi } from "@/lib/api/endpoints";
 import { notifyApiError } from "@/lib/api/feedback";
-import type { ModelCapabilityType, ModelResponse } from "@/lib/api/types";
+import type {
+  ModelCapabilityType,
+  ModelResponse,
+  ModelTestResponse,
+  UUID,
+} from "@/lib/api/types";
 import {
   EXECUTION_MODE_LABEL,
   MEDIA_PROTOCOL_LABEL,
@@ -43,6 +59,10 @@ function ModelsAdminContent() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelResponse | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<UUID | null>(null);
+  const [probeResults, setProbeResults] = useState<
+    Record<UUID, ModelTestResponse>
+  >({});
 
   const models = useMemo(() => data ?? [], [data]);
 
@@ -97,6 +117,30 @@ function ModelsAdminContent() {
       notifyApiError(err, "更新模型状态失败");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleTestConnectivity = async (model: ModelResponse) => {
+    if (testingId) {
+      return;
+    }
+    setTestingId(model.id);
+    try {
+      const result = await adminModelsApi.testConnection(model.id);
+      setProbeResults((prev) => ({ ...prev, [model.id]: result }));
+      if (result.ok) {
+        toast.success(
+          `「${model.displayName}」连通正常 (${result.latencyMs}ms)`
+        );
+      } else {
+        toast.error(
+          `「${model.displayName}」探测未通过：${result.detail}`
+        );
+      }
+    } catch (err) {
+      notifyApiError(err, "模型连通性探测请求失败");
+    } finally {
+      setTestingId(null);
     }
   };
 
@@ -215,6 +259,31 @@ function ModelsAdminContent() {
                           {model.supportsImageInput ? (
                             <Badge variant="outline">支持图片输入</Badge>
                           ) : null}
+                          {probeResults[model.id] ? (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={<span className="inline-flex cursor-help" />}
+                              >
+                                <Badge
+                                  variant={
+                                    probeResults[model.id].ok
+                                      ? "default"
+                                      : "destructive"
+                                  }
+                                  className="tabular-nums"
+                                >
+                                  {probeResults[model.id].ok
+                                    ? `连通 · ${probeResults[model.id].latencyMs}ms`
+                                    : `异常 ${probeResults[model.id].statusCode ?? ""}`}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <span className="max-w-xs break-words">
+                                  {probeResults[model.id].detail}
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -229,6 +298,18 @@ function ModelsAdminContent() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => void handleTestConnectivity(model)}
+                            disabled={testingId === model.id}
+                          >
+                            <ActivityIcon />
+                            <span>
+                              {testingId === model.id ? "探测中..." : "测试连接"}
+                            </span>
+                          </Button>
                           {!model.defaultModel && model.enabled ? (
                             <Button
                               type="button"

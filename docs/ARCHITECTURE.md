@@ -13,7 +13,8 @@ VisionForge 采用 **Web API 与 Temporal Worker 进程分离** 的运行形态�
 | 浏览器 (Next.js 16 App Router + Animate UI)                           |
 | - /(auth)  : 登录与注册                                               |
 | - /(studio): 创作工作台、会话工作区、全局任务中心、账户与额度           |
-| - /(admin) : 独立系统管理控制台 (/admin/models, /admin/users)          |
+| - /(admin) : 独立系统管理控制台 (/admin, /models, /configs, /alerts,     |
+|              /users, /billing, /audit-logs)                           |
 +-----------------------------------+-----------------------------------+
                                     | 同源 /api/v1/* + 流式响应透传
                                     v
