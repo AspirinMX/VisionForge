@@ -82,6 +82,9 @@
 | 方法与路径 | 状态码 | 权限 | 说明 | 响应 `data` |
 | --- | --- | --- | --- | --- |
 | `GET /api/v1/admin/overview` | `200` | `ADMIN` | 汇总用户、活跃会话、运行中/异常任务及 `ARCHIVE_FAILED` / `PENDING_RECONCILIATION` / 补偿失败指标 | `AdminOverviewResponse` |
+| `GET /api/v1/admin/dashboard` | `200` | `ADMIN` | 运维数据面板：`?days=7\|30\|90`（默认 30），返回已结算额度、对话 Token、按日趋势、消耗排名、待处理异常与实时运行状态 | `AdminDashboardResponse` |
+
+> 额度指标仅统计媒体生成任务的 `SETTLE` 流水；对话 Token 只计量、不计费。
 
 ### 3.4 Nacos 配置中心控制台 (`AdminConfigController`, `/api/v1/admin/configs`)
 

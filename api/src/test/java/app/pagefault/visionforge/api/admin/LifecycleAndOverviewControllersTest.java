@@ -1,6 +1,8 @@
 package app.pagefault.visionforge.api.admin;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +32,7 @@ import app.pagefault.visionforge.agent.runtime.AgentRunProcessView;
 import app.pagefault.visionforge.agent.runtime.AgentRunService;
 import app.pagefault.visionforge.agent.runtime.AgentRunStatus;
 import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
+import app.pagefault.visionforge.api.admin.dto.AdminDashboardResponse;
 import app.pagefault.visionforge.api.admin.dto.AdminOverviewResponse;
 import app.pagefault.visionforge.api.agent.AgentRunController;
 import app.pagefault.visionforge.api.agent.AgentRunStarter;
@@ -55,7 +58,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ConversationController.class,
         AgentRunController.class,
         AdminModelController.class,
-        AdminOverviewController.class
+        AdminOverviewController.class,
+        AdminDashboardController.class
 })
 @Import(SecurityConfiguration.class)
 class LifecycleAndOverviewControllersTest {
@@ -98,6 +102,9 @@ class LifecycleAndOverviewControllersTest {
 
     @MockitoBean
     private AdminOverviewService adminOverviewService;
+
+    @MockitoBean
+    private AdminDashboardService adminDashboardService;
 
     @BeforeEach
     void stubJwt() {
@@ -181,6 +188,38 @@ class LifecycleAndOverviewControllersTest {
                 .andExpect(jsonPath("$.data.archiveFailedGenerationTasks").value(1));
 
         mockMvc.perform(get("/api/v1/admin/overview")
+                        .header("Authorization", "Bearer user-jwt"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanReadDashboardMetrics() throws Exception {
+        when(adminDashboardService.dashboard(30)).thenReturn(new AdminDashboardResponse(
+                30,
+                Instant.parse("2026-11-20T06:32:00Z"),
+                new AdminDashboardResponse.Totals(
+                        8_920_400L, 32_400L, 31_200_000L, 11_600_000L,
+                        0.982, 1_204L, 86L),
+                new AdminDashboardResponse.Deltas(0.124, 0.083, 0.031, 0.004),
+                List.of(new AdminDashboardResponse.DailyPoint(
+                        LocalDate.parse("2026-11-20"),
+                        31_200_000L, 11_600_000L, 1_866L, 32_400L, 1_832L, 34L, 5L)),
+                List.of(new AdminDashboardResponse.LeaderboardEntry(USER_ID, "张三", 320_000L)),
+                List.of(),
+                new AdminDashboardResponse.Attention(3L, 1L, 0L, 4L, 0L),
+                new AdminDashboardResponse.Live(3L, 5L, 1L)));
+
+        mockMvc.perform(get("/api/v1/admin/dashboard?days=30")
+                        .header("Authorization", "Bearer admin-jwt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rangeDays").value(30))
+                .andExpect(jsonPath("$.data.totals.settledCredits").value(8_920_400))
+                .andExpect(jsonPath("$.data.totals.successRate").value(0.982))
+                .andExpect(jsonPath("$.data.topUsersByCredits[0].displayName").value("张三"))
+                .andExpect(jsonPath("$.data.attention.archiveFailed").value(3))
+                .andExpect(jsonPath("$.data.live.activeGenerationTasks").value(5));
+
+        mockMvc.perform(get("/api/v1/admin/dashboard")
                         .header("Authorization", "Bearer user-jwt"))
                 .andExpect(status().isForbidden());
     }

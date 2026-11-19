@@ -752,6 +752,66 @@ export interface AdminOverviewResponse {
   failedWorkflowStarts: number;
 }
 
+export interface AdminDashboardTotals {
+  settledCredits: number;
+  todayCredits: number;
+  inputTokens: number;
+  outputTokens: number;
+  successRate: number | null;
+  activeUsers: number;
+  newUsers: number;
+}
+
+export interface AdminDashboardDeltas {
+  settledCredits: number | null;
+  totalTokens: number | null;
+  activeUsers: number | null;
+  successRatePoints: number | null;
+}
+
+export interface AdminDashboardDailyPoint {
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  invocations: number;
+  settledCredits: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+}
+
+export interface AdminDashboardLeaderboardEntry {
+  userId: UUID;
+  displayName: string;
+  value: number;
+}
+
+export interface AdminDashboardAttention {
+  archiveFailed: number;
+  pendingReconciliation: number;
+  failedWorkflowStarts: number;
+  failedTasks24h: number;
+  failedCompositionTasks: number;
+}
+
+export interface AdminDashboardLive {
+  activeAgentRuns: number;
+  activeGenerationTasks: number;
+  activeCompositionTasks: number;
+}
+
+export interface AdminDashboardResponse {
+  rangeDays: number;
+  generatedAt: string;
+  totals: AdminDashboardTotals;
+  deltas: AdminDashboardDeltas;
+  daily: AdminDashboardDailyPoint[];
+  topUsersByCredits: AdminDashboardLeaderboardEntry[];
+  topUsersByTokens: AdminDashboardLeaderboardEntry[];
+  attention: AdminDashboardAttention;
+  live: AdminDashboardLive;
+}
+
 export type RedemptionCodeStatus = "ACTIVE" | "VOIDED";
 
 export interface AdjustCreditRequest {

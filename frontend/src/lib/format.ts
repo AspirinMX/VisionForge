@@ -237,3 +237,45 @@ export const ALERT_DELIVERY_STATUS_LABEL: Record<AlertDeliveryStatus, string> = 
   FAILED: "投递失败",
   SKIPPED: "已跳过",
 };
+
+const integerFormatter = new Intl.NumberFormat("zh-CN", {
+  maximumFractionDigits: 0,
+});
+
+/** Full integer with thousands separators, used for values read exactly. */
+export function formatInteger(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  return integerFormatter.format(value);
+}
+
+/** Compact Chinese units for axes and large KPI values. */
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  const absolute = Math.abs(value);
+  if (absolute >= 100_000_000) {
+    return `${trimTrailingZero(value / 100_000_000)}亿`;
+  }
+  if (absolute >= 10_000) {
+    return `${trimTrailingZero(value / 10_000)}万`;
+  }
+  return integerFormatter.format(value);
+}
+
+/** Converts a 0..1 fraction into a percentage label. */
+export function formatPercent(
+  value: number | null | undefined,
+  fractionDigits = 1
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${(value * 100).toFixed(fractionDigits)}%`;
+}
+
+function trimTrailingZero(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
+}

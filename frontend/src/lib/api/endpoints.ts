@@ -12,6 +12,7 @@ import type {
   AdjustCreditRequest,
   AdminCreateUserRequest,
   AdminCreditLedgerResponse,
+  AdminDashboardResponse,
   AdminOverviewResponse,
   AdminResetPasswordRequest,
   AgentRunResponse,
@@ -399,6 +400,14 @@ export const accountApi = {
 export const adminOverviewApi = {
   get(): Promise<AdminOverviewResponse> {
     return apiGet<AdminOverviewResponse>("/api/v1/admin/overview");
+  },
+};
+
+export const adminDashboardApi = {
+  get(days: number): Promise<AdminDashboardResponse> {
+    return apiGet<AdminDashboardResponse>("/api/v1/admin/dashboard", {
+      query: { days },
+    });
   },
 };
 
