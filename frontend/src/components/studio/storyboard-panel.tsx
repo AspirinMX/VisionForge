@@ -21,10 +21,13 @@ import {
   VideoIcon,
 } from "lucide-react";
 
+import { AnimatePresence, motion } from "motion/react";
+
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
 import { AssetMediaPreview } from "@/components/common/media-preview";
 import { ShotCandidatesSheet } from "@/components/studio/shot-candidates-sheet";
 import { useStudio } from "@/components/studio/studio-context";
+import { SPATIAL } from "@/lib/motion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -892,14 +895,17 @@ export function StoryboardPanel() {
 
             {/* Shot List */}
             <div className="space-y-3">
+              <AnimatePresence initial={false}>
               {sortedShots.map((shot, idx) => {
                 const isLocked = shot.status === "LOCKED";
                 const detailsOpen = Boolean(expandedDetailsByShot[shot.id]);
                 const candidateCount = shot.videoCandidates?.length ?? 0;
 
                 return (
-                  <div
+                  <motion.div
                     key={shot.id}
+                    layout="position"
+                    transition={SPATIAL}
                     className="space-y-3 rounded-surface-md border bg-card p-4"
                   >
                     {/* Shot header */}
@@ -1489,9 +1495,10 @@ export function StoryboardPanel() {
                         <span>让 Agent 调整此镜</span>
                       </Button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
+              </AnimatePresence>
             </div>
 
             <Button

@@ -7,6 +7,7 @@ import {
   PanelRightCloseIcon,
   PanelRightOpenIcon,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { usePanelRef } from "react-resizable-panels";
 
 import { ApiErrorAlert } from "@/components/common/api-error-alert";
@@ -25,6 +26,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { CONTROL } from "@/lib/motion";
 import {
   Tooltip,
   TooltipContent,
@@ -187,10 +189,7 @@ function WorkspaceShell({
               collapsible
               collapsedSize="0%"
               style={{ overflow: "hidden", height: "100%" }}
-              className={cn(
-                "flex h-full min-h-0 min-w-0 flex-col",
-                canvasOpen && canvasFullscreen && "hidden"
-              )}
+              className="flex h-full min-h-0 min-w-0 flex-col"
             >
               <ChatPane />
             </ResizablePanel>
@@ -210,12 +209,22 @@ function WorkspaceShell({
               collapsible
               collapsedSize="0%"
               style={{ overflow: "hidden", height: "100%" }}
-              className={cn(
-                "flex h-full min-h-0 min-w-0 flex-col",
-                !canvasOpen && "hidden"
-              )}
+              className="flex h-full min-h-0 min-w-0 flex-col"
             >
-              {canvasOpen ? <StudioCanvas /> : null}
+              <AnimatePresence initial={false}>
+                {canvasOpen ? (
+                  <motion.div
+                    key="studio-canvas-content"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={CONTROL.enter}
+                    className="flex h-full min-h-0 flex-col"
+                  >
+                    <StudioCanvas />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>

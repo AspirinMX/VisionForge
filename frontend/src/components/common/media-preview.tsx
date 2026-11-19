@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import {
   CopyIcon,
   DownloadIcon,
@@ -26,6 +27,7 @@ import {
   notifySuccess,
 } from "@/lib/api/feedback";
 import type { UUID } from "@/lib/api/types";
+import { SURFACE } from "@/lib/motion";
 import { getAssetDownloadUrl } from "@/lib/studio/asset-cache";
 import { cn } from "@/lib/utils";
 
@@ -153,10 +155,13 @@ export function AssetMediaPreview({
           )}
         >
           {/* Presigned object storage URL varies dynamically per session */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <motion.img
+            key={url}
             src={url}
             alt={alt}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={SURFACE.enter}
             onError={handleMediaError}
             className="h-full w-full object-cover"
           />
@@ -238,11 +243,15 @@ export function AssetMediaPreview({
           className
         )}
       >
-        <video
+        <motion.video
+          key={url}
           src={url}
           controls
           playsInline
           preload="metadata"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={SURFACE.enter}
           onError={handleMediaError}
           className="h-full w-full object-contain"
         />
