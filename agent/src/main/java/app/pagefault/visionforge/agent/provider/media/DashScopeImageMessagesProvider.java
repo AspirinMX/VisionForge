@@ -1,5 +1,6 @@
 package app.pagefault.visionforge.agent.provider.media;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
@@ -79,10 +80,7 @@ public class DashScopeImageMessagesProvider implements MediaProvider {
             if (item.role() == GenerationInputRole.MASK) {
                 throw unsupported("百炼图片暂不支持 mask 输入");
             }
-            if (item.url() == null || item.url().isBlank()) {
-                throw unsupported("百炼图片参考素材缺少可访问 URL");
-            }
-            content.addObject().put("image", item.url());
+            content.addObject().put("image", imagePayload(item));
         }
 
         JsonNode parameters = readParameters(request);
@@ -95,6 +93,24 @@ public class DashScopeImageMessagesProvider implements MediaProvider {
         copy(parameters, output, "negative_prompt", "negativePrompt");
         copy(parameters, output, "thinking");
         return root;
+    }
+
+    /**
+     * Prefers the archived bytes so the upstream never has to reach a private object store;
+     * presigned URLs only work when the storage endpoint is publicly reachable.
+     */
+    private String imagePayload(MediaProviderInput item) {
+        if (item.content() != null && item.content().length > 0) {
+            String mimeType = item.mimeType() == null || item.mimeType().isBlank()
+                    ? "image/png"
+                    : item.mimeType();
+            return "data:" + mimeType + ";base64,"
+                    + Base64.getEncoder().encodeToString(item.content());
+        }
+        if (item.url() == null || item.url().isBlank()) {
+            throw unsupported("百炼图片参考素材缺少可访问 URL");
+        }
+        return item.url();
     }
 
     String extractImageUrl(JsonNode body) {

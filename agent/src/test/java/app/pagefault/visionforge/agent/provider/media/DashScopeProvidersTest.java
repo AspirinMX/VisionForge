@@ -167,12 +167,19 @@ class DashScopeProvidersTest {
                     GenerationType.IMAGE,
                     baseUrl(server),
                     "{\"size\":\"2K\",\"n\":1}",
-                    List.of(new MediaProviderInput(
-                            UUID.randomUUID(),
-                            GenerationInputRole.REFERENCE,
-                            "image/png",
-                            "https://media.example.com/ref.png",
-                            null)));
+                    List.of(
+                            new MediaProviderInput(
+                                    UUID.randomUUID(),
+                                    GenerationInputRole.REFERENCE,
+                                    "image/png",
+                                    "https://media.example.com/ref.png",
+                                    null),
+                            new MediaProviderInput(
+                                    UUID.randomUUID(),
+                                    GenerationInputRole.REFERENCE,
+                                    "image/png",
+                                    "http://localhost:9000/private-ref.png",
+                                    new byte[]{1, 2, 3})));
 
             MediaProviderOutcome outcome = provider.start(request);
             assertThat(outcome).isInstanceOf(MediaProviderOutcome.Completed.class);
@@ -184,6 +191,8 @@ class DashScopeProvidersTest {
             assertThat(content.get(0).path("text").asText()).isEqualTo("draw a cat");
             assertThat(content.get(1).path("image").asText())
                     .isEqualTo("https://media.example.com/ref.png");
+            assertThat(content.get(2).path("image").asText())
+                    .isEqualTo("data:image/png;base64,AQID");
         } finally {
             server.stop(0);
         }
