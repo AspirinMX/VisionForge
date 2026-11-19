@@ -64,6 +64,7 @@ VisionForge 不依赖模型服务商的有状态 Thread/Assistant 会话，而�
 
 - `.store(false)`：禁止网关侧保留对话上下文状态；
 - `.include(List.of(ResponseIncludable.REASONING_ENCRYPTED_CONTENT))`：请求返回加密推理载体用于后续无状态多轮工具重放；
+- `.reasoning(...)`：当模型启用了非 `NONE` 的 `reasoningEffort` 时同时设置 `.summary(Reasoning.Summary.AUTO)`，确保加密推理模型返回可读的思维摘要；
 - `.promptCacheKey(...)`：聊天轮次统一使用 `vf-chat:<conversationId>`，摘要压缩使用 `vf-compact:<conversationId>`，最大化前缀命中；
 - `OpenAiResponsesModelClient` 设置 `.maxRetries(0)` 与 10 分钟单次超时，缓存最多 `32` 个 `OpenAIClient` 实例。
 

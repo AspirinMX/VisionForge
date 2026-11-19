@@ -2,9 +2,12 @@ package app.pagefault.visionforge.agent.provider;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -64,6 +67,7 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         try {
             ResponseCreateParams params = requestParams(request);
             ResponseAccumulator accumulator = ResponseAccumulator.create();
+            SummaryStreamTracker summaryTracker = new SummaryStreamTracker(listener);
             try (StreamResponse<ResponseStreamEvent> stream =
                          client(request).responses().createStreaming(params)) {
                 stream.stream().forEach(event -> {
@@ -72,11 +76,10 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
                             delta -> listener.onTextDelta(delta.delta()));
                     event.reasoningTextDelta().ifPresent(
                             delta -> listener.onReasoningDelta(delta.delta()));
-                    event.reasoningSummaryTextDelta().ifPresent(
-                            delta -> listener.onReasoningSummaryDelta(delta.delta()));
+                    summaryTracker.accept(event);
                 });
             }
-            return toModelResponse(accumulator.response(), startedAt);
+            return toModelResponse(accumulator.response(), summaryTracker, startedAt);
         } catch (ModelProviderException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -122,7 +125,10 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         }
         ReasoningEffort effort = sdkEffort(request.reasoningEffort());
         if (effort != null) {
-            builder.reasoning(Reasoning.builder().effort(effort).build());
+            builder.reasoning(Reasoning.builder()
+                    .effort(effort)
+                    .summary(Reasoning.Summary.AUTO)
+                    .build());
         }
         for (ModelToolSpec tool : request.tools()) {
             builder.addTool(FunctionTool.builder()
@@ -290,7 +296,8 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         };
     }
 
-    private ModelResponse toModelResponse(Response response, long startedAt) {
+    private ModelResponse toModelResponse(
+            Response response, SummaryStreamTracker summaryTracker, long startedAt) {
         String text = response.output().stream()
                 .flatMap(item -> item.message().stream())
                 .flatMap(message -> message.content().stream())
@@ -301,16 +308,23 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         List<ModelReasoning> reasoning = response.output().stream()
                 .filter(ResponseOutputItem::isReasoning)
                 .map(ResponseOutputItem::asReasoning)
-                .map(item -> new ModelReasoning(
-                        item.encryptedContent().orElse(null),
-                        item.content()
-                                .map(parts -> parts.stream()
-                                        .map(ResponseReasoningItem.Content::text)
-                                        .collect(Collectors.joining("\n")))
-                                .orElse(""),
-                        item.summary().stream()
-                                .map(ResponseReasoningItem.Summary::text)
-                                .toList()))
+                .map(item -> {
+                    List<String> summary = item.summary().stream()
+                            .map(ResponseReasoningItem.Summary::text)
+                            .toList();
+                    if (summary.isEmpty()) {
+                        summary = summaryTracker.summariesFor(
+                                item._id().asString().orElse(null));
+                    }
+                    return new ModelReasoning(
+                            item.encryptedContent().orElse(null),
+                            item.content()
+                                    .map(parts -> parts.stream()
+                                            .map(ResponseReasoningItem.Content::text)
+                                            .collect(Collectors.joining("\n")))
+                                    .orElse(""),
+                            summary);
+                })
                 .toList();
 
         List<ModelToolCall> toolCalls = response.output().stream()
@@ -352,5 +366,97 @@ public class OpenAiResponsesModelClient implements ResponsesModelClient {
         return message == null || message.isBlank()
                 ? exception.getClass().getSimpleName()
                 : message;
+    }
+
+    /**
+     * Forwards streamed reasoning summary increments while preserving part boundaries and falling
+     * back to completion events when a gateway skips incremental summary deltas.
+     */
+    private static final class SummaryStreamTracker {
+
+        private final ModelStreamListener listener;
+        private final Set<String> streamedKeys = new HashSet<>();
+        private final Map<String, Map<Long, StringBuilder>> partsByItem = new LinkedHashMap<>();
+        private boolean emittedAny;
+        private boolean endsWithNewline;
+
+        private SummaryStreamTracker(ModelStreamListener listener) {
+            this.listener = listener == null ? ModelStreamListener.NOOP : listener;
+        }
+
+        private void accept(ResponseStreamEvent event) {
+            event.reasoningSummaryPartAdded().ifPresent(ignored -> {
+                if (emittedAny && !endsWithNewline) {
+                    listener.onReasoningSummaryDelta("\n");
+                    endsWithNewline = true;
+                }
+            });
+            event.reasoningSummaryTextDelta().ifPresent(delta -> {
+                streamedKeys.add(summaryKey(delta.itemId(), delta.summaryIndex()));
+                appendPart(delta.itemId(), delta.summaryIndex(), delta.delta());
+                emitChunk(delta.delta());
+            });
+            event.reasoningSummaryTextDone().ifPresent(done ->
+                    emitFallback(done.itemId(), done.summaryIndex(), done.text()));
+            event.reasoningSummaryPartDone().ifPresent(done ->
+                    done.part()._text().asString().ifPresent(partText ->
+                            emitFallback(done.itemId(), done.summaryIndex(), partText)));
+        }
+
+        private void appendPart(String itemId, long summaryIndex, String chunk) {
+            if (itemId == null || chunk == null || chunk.isEmpty()) {
+                return;
+            }
+            partsByItem
+                    .computeIfAbsent(itemId, ignored -> new java.util.TreeMap<>())
+                    .computeIfAbsent(summaryIndex, ignored -> new StringBuilder())
+                    .append(chunk);
+        }
+
+        private void emitFallback(String itemId, long summaryIndex, String text) {
+            if (text == null || text.isBlank()) {
+                return;
+            }
+            if (itemId != null) {
+                partsByItem
+                        .computeIfAbsent(itemId, ignored -> new java.util.TreeMap<>())
+                        .put(summaryIndex, new StringBuilder(text));
+            }
+            if (!streamedKeys.add(summaryKey(itemId, summaryIndex))) {
+                return;
+            }
+            if (emittedAny && !endsWithNewline) {
+                listener.onReasoningSummaryDelta("\n");
+                endsWithNewline = true;
+            }
+            emitChunk(text);
+        }
+
+        private void emitChunk(String chunk) {
+            if (chunk == null || chunk.isEmpty()) {
+                return;
+            }
+            listener.onReasoningSummaryDelta(chunk);
+            emittedAny = true;
+            endsWithNewline = chunk.endsWith("\n");
+        }
+
+        private List<String> summariesFor(String itemId) {
+            if (itemId == null) {
+                return List.of();
+            }
+            Map<Long, StringBuilder> parts = partsByItem.get(itemId);
+            if (parts == null || parts.isEmpty()) {
+                return List.of();
+            }
+            return parts.values().stream()
+                    .map(StringBuilder::toString)
+                    .filter(text -> !text.isBlank())
+                    .toList();
+        }
+
+        private static String summaryKey(String itemId, long summaryIndex) {
+            return itemId + ":" + summaryIndex;
+        }
     }
 }
