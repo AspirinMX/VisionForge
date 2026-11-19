@@ -141,6 +141,21 @@
     @apply bg-background text-foreground antialiased;
     caret-color: var(--primary);
   }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="tab"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]):not([data-disabled]),
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [role="tab"][data-disabled],
+  [role="menuitem"][data-disabled],
+  [role="option"][data-disabled] {
+    cursor: not-allowed;
+  }
   html {
     @apply font-sans;
     scrollbar-color: var(--border) transparent;
