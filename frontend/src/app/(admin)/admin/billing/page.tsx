@@ -511,7 +511,7 @@ export default function AdminBillingPage() {
                     }
                   }}
                   placeholder="按用户编号过滤..."
-                  className="h-9 max-w-xs font-mono text-xs"
+                  className="h-9 max-w-xs text-xs"
                 />
                 <Select
                   value={entryTypeFilter}

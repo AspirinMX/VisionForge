@@ -246,7 +246,7 @@ function ModelsAdminContent() {
                           {EXECUTION_MODE_LABEL[model.executionMode]}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm tabular-nums">
+                      <TableCell className="text-right text-sm tabular-nums">
                         {model.priceUnits}
                       </TableCell>
                       <TableCell>
@@ -261,7 +261,7 @@ function ModelsAdminContent() {
                           ) : null}
                           {model.capabilityType === "CHAT" &&
                           model.supportedReasoningEfforts.length > 0 ? (
-                            <Badge variant="outline" className="font-mono text-[11px]">
+                            <Badge variant="outline" className="text-[11px]">
                               {`推理: ${model.supportedReasoningEfforts
                                 .map((effort) => effort.toLowerCase())
                                 .join("/")}`}

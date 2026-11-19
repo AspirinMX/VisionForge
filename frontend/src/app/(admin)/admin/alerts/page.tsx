@@ -87,6 +87,13 @@ const ALERT_EVENT_OPTIONS = [
 
 const DELIVERY_PAGE_SIZE = 30;
 
+function alertEventLabel(eventType: string): string {
+  return (
+    ALERT_EVENT_OPTIONS.find((option) => option.id === eventType)?.label ??
+    "其他事件"
+  );
+}
+
 function severityBadgeVariant(
   severity: AlertSeverity
 ): "default" | "destructive" | "secondary" {
@@ -443,7 +450,7 @@ export default function AdminAlertsPage() {
                               <Badge variant="outline">
                                 {ALERT_CHANNEL_TYPE_LABEL[ch.channelType]}
                               </Badge>
-                              <span className="max-w-xs truncate font-mono text-xs text-muted-foreground">
+                              <span className="max-w-xs truncate text-xs text-muted-foreground">
                                 {ch.target}
                               </span>
                             </div>
@@ -453,10 +460,10 @@ export default function AdminAlertsPage() {
                               {ALERT_SEVERITY_LABEL[ch.minSeverity]}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-xs truncate font-mono text-xs text-muted-foreground">
+                          <TableCell className="max-w-xs truncate text-xs text-muted-foreground">
                             {ch.subscribedEvents === "*"
-                              ? "全部事件 (*)"
-                              : ch.subscribedEvents}
+                              ? "全部事件"
+                              : "自定义事件"}
                           </TableCell>
                           <TableCell>
                             <Switch
@@ -616,11 +623,11 @@ export default function AdminAlertsPage() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant="outline" className="font-mono text-[10px]">
-                                  {item.eventType}
+                                <Badge variant="outline" className="text-[10px]">
+                                  {alertEventLabel(item.eventType)}
                                 </Badge>
                                 <Badge variant={severityBadgeVariant(item.severity)}>
-                                  {item.severity}
+                                  {ALERT_SEVERITY_LABEL[item.severity]}
                                 </Badge>
                               </div>
                             </TableCell>
@@ -635,13 +642,13 @@ export default function AdminAlertsPage() {
                                   {ALERT_DELIVERY_STATUS_LABEL[item.status]}
                                 </Badge>
                                 {item.httpStatus ? (
-                                  <span className="font-mono text-[11px] text-muted-foreground">
-                                    {item.httpStatus}
+                                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                                    HTTP {item.httpStatus}
                                   </span>
                                 ) : null}
                               </div>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-xs tabular-nums">
+                            <TableCell className="text-right text-xs tabular-nums">
                               {item.attemptCount}
                             </TableCell>
                           </TableRow>

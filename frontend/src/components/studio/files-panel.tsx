@@ -966,7 +966,7 @@ export function FilesPanel() {
                     </div>
 
                     {inspected && ver.content !== null ? (
-                      <pre className="max-h-64 overflow-auto rounded-lg bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
+                      <pre className="max-h-64 overflow-auto rounded-surface-sm bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
                         {ver.content}
                       </pre>
                     ) : null}

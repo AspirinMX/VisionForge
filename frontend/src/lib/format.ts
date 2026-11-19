@@ -117,18 +117,18 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
 };
 
 export const REASONING_EFFORT_LABEL: Record<ReasoningEffort, string> = {
-  NONE: "关闭 (none)",
-  LOW: "低 (low)",
-  MEDIUM: "中 (medium)",
-  HIGH: "高 (high)",
-  XHIGH: "超高 (xhigh)",
-  MAX: "极高 (max)",
+  NONE: "关闭",
+  LOW: "低",
+  MEDIUM: "中",
+  HIGH: "高",
+  XHIGH: "超高",
+  MAX: "极高",
 };
 
 export const REASONING_REPLAY_LABEL: Record<ReasoningReplayPolicy, string> = {
-  ENCRYPTED: "仅回放加密推理 (ENCRYPTED)",
-  ALL: "回放全部推理 (ALL)",
-  NONE: "不回放推理 (NONE)",
+  ENCRYPTED: "仅回放加密推理",
+  ALL: "回放全部推理",
+  NONE: "不回放推理",
 };
 
 export const FILE_KIND_LABEL: Record<ConversationFileKind, string> = {

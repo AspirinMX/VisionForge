@@ -643,7 +643,7 @@ function ModelFormContent({
                         }
                         className="size-3.5 shrink-0"
                       />
-                      <span className="font-mono text-[11px]">
+                      <span className="text-[11px]">
                         {REASONING_EFFORT_SHORT_LABEL[effort]}
                       </span>
                     </label>

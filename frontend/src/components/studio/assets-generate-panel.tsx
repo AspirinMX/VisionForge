@@ -267,7 +267,7 @@ function QuickGenerateForm({
   const handleSubmit = async () => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) {
-      notifyError("请输入生成提示词 (prompt)");
+      notifyError("请输入生成提示词");
       return;
     }
 

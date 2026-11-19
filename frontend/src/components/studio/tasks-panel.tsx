@@ -338,7 +338,7 @@ export function TasksPanel() {
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
                       <span>{task.priceUnits} 额度</span>
                       <span>·</span>
-                      <span>{formatDateTime(task.createdAt)}</span>
+                      <span className="tabular-nums">{formatDateTime(task.createdAt)}</span>
                     </div>
                   </div>
 

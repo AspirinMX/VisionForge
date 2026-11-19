@@ -954,7 +954,7 @@ function GlobalTasksContent() {
                       >
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">#{inp.ordinal}</Badge>
-                          <span className="font-mono">{inp.shotId}</span>
+                          <span>第 {inp.ordinal} 镜</span>
                         </div>
                         <span className="text-muted-foreground tabular-nums">
                           {inp.startSeconds}s → {inp.endSeconds}s

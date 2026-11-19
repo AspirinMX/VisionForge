@@ -1106,7 +1106,7 @@ export function StoryboardPanel() {
                         <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
                           <span>已选成片片段</span>
                           {shot.usedRange ? (
-                            <span className="font-mono tabular-nums">
+                            <span className="tabular-nums">
                               {shot.usedRange.startSeconds}s–
                               {shot.usedRange.endSeconds}s
                             </span>

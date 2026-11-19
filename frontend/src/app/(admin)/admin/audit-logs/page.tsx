@@ -238,19 +238,19 @@ export default function AdminAuditLogsPage() {
               value={bizNoInput}
               onChange={(e) => setBizNoInput(e.target.value)}
               placeholder="业务编号"
-              className="h-8 font-mono text-xs"
+              className="h-8 text-xs"
             />
             <Input
               value={traceIdInput}
               onChange={(e) => setTraceIdInput(e.target.value)}
               placeholder="链路追踪编号"
-              className="h-8 font-mono text-xs"
+              className="h-8 text-xs"
             />
             <Input
               value={operatorIdInput}
               onChange={(e) => setOperatorIdInput(e.target.value)}
               placeholder="操作者编号"
-              className="h-8 font-mono text-xs"
+              className="h-8 text-xs"
             />
             <Select
               value={successInput}
