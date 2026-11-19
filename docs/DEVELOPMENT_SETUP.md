@@ -22,7 +22,7 @@
 
 ```sh
 cp .env.example .env
-docker compose up -d --wait postgres redis rustfs temporal temporal-ui
+docker compose up -d --wait postgres redis rustfs temporal temporal-ui nacos
 docker compose up rustfs-init
 ```
 
@@ -32,6 +32,7 @@ docker compose up rustfs-init
 - Redis 7：`localhost:6379`
 - RustFS S3 & Web Console：`http://localhost:9000` / `http://localhost:9001`（默认账号密码 `rustfsadmin`）
 - Temporal gRPC & UI：`localhost:7233` / `http://localhost:8233`
+- Nacos Server（standalone）：HTTP & 控制台 `http://localhost:8848/nacos`，gRPC `localhost:9848`（默认认证账号密码 `nacos` / `nacos`）
 
 ### 2.2 执行 Flyway 业务数据库迁移
 
@@ -141,6 +142,9 @@ pnpm --dir frontend dev
 | `MEDIA_ALLOW_HTTP` | `false` | **仅限本地开发**：允许 Worker 通过明文 HTTP 下载结果 |
 | `WORKER_MAX_CONCURRENT_ACTIVITIES` / `WORKFLOW_TASKS` | `20` / `20` | Worker Activity 与 Workflow Task 最大并发 |
 | `WORKER_START_COMPENSATION_*` | `enabled=true`, `interval-ms=5000`, `batch-size=20`, `max-attempts=20` | 启动补偿扫描配置 |
+| `NACOS_ENABLED` | `false`（prod Compose 默认 `true`） | 启用 Nacos 配置中心拉取与长轮询热监听 |
+| `NACOS_SERVER_ADDR` / `NACOS_GROUP` | `127.0.0.1:8848` / `VISIONFORGE_GROUP` | Nacos 地址与配置分组 |
+| `NACOS_AUTH_ENABLE` / `NACOS_AUTH_TOKEN` | `true` / 开发 Base64 默认值 | Nacos standalone 认证与密钥配置 |
 
 ---
 

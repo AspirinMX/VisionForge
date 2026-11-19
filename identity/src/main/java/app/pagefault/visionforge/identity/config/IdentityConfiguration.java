@@ -6,6 +6,7 @@ import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +26,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.id.IdGenerator;
 import app.pagefault.visionforge.identity.auth.AuthService;
 import app.pagefault.visionforge.identity.auth.RefreshTokenMapper;
@@ -87,8 +89,10 @@ public class IdentityConfiguration {
             UserMapper userMapper,
             PasswordEncoder passwordEncoder,
             IdGenerator idGenerator,
-            Clock clock) {
-        return new IdentityService(userMapper, passwordEncoder, idGenerator, clock);
+            Clock clock,
+            ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider) {
+        return new IdentityService(
+                userMapper, passwordEncoder, idGenerator, clock, runtimeConfigProvider.getIfAvailable());
     }
 
     @Bean

@@ -83,6 +83,15 @@
 | --- | --- | --- | --- | --- |
 | `GET /api/v1/admin/overview` | `200` | `ADMIN` | 汇总用户、活跃会话、运行中/异常任务及 `ARCHIVE_FAILED` / `PENDING_RECONCILIATION` / 补偿失败指标 | `AdminOverviewResponse` |
 
+### 3.4 Nacos 配置中心控制台 (`AdminConfigController`, `/api/v1/admin/configs`)
+
+| 方法与路径 | 状态码 | 权限 | 请求体 / 说明 | 响应 `data` |
+| --- | --- | --- | --- | --- |
+| `GET /api/v1/admin/configs` | `200` | `ADMIN` | 返回 Nacos 连接状态与全部受管 JSON 配置项（`visionforge-runtime/security/billing/alert.json`） | `ConfigCenterOverviewResponse` |
+| `GET /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | 读取指定 `dataId` 的最新配置与默认模板 | `ConfigEntryResponse` |
+| `PUT /api/v1/admin/configs/{dataId}` | `200` | `ADMIN` | `{ content }`（校验 JSON 对象后发布至 Nacos 并热刷新） | `ConfigEntryResponse` |
+| `POST /api/v1/admin/configs/{dataId}/reset` | `200` | `ADMIN` | 还原该 `dataId` 为内置默认 JSON 配置 | `ConfigEntryResponse` |
+
 ---
 
 ## 4. 会话、消息、流式 SSE 与 AgentRun

@@ -20,17 +20,15 @@ import app.pagefault.visionforge.billing.config.BillingProperties;
 import app.pagefault.visionforge.billing.error.BillingErrorCode;
 import app.pagefault.visionforge.common.api.PageResult;
 import app.pagefault.visionforge.common.audit.BizLog;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.id.IdGenerator;
-
-import lombok.RequiredArgsConstructor;
 
 /**
  * Minimal credit ledger: reserve before a paid task, settle on delivery, release on confirmed
  * failure or pre-submit cancellation. Every mutation is keyed by a stable business key so workflow
  * retries cannot double-charge.
  */
-@RequiredArgsConstructor
 public class CreditService {
 
     private final CreditAccountMapper accountMapper;
@@ -39,6 +37,34 @@ public class CreditService {
     private final IdGenerator idGenerator;
     private final Clock clock;
     private final BillingProperties properties;
+    private final DynamicRuntimeConfig runtimeConfig;
+
+    public CreditService(
+            CreditAccountMapper accountMapper,
+            CreditReservationMapper reservationMapper,
+            CreditLedgerMapper ledgerMapper,
+            IdGenerator idGenerator,
+            Clock clock,
+            BillingProperties properties) {
+        this(accountMapper, reservationMapper, ledgerMapper, idGenerator, clock, properties, null);
+    }
+
+    public CreditService(
+            CreditAccountMapper accountMapper,
+            CreditReservationMapper reservationMapper,
+            CreditLedgerMapper ledgerMapper,
+            IdGenerator idGenerator,
+            Clock clock,
+            BillingProperties properties,
+            DynamicRuntimeConfig runtimeConfig) {
+        this.accountMapper = accountMapper;
+        this.reservationMapper = reservationMapper;
+        this.ledgerMapper = ledgerMapper;
+        this.idGenerator = idGenerator;
+        this.clock = clock;
+        this.properties = properties;
+        this.runtimeConfig = runtimeConfig;
+    }
 
     public CreditBalance balance(UUID userId) {
         CreditAccount account = ensureAccount(userId);
@@ -313,7 +339,10 @@ public class CreditService {
             return account;
         }
         Instant now = clock.instant();
-        long initial = Math.max(properties.initialCreditUnits(), 0);
+        long configuredInitial = Math.max(properties.initialCreditUnits(), 0);
+        long initial = runtimeConfig == null
+                ? configuredInitial
+                : Math.max(runtimeConfig.initialCreditUnits(configuredInitial), 0);
         accountMapper.insertIfAbsent(userId, initial, now);
         CreditAccount created = accountMapper.selectById(userId);
         if (created == null) {

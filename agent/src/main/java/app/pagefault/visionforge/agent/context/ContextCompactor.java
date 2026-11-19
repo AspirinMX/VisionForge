@@ -27,9 +27,9 @@ import app.pagefault.visionforge.agent.runtime.AgentRun;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationPurpose;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationRecorder;
 import app.pagefault.visionforge.agent.runtime.ModelInvocationStatus;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -40,7 +40,6 @@ import lombok.extern.slf4j.Slf4j;
  * never fails the AgentRun. Original messages are always kept.
  */
 @Slf4j
-@RequiredArgsConstructor
 public class ContextCompactor {
 
     private static final String PROMPT_VERSION = "compact-v1";
@@ -71,6 +70,53 @@ public class ContextCompactor {
     private final double compactThreshold;
     private final double keepRatio;
     private final int summaryMaxOutputTokens;
+    private final DynamicRuntimeConfig runtimeConfig;
+
+    public ContextCompactor(
+            ContextSummaryMapper summaryMapper,
+            ModelDefinitionService modelDefinitionService,
+            ResponsesModelClient modelClient,
+            ModelInvocationRecorder invocationRecorder,
+            IdGenerator idGenerator,
+            Clock clock,
+            double compactThreshold,
+            double keepRatio,
+            int summaryMaxOutputTokens) {
+        this(
+                summaryMapper,
+                modelDefinitionService,
+                modelClient,
+                invocationRecorder,
+                idGenerator,
+                clock,
+                compactThreshold,
+                keepRatio,
+                summaryMaxOutputTokens,
+                null);
+    }
+
+    public ContextCompactor(
+            ContextSummaryMapper summaryMapper,
+            ModelDefinitionService modelDefinitionService,
+            ResponsesModelClient modelClient,
+            ModelInvocationRecorder invocationRecorder,
+            IdGenerator idGenerator,
+            Clock clock,
+            double compactThreshold,
+            double keepRatio,
+            int summaryMaxOutputTokens,
+            DynamicRuntimeConfig runtimeConfig) {
+        this.summaryMapper = summaryMapper;
+        this.modelDefinitionService = modelDefinitionService;
+        this.modelClient = modelClient;
+        this.invocationRecorder = invocationRecorder;
+        this.idGenerator = idGenerator;
+        this.clock = clock;
+        this.compactThreshold = compactThreshold;
+        this.keepRatio = keepRatio;
+        this.summaryMaxOutputTokens = summaryMaxOutputTokens;
+        this.runtimeConfig = runtimeConfig;
+    }
 
     /**
      * Returns the summary that should replace the head of {@code history}, or {@code null} when the
@@ -84,8 +130,15 @@ public class ContextCompactor {
             return latest;
         }
 
+        double effectiveThreshold = runtimeConfig == null
+                ? compactThreshold
+                : runtimeConfig.contextCompactThreshold(compactThreshold);
+        double effectiveKeepRatio = runtimeConfig == null
+                ? keepRatio
+                : runtimeConfig.contextCompactKeepRatio(keepRatio);
+
         int budget = model.getMaxInputTokens();
-        int threshold = (int) (budget * compactThreshold);
+        int threshold = (int) (budget * effectiveThreshold);
         long startSeq = latest == null ? 0 : latest.getToSeq();
 
         List<Message> pending = new ArrayList<>();
@@ -101,7 +154,7 @@ public class ContextCompactor {
             return latest;
         }
 
-        int keepBudget = (int) (budget * keepRatio);
+        int keepBudget = (int) (budget * effectiveKeepRatio);
         int retainedCost = 0;
         int boundary = pending.size();
         for (int index = pending.size() - 1; index >= 0; index--) {
@@ -167,6 +220,9 @@ public class ContextCompactor {
 
     private String summarize(AgentRun run, ModelDefinition model, List<Message> range) {
         ModelProviderSettings settings = modelDefinitionService.settings(model);
+        int effectiveMaxTokens = runtimeConfig == null
+                ? summaryMaxOutputTokens
+                : runtimeConfig.contextSummaryMaxOutputTokens(summaryMaxOutputTokens);
         try {
             ModelResponse response = modelClient.stream(
                     new ModelRequest(
@@ -174,7 +230,7 @@ public class ContextCompactor {
                             settings.apiKey(),
                             settings.modelId(),
                             ReasoningEffort.NONE,
-                            summaryMaxOutputTokens,
+                            effectiveMaxTokens,
                             SUMMARY_PROMPT,
                             List.of(new ModelInputItem.Message("user", transcript(range))),
                             List.of(),

@@ -15,15 +15,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import app.pagefault.visionforge.common.api.PageResult;
 import app.pagefault.visionforge.common.audit.BizLog;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.error.BusinessException;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
 import app.pagefault.visionforge.common.id.IdGenerator;
 import app.pagefault.visionforge.identity.error.IdentityErrorCode;
 
 import cn.hutool.core.lang.Validator;
-import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 public class IdentityService {
 
     private static final int PASSWORD_MIN_LENGTH = 12;
@@ -35,6 +34,28 @@ public class IdentityService {
     private final PasswordEncoder passwordEncoder;
     private final IdGenerator idGenerator;
     private final Clock clock;
+    private final DynamicRuntimeConfig runtimeConfig;
+
+    public IdentityService(
+            UserMapper userMapper,
+            PasswordEncoder passwordEncoder,
+            IdGenerator idGenerator,
+            Clock clock) {
+        this(userMapper, passwordEncoder, idGenerator, clock, null);
+    }
+
+    public IdentityService(
+            UserMapper userMapper,
+            PasswordEncoder passwordEncoder,
+            IdGenerator idGenerator,
+            Clock clock,
+            DynamicRuntimeConfig runtimeConfig) {
+        this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
+        this.idGenerator = idGenerator;
+        this.clock = clock;
+        this.runtimeConfig = runtimeConfig;
+    }
 
     @Transactional
     @BizLog(
@@ -44,6 +65,9 @@ public class IdentityService {
             success = "用户「{{#result.displayName}}」注册成功",
             fail = "用户「{{#maskEmail(#email)}}」注册失败：{{#errorMessage}}")
     public UserAccount register(String email, String rawPassword, String displayName) {
+        if (runtimeConfig != null && !runtimeConfig.registrationEnabled(true)) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "当前系统已关闭公开注册");
+        }
         return createUser(email, rawPassword, displayName, UserRole.USER);
     }
 

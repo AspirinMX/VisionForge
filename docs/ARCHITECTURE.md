@@ -70,7 +70,7 @@ VisionForge 采用 **Web API 与 Temporal Worker 进程分离** 的运行形态�
 
 | 模块 | Artifact ID | 核心职责 | 直接内部依赖 |
 | --- | --- | --- | --- |
-| `common` | `vision-forge-common` | `ApiResponse`、`PageResult`、`ErrorCode`、`BusinessException`、`SystemException`、`BizAssert`、`UuidV7Generator`、`TraceContext`、`LogMasker`、`@BizLog` 切面与异步存储 SPI | 无 |
+| `common` | `vision-forge-common` | `ApiResponse`、`PageResult`、`ErrorCode`、`BusinessException`、`SystemException`、`BizAssert`、`UuidV7Generator`、`TraceContext`、`LogMasker`、`CsvWriter`、`@BizLog` 切面及 Nacos 动态配置桥接 `DynamicRuntimeConfig` | 无 |
 | `identity` | `vision-forge-identity` | `user_account`、`refresh_token`、bcrypt 凭证认证、JWT 签发与管理员引导启动器 | `common` |
 | `asset` | `vision-forge-asset` | 会话文本版本文件（`conversation_file`、`conversation_file_version`）、S3 对象存储适配、`upload_session`、`asset`、`asset_variant` | `common` |
 | `billing` | `vision-forge-billing` | 额度账户（`credit_account`）、幂等预占/结算/释放（`credit_reservation`）与 Keyset 分页流水（`credit_ledger`） | `common` |

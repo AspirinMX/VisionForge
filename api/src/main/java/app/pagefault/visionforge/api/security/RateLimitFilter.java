@@ -3,7 +3,6 @@ package app.pagefault.visionforge.api.security;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.function.ToIntFunction;
 
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -13,6 +12,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import app.pagefault.visionforge.common.api.ApiResponse;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
 
 import jakarta.servlet.FilterChain;
@@ -34,12 +34,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                             "/api/v1/auth/register",
                             "/api/v1/auth/refresh"),
                     true,
-                    RateLimitProperties::getAuthPerMinute),
+                    (props, dyn) -> dyn == null
+                            ? props.getAuthPerMinute()
+                            : dyn.rateLimitAuthPerMinute(props.getAuthPerMinute())),
             new RateLimitRule(
                     "redeem",
                     List.of("/api/v1/account/credit/redeem"),
                     false,
-                    RateLimitProperties::getRedeemPerMinute),
+                    (props, dyn) -> dyn == null
+                            ? props.getRedeemPerMinute()
+                            : dyn.rateLimitRedeemPerMinute(props.getRedeemPerMinute())),
             new RateLimitRule(
                     "generation",
                     List.of(
@@ -48,32 +52,49 @@ public class RateLimitFilter extends OncePerRequestFilter {
                             "/api/v1/generation-tasks",
                             "/api/v1/composition-tasks"),
                     false,
-                    RateLimitProperties::getGenerationPerMinute),
+                    (props, dyn) -> dyn == null
+                            ? props.getGenerationPerMinute()
+                            : dyn.rateLimitGenerationPerMinute(props.getGenerationPerMinute())),
             new RateLimitRule(
                     "upload",
                     List.of("/api/v1/conversations/*/uploads"),
                     false,
-                    RateLimitProperties::getUploadPerMinute));
+                    (props, dyn) -> dyn == null
+                            ? props.getUploadPerMinute()
+                            : dyn.rateLimitUploadPerMinute(props.getUploadPerMinute())));
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final SlidingWindowRateLimiter rateLimiter;
     private final RateLimitProperties properties;
     private final ObjectMapper objectMapper;
+    private final DynamicRuntimeConfig runtimeConfig;
 
     public RateLimitFilter(
             SlidingWindowRateLimiter rateLimiter,
             RateLimitProperties properties,
             ObjectMapper objectMapper) {
+        this(rateLimiter, properties, objectMapper, null);
+    }
+
+    public RateLimitFilter(
+            SlidingWindowRateLimiter rateLimiter,
+            RateLimitProperties properties,
+            ObjectMapper objectMapper,
+            DynamicRuntimeConfig runtimeConfig) {
         this.rateLimiter = rateLimiter;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.runtimeConfig = runtimeConfig;
     }
 
     @Override
     protected void doFilterInternal(
             HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        if (!properties.isEnabled() || !HttpMethod.POST.matches(request.getMethod())) {
+        boolean enabled = runtimeConfig == null
+                ? properties.isEnabled()
+                : runtimeConfig.rateLimitEnabled(properties.isEnabled());
+        if (!enabled || !HttpMethod.POST.matches(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -85,7 +106,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        int limit = matchedRule.limitExtractor().applyAsInt(properties);
+        int limit = matchedRule.limitExtractor().resolve(properties, runtimeConfig);
         String subject = matchedRule.byIpOnly()
                 ? "ip:" + resolveClientIp(request)
                 : resolveSubject(request);
@@ -155,6 +176,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
             String bucket,
             List<String> patterns,
             boolean byIpOnly,
-            ToIntFunction<RateLimitProperties> limitExtractor) {
+            LimitResolver limitExtractor) {
+    }
+
+    @FunctionalInterface
+    private interface LimitResolver {
+        int resolve(RateLimitProperties props, DynamicRuntimeConfig dynamicConfig);
     }
 }

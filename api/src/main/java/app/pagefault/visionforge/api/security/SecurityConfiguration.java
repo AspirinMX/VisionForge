@@ -28,6 +28,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import app.pagefault.visionforge.common.api.ApiResponse;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.error.CommonErrorCode;
 import app.pagefault.visionforge.common.error.ErrorCode;
 
@@ -80,8 +81,10 @@ public class SecurityConfiguration {
             JwtDecoder jwtDecoder,
             ObjectMapper objectMapper,
             SlidingWindowRateLimiter rateLimiter,
-            RateLimitProperties rateLimitProperties) throws Exception {
-        RateLimitFilter rateLimitFilter = new RateLimitFilter(rateLimiter, rateLimitProperties, objectMapper);
+            RateLimitProperties rateLimitProperties,
+            ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider) throws Exception {
+        RateLimitFilter rateLimitFilter = new RateLimitFilter(
+                rateLimiter, rateLimitProperties, objectMapper, runtimeConfigProvider.getIfAvailable());
         http
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)

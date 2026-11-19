@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +20,7 @@ import app.pagefault.visionforge.billing.credit.CreditReservationMapper;
 import app.pagefault.visionforge.billing.credit.CreditService;
 import app.pagefault.visionforge.billing.credit.RedemptionService;
 import app.pagefault.visionforge.billing.persistence.BillingUuidTypeHandler;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 import app.pagefault.visionforge.common.id.IdGenerator;
 
 @Configuration(proxyBeanMethods = false)
@@ -39,9 +41,16 @@ public class BillingConfiguration {
             CreditLedgerMapper ledgerMapper,
             IdGenerator idGenerator,
             Clock clock,
-            BillingProperties properties) {
+            BillingProperties properties,
+            ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider) {
         return new CreditService(
-                accountMapper, reservationMapper, ledgerMapper, idGenerator, clock, properties);
+                accountMapper,
+                reservationMapper,
+                ledgerMapper,
+                idGenerator,
+                clock,
+                properties,
+                runtimeConfigProvider.getIfAvailable());
     }
 
     @Bean

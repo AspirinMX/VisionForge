@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import app.pagefault.visionforge.agent.stream.AgentRunStreamPublisher;
+import app.pagefault.visionforge.common.config.DynamicRuntimeConfig;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,13 +33,16 @@ public class AgentRunStreamService {
 
     private final RedisMessageListenerContainer listenerContainer;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<DynamicRuntimeConfig> runtimeConfigProvider;
     private final Map<UUID, Subscription> subscriptions = new ConcurrentHashMap<>();
 
     @Value("${visionforge.stream.timeout-ms:300000}")
     private long timeoutMs;
 
     public SseEmitter subscribe(UUID runId) {
-        SseEmitter emitter = new SseEmitter(timeoutMs);
+        DynamicRuntimeConfig runtimeConfig = runtimeConfigProvider.getIfAvailable();
+        long effectiveTimeout = runtimeConfig == null ? timeoutMs : runtimeConfig.streamTimeoutMs(timeoutMs);
+        SseEmitter emitter = new SseEmitter(effectiveTimeout);
         ChannelTopic topic = new ChannelTopic(AgentRunStreamPublisher.channel(runId));
         MessageListener listener = (message, pattern) -> onMessage(runId, emitter, message);
 

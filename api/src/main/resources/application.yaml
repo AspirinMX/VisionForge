@@ -86,3 +86,11 @@ visionforge:
       email: ${BOOTSTRAP_ADMIN_EMAIL:}
       password: ${BOOTSTRAP_ADMIN_PASSWORD:}
       display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:Administrator}
+  nacos:
+    enabled: ${NACOS_ENABLED:false}
+    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+    namespace: ${NACOS_NAMESPACE:public}
+    group: ${NACOS_GROUP:VISIONFORGE_GROUP}
+    username: ${NACOS_USERNAME:nacos}
+    password: ${NACOS_PASSWORD:}
+    timeout-ms: ${NACOS_TIMEOUT_MS:5000}

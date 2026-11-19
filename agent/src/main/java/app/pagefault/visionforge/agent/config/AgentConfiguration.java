@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -182,7 +183,8 @@ public class AgentConfiguration {
             Clock clock,
             @Value("${visionforge.context.compact-threshold:0.8}") double compactThreshold,
             @Value("${visionforge.context.compact-keep-ratio:0.25}") double compactKeepRatio,
-            @Value("${visionforge.context.summary-max-output-tokens:1024}") int summaryMaxOutputTokens) {
+            @Value("${visionforge.context.summary-max-output-tokens:1024}") int summaryMaxOutputTokens,
+            ObjectProvider<app.pagefault.visionforge.common.config.DynamicRuntimeConfig> runtimeConfigProvider) {
         return new ContextCompactor(
                 contextSummaryMapper,
                 modelDefinitionService,
@@ -192,7 +194,8 @@ public class AgentConfiguration {
                 clock,
                 compactThreshold,
                 compactKeepRatio,
-                summaryMaxOutputTokens);
+                summaryMaxOutputTokens,
+                runtimeConfigProvider.getIfAvailable());
     }
 
     @Bean

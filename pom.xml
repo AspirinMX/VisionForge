@@ -36,6 +36,7 @@
         <openai-java.version>4.99.0</openai-java.version>
         <aws-sdk.version>2.59.2</aws-sdk.version>
         <ark-runtime.version>0.17.0</ark-runtime.version>
+        <nacos.version>2.5.5</nacos.version>
 
         <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
@@ -88,6 +89,17 @@
                 <groupId>com.volcengine</groupId>
                 <artifactId>ark-runtime</artifactId>
                 <version>${ark-runtime.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client</artifactId>
+                <version>${nacos.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <!-- 内部模块统一版本，子模块引用时无需重复声明 version -->
