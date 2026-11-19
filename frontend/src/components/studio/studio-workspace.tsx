@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { notFound } from "next/navigation";
 import {
   ActivityIcon,
@@ -26,7 +26,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { CONTROL } from "@/lib/motion";
+import { SURFACE } from "@/lib/motion";
 import {
   Tooltip,
   TooltipContent,
@@ -81,6 +81,20 @@ function WorkspaceShell({
 
   const chatPanelRef = usePanelRef();
   const canvasPanelRef = usePanelRef();
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+    const stopResizing = () => setIsResizing(false);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+    return () => {
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+  }, [isResizing]);
 
   useEffect(() => {
     if (isCompact) {
@@ -180,6 +194,10 @@ function WorkspaceShell({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-hidden">
+          <div
+            className="studio-panels h-full w-full"
+            data-resizing={isResizing ? "true" : undefined}
+          >
           <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
             <ResizablePanel
               id="chat-pane"
@@ -196,6 +214,7 @@ function WorkspaceShell({
 
             <ResizableHandle
               withHandle
+              onPointerDown={() => setIsResizing(true)}
               className={cn(
                 (!canvasOpen || canvasFullscreen) && "hidden"
               )}
@@ -218,7 +237,7 @@ function WorkspaceShell({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={CONTROL.enter}
+                    transition={SURFACE.enter}
                     className="flex h-full min-h-0 flex-col"
                   >
                     <StudioCanvas />
@@ -227,6 +246,7 @@ function WorkspaceShell({
               </AnimatePresence>
             </ResizablePanel>
           </ResizablePanelGroup>
+          </div>
         </div>
       )}
     </div>

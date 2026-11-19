@@ -150,3 +150,19 @@
     corner-shape: squircle;
   }
 }
+
+.studio-panels [data-panel] {
+  transition-property: flex-grow, flex-shrink, flex-basis;
+  transition-duration: var(--motion-surface-enter);
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.studio-panels[data-resizing="true"] [data-panel] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-panels [data-panel] {
+    transition: none;
+  }
+}
