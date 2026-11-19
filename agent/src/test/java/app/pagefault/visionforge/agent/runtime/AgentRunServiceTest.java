@@ -185,10 +185,15 @@ class AgentRunServiceTest {
 
         AgentModelInput input = service.buildInput(RUN_ID);
 
-        assertThat(input.input()).contains(new ModelInputItem.UserMessage(
-                "Hello",
-                List.of(new ModelInputItem.ImageInput(
-                        "data:image/png;base64,AQID", "auto"))));
+        ModelInputItem.UserMessage userMessage = input.input().stream()
+                .filter(ModelInputItem.UserMessage.class::isInstance)
+                .map(ModelInputItem.UserMessage.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertThat(userMessage.text()).startsWith("Hello");
+        assertThat(userMessage.text()).contains("assetId=" + assetId);
+        assertThat(userMessage.images()).containsExactly(
+                new ModelInputItem.ImageInput("data:image/png;base64,AQID", "auto"));
     }
 
     @Test
@@ -218,8 +223,14 @@ class AgentRunServiceTest {
 
         AgentModelInput input = service.buildInput(RUN_ID);
 
-        assertThat(input.input()).contains(new ModelInputItem.UserMessage(
-                "Hello", List.of()));
+        ModelInputItem.UserMessage userMessage = input.input().stream()
+                .filter(ModelInputItem.UserMessage.class::isInstance)
+                .map(ModelInputItem.UserMessage.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertThat(userMessage.text()).startsWith("Hello");
+        assertThat(userMessage.text()).contains("assetId=" + videoId);
+        assertThat(userMessage.images()).isEmpty();
 
         UUID hugeImageId = UUID.randomUUID();
         part.setAssetId(hugeImageId);

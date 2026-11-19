@@ -64,7 +64,7 @@ public class AgentRunService {
             写作或修改剧本与分镜、制作短片或广告时，先加载 short-film skill，再调用创作工具。
             用户只要单张图片、已有首帧的单段视频或查询任务时，可直接调用相应工具。
             生成工具返回 ACCEPTED 和 taskId；只有 await_generation 返回的终态才可以描述为已交付。
-            当前消息附带的图片会作为 input_image 提供给你；inspect_asset 只返回元数据，不等于视觉理解。
+            当前消息附带的素材会作为 input_image 提供，并在消息末尾列出 assetId；会话素材库中的素材用 list_assets 获取 assetId。inspect_asset 只返回元数据，不等于视觉理解。
             回答保持清晰、具体，并在需要时主动询问缺失的创作信息。
             """;
     private static final int ERROR_MAX_LENGTH = 2_000;
@@ -298,12 +298,24 @@ public class AgentRunService {
             return new ModelInputItem.Message(role(message.getRole()), message.getContent());
         }
         List<ModelInputItem.ImageInput> images = new ArrayList<>(parts.size());
+        StringBuilder manifest = new StringBuilder();
         long totalBytes = 0;
         for (MessagePart part : parts) {
             if (part.getAssetId() == null) {
                 continue;
             }
             Asset asset = assetService.get(run.getUserId(), part.getAssetId());
+            // Every attachment is listed so the model can reference it by assetId even when it
+            // is not an input_image part.
+            manifest.append("- assetId=").append(asset.getId())
+                    .append(" kind=").append(asset.getKind())
+                    .append(" mime=").append(asset.getMimeType());
+            if (asset.getWidth() != null && asset.getHeight() != null) {
+                manifest.append(" size=").append(asset.getWidth())
+                        .append('x').append(asset.getHeight());
+            }
+            manifest.append('\n');
+
             if (asset.getKind() != AssetKind.IMAGE) {
                 // input_image only accepts images; other attachments stay metadata-only.
                 continue;
@@ -324,7 +336,13 @@ public class AgentRunService {
             images.add(new ModelInputItem.ImageInput(
                     dataUrl(asset, content), "auto"));
         }
-        return new ModelInputItem.UserMessage(message.getContent(), images);
+        String text = message.getContent() == null ? "" : message.getContent();
+        if (!manifest.isEmpty()) {
+            text = (text.isBlank() ? "" : text + "\n\n")
+                    + "[本次消息附件]\n" + manifest
+                    + "使用 generate_image / generate_video 的 inputs[].assetId 引用这些素材。";
+        }
+        return new ModelInputItem.UserMessage(text, images);
     }
 
     private String dataUrl(Asset asset, byte[] content) {

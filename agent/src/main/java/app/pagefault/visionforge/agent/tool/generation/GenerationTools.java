@@ -24,7 +24,9 @@ import app.pagefault.visionforge.agent.tool.ToolDefinition;
 import app.pagefault.visionforge.agent.tool.ToolExecutionContext;
 import app.pagefault.visionforge.agent.tool.ToolResult;
 import app.pagefault.visionforge.asset.media.Asset;
+import app.pagefault.visionforge.asset.media.AssetKind;
 import app.pagefault.visionforge.asset.media.AssetService;
+import app.pagefault.visionforge.asset.media.AssetStatus;
 import app.pagefault.visionforge.common.error.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -50,6 +52,7 @@ public class GenerationTools {
                 new AwaitGenerationTool(),
                 new GetGenerationTool(),
                 new CancelGenerationTool(),
+                new ListAssetsTool(),
                 new InspectAssetTool());
     }
 
@@ -201,6 +204,50 @@ public class GenerationTools {
             UUID taskId = ToolArguments.requiredUuid(arguments, "taskId");
             return ToolResult.success(write(taskSummary(
                     taskService.cancel(context.userId(), taskId))));
+        }
+    }
+
+    private final class ListAssetsTool extends BaseTool {
+
+        private ListAssetsTool() {
+            super(
+                    "list_assets",
+                    "列出当前会话素材库中的素材并返回 assetId。用户从素材库或输入框上传的图片、"
+                            + "视频只有通过此工具或消息末尾的附件清单才能拿到 assetId。",
+                    """
+                    {"type":"object","properties":{
+                      "kind":{"type":"string","enum":["IMAGE","VIDEO","DOCUMENT","OTHER"]},
+                      "limit":{"type":"integer","minimum":1,"maximum":50}
+                    },"additionalProperties":false}
+                    """,
+                    false);
+        }
+
+        @Override
+        public ToolResult execute(ToolExecutionContext context, JsonNode arguments) {
+            AssetKind kind = ToolArguments.optionalEnum(arguments, "kind", AssetKind.class);
+            int limit = ToolArguments.limit(arguments, 20, 50);
+            List<Map<String, Object>> result = assetService.list(
+                            context.userId(), requireConversation(context), kind, null, limit)
+                    .stream()
+                    .filter(asset -> asset.getStatus() == AssetStatus.READY)
+                    .map(this::summary)
+                    .toList();
+            return ToolResult.success(write(result));
+        }
+
+        private Map<String, Object> summary(Asset asset) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("assetId", asset.getId().toString());
+            item.put("kind", asset.getKind());
+            item.put("source", asset.getSource());
+            item.put("mimeType", asset.getMimeType());
+            item.put("sizeBytes", asset.getSizeBytes());
+            item.put("width", asset.getWidth());
+            item.put("height", asset.getHeight());
+            item.put("durationMs", asset.getDurationMs());
+            item.put("createdAt", asset.getCreatedAt());
+            return item;
         }
     }
 

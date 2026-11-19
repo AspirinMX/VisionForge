@@ -71,7 +71,8 @@ public class ConversationFileTools {
         private ListFilesTool() {
             super(
                     "list_files",
-                    "列出当前会话工作区中的文件。",
+                    "列出当前会话工作区中的文件（剧本、分镜、提示词等）。上传的图片、视频素材不在其中，"
+                            + "素材请用 list_assets 获取 assetId。",
                     """
                     {"type":"object","properties":{
                       "kind":{"type":"string","enum":["SCRIPT","STORYBOARD","PROMPT","IMAGE","VIDEO","OTHER"]},
