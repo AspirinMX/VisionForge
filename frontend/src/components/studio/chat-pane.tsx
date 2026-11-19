@@ -645,6 +645,7 @@ export function ChatPane() {
                     process={livePresentation.process}
                     isStreaming
                     defaultOpen
+                    hasAnswerText={Boolean(livePresentation.answerMarkdown)}
                     onOpenFile={(id) => openCanvas("files", id)}
                     onOpenStoryboard={(id) => openCanvas("storyboard", id)}
                     onOpenTasks={() => openCanvas("tasks")}
