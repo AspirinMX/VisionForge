@@ -188,6 +188,13 @@ export default function AccountPage() {
     }
   };
 
+  const handleLedgerPageChange = async (nextPage: number) => {
+    if (nextPage > ledgerTotalPages && hasMoreLedger) {
+      await handleLoadMoreLedger();
+    }
+    setLedgerPage(nextPage);
+  };
+
   const handleRefreshProfile = async () => {
     setRefreshingUser(true);
     try {
@@ -571,21 +578,13 @@ export default function AccountPage() {
                       page={safeLedgerPage}
                       pageSize={LEDGER_VIEW_SIZE}
                       total={allLedgerEntries.length}
-                      onPageChange={setLedgerPage}
+                      onPageChange={(nextPage) =>
+                        void handleLedgerPageChange(nextPage)
+                      }
                       itemLabel="条流水"
+                      hasMore={hasMoreLedger}
+                      busy={loadingMoreLedger}
                     />
-                    {hasMoreLedger ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleLoadMoreLedger()}
-                        disabled={loadingMoreLedger}
-                        className="w-full"
-                      >
-                        {loadingMoreLedger ? "加载中..." : "加载更早流水"}
-                      </Button>
-                    ) : null}
                   </div>
                 )}
               </div>

@@ -326,6 +326,30 @@ function GlobalTasksContent() {
     safeCompositionPage * TASK_VIEW_SIZE
   );
 
+  const canLoadMoreGenerations =
+    tasks.length >= generationLimit && generationLimit < MAX_TASK_LIMIT;
+  const canLoadMoreCompositions =
+    compositions.length >= compositionLimit &&
+    compositionLimit < MAX_TASK_LIMIT;
+
+  const handleGenerationPageChange = (nextPage: number) => {
+    if (nextPage > generationTotalPages && canLoadMoreGenerations) {
+      setGenerationLimit((prev) =>
+        Math.min(MAX_TASK_LIMIT, prev + PAGE_STEP)
+      );
+    }
+    setGenerationPage(nextPage);
+  };
+
+  const handleCompositionPageChange = (nextPage: number) => {
+    if (nextPage > compositionTotalPages && canLoadMoreCompositions) {
+      setCompositionLimit((prev) =>
+        Math.min(MAX_TASK_LIMIT, prev + PAGE_STEP)
+      );
+    }
+    setCompositionPage(nextPage);
+  };
+
   const listedSelectedTask = useMemo(
     () =>
       selectedTaskId
@@ -602,30 +626,11 @@ function GlobalTasksContent() {
                     page={safeGenerationPage}
                     pageSize={TASK_VIEW_SIZE}
                     total={filteredTasks.length}
-                    onPageChange={setGenerationPage}
+                    onPageChange={handleGenerationPageChange}
                     itemLabel="条任务"
+                    hasMore={canLoadMoreGenerations}
+                    busy={loadingGeneration}
                   />
-
-                  {tasks.length >= generationLimit &&
-                  generationLimit < MAX_TASK_LIMIT ? (
-                    <div className="flex justify-center">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={loadingGeneration}
-                        onClick={() =>
-                          setGenerationLimit((prev) =>
-                            Math.min(MAX_TASK_LIMIT, prev + PAGE_STEP)
-                          )
-                        }
-                      >
-                        {loadingGeneration
-                          ? "加载中..."
-                          : `加载更多（当前已加载 ${tasks.length} 条）`}
-                      </Button>
-                    </div>
-                  ) : null}
                 </div>
               )}
             </TabsContent>
@@ -749,30 +754,11 @@ function GlobalTasksContent() {
                     page={safeCompositionPage}
                     pageSize={TASK_VIEW_SIZE}
                     total={filteredCompositions.length}
-                    onPageChange={setCompositionPage}
+                    onPageChange={handleCompositionPageChange}
                     itemLabel="条合成任务"
+                    hasMore={canLoadMoreCompositions}
+                    busy={loadingComposition}
                   />
-
-                  {compositions.length >= compositionLimit &&
-                  compositionLimit < MAX_TASK_LIMIT ? (
-                    <div className="flex justify-center">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={loadingComposition}
-                        onClick={() =>
-                          setCompositionLimit((prev) =>
-                            Math.min(MAX_TASK_LIMIT, prev + PAGE_STEP)
-                          )
-                        }
-                      >
-                        {loadingComposition
-                          ? "加载中..."
-                          : `加载更多（当前已加载 ${compositions.length} 条）`}
-                      </Button>
-                    </div>
-                  ) : null}
                 </div>
               )}
             </TabsContent>
