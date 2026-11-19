@@ -99,7 +99,7 @@ class AgentProcessReaderTest {
         assertThat(firstTurn.toolCalls().get(0).target()).isEqualTo("script.md");
         assertThat(firstTurn.toolCalls().get(0).fileId()).isEqualTo(fileId);
         assertThat(firstTurn.toolCalls().get(1).action()).isEqualTo("生成图片");
-        assertThat(firstTurn.toolCalls().get(1).target()).isEqualTo("镜头 S01");
+        assertThat(firstTurn.toolCalls().get(1).target()).isEqualTo("第 1 镜");
         assertThat(firstTurn.toolCalls().get(1).taskId()).isEqualTo(taskId);
 
         AgentTurnProcessView secondTurn = process.turns().get(1);
@@ -132,7 +132,7 @@ class AgentProcessReaderTest {
                 "{\"storyboardVersion\":3,\"storyboardFileId\":\"" + sbFileId + "\"}",
                 "{\"taskId\":\"" + compTaskId + "\"}");
         assertThat(compose.action()).isEqualTo("合成成片");
-        assertThat(compose.target()).isEqualTo("分镜 v3");
+        assertThat(compose.target()).isEqualTo("分镜合成");
         assertThat(compose.taskId()).isEqualTo(compTaskId);
 
         ToolDisplayFormatter.Display broken = formatter.format("validate_storyboard", "{bad", "not json");

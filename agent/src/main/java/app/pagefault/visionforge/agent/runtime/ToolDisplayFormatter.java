@@ -1,6 +1,8 @@
 package app.pagefault.visionforge.agent.runtime;
 
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -13,6 +15,7 @@ import tools.jackson.databind.node.MissingNode;
 public final class ToolDisplayFormatter {
 
     private static final int MAX_TARGET_LENGTH = 48;
+    private static final Pattern TRAILING_DIGITS = Pattern.compile("(\\d+)$");
 
     private final ObjectMapper objectMapper;
 
@@ -129,7 +132,7 @@ public final class ToolDisplayFormatter {
                     versionTarget(res, args),
                     null,
                     firstUuid(uuid(res, "taskId"), uuid(args, "taskId")));
-            default -> new Display(name.isEmpty() ? "执行工具" : name, null, null, null);
+            default -> new Display("执行工具", null, null, null);
         };
     }
 
@@ -193,20 +196,32 @@ public final class ToolDisplayFormatter {
             case "IMAGE" -> "图片";
             case "VIDEO" -> "视频";
             case "OTHER" -> "其他文件";
-            default -> kind;
+            default -> "文件";
         };
+    }
+
+    private String shotLabel(String shotId) {
+        Matcher matcher = TRAILING_DIGITS.matcher(shotId);
+        if (!matcher.find()) {
+            return "镜头";
+        }
+        try {
+            return "第 " + Integer.parseInt(matcher.group(1)) + " 镜";
+        } catch (NumberFormatException ignored) {
+            return "镜头";
+        }
     }
 
     private String shotOrPrompt(String shotId, String prompt) {
         if (shotId != null) {
-            return "镜头 " + shotId;
+            return shotLabel(shotId);
         }
         return cleanTarget(prompt);
     }
 
     private String shotOrType(String shotId, String type) {
         if (shotId != null) {
-            return "镜头 " + shotId;
+            return shotLabel(shotId);
         }
         if ("IMAGE".equals(type)) {
             return "图片任务";
@@ -228,13 +243,9 @@ public final class ToolDisplayFormatter {
     }
 
     private String versionTarget(JsonNode res, JsonNode args) {
-        JsonNode resVersion = res.path("storyboardVersion");
-        if (resVersion.isInt() && resVersion.asInt() > 0) {
-            return "分镜 v" + resVersion.asInt();
-        }
-        JsonNode argVersion = args.path("storyboardVersion");
-        if (argVersion.isInt() && argVersion.asInt() > 0) {
-            return "分镜 v" + argVersion.asInt();
+        if (res.path("storyboardVersion").asInt(0) > 0
+                || args.path("storyboardVersion").asInt(0) > 0) {
+            return "分镜合成";
         }
         return null;
     }
