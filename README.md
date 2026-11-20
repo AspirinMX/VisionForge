@@ -24,7 +24,7 @@
 
 The agent reads the reference portrait, generates a 3-second 480P clip, and returns the delivered video in the conversation's task center:
 
-<video src="https://cdn.jsdelivr.net/gh/AspirinMX/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
+<video src="https://cdn.jsdelivr.net/gh/PageFaultDev/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
 
 If the inline player is unavailable, [open the generated video](assets/demo.mp4).
 

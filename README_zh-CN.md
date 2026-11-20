@@ -24,7 +24,7 @@
 
 Agent 读取参考人像，生成 3 秒 480P 视频，并在会话的任务中心返回已交付的成片：
 
-<video src="https://cdn.jsdelivr.net/gh/AspirinMX/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
+<video src="https://cdn.jsdelivr.net/gh/PageFaultDev/VisionForge@main/assets/demo.mp4" controls muted width="100%"></video>
 
 如果内联播放器不可用，可[直接打开生成的视频](assets/demo.mp4)。
 
